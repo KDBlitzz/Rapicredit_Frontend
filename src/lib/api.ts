@@ -1,3 +1,58 @@
+// src/lib/api.ts
+"use client";
+
+export interface ApiOptions extends RequestInit {
+  authToken?: string; // para futuro, cuando el login sea real
+}
+
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || "";
+
+export async function apiFetch<T = unknown>(
+  path: string,
+  options: ApiOptions = {}
+): Promise<T> {
+  if (!API_BASE_URL) {
+    throw new Error("API base URL not configured");
+  }
+
+  const base = API_BASE_URL.replace(/\/$/, ""); // sin / al final
+  const urlPath = path.startsWith("/") ? path : `/${path}`;
+  const fullUrl = `${base}${urlPath}`;
+
+   console.log("apiFetch -> URL:", fullUrl); // 👈 log clave
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...((options.headers as Record<string, string>) ?? {}),
+  };
+
+  // futuro: si ya tienes idToken, lo pasas por options.authToken
+  if (options.authToken) {
+    headers["Authorization"] = `Bearer ${options.authToken}`;
+  }
+
+  const res = await fetch(`${base}${urlPath}`, {
+    ...options,
+    headers,
+    //credentials: "include",
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    let body: any = null;
+    try {
+      body = await res.json();
+    } catch {
+      // ignore
+    }
+    console.error("API error:", res.status, body || res.statusText);
+    throw new Error(body?.message || `Error ${res.status}: ${res.statusText}`);
+  }
+
+  return res.json() as Promise<T>;
+}
+
+/*
 'use client';
 
 const API_BASE_URL =
@@ -60,3 +115,4 @@ export async function apiFetch<T = unknown>(
 
   return res.json() as Promise<T>;
 }
+*/
