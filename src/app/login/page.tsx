@@ -7,7 +7,7 @@ import {
 } from "@mui/material";
 import { Visibility, VisibilityOff } from "@mui/icons-material";
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 export default function LoginPage() {
     const [user, setUser] = useState("");
