@@ -367,7 +367,7 @@ const NuevoEmpleadoPage: React.FC = () => {
                     value={formData.telefonoPais}
                     label="País"
                     onChange={(e) => handleChange({
-                      // @ts-expect-error next mui types
+                      //// @ts-expect-error next mui types
                       target: { name: 'telefonoPais', value: e.target.value },
                     } as any)}
                   >
