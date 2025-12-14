@@ -35,6 +35,7 @@ export default function LoginPage() {
             const data = await res.json();
 
             if (!res.ok) {
+                console.error("LOGIN FAIL:", res.status, data);
                 showTemporaryMessage(setErrorMessage, "Credenciales Incorrectas");
                 return;
             }

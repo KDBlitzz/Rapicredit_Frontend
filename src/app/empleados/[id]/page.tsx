@@ -32,19 +32,19 @@ const EmpleadoDetallePage: React.FC = () => {
     rol: "",
     email: "",
     telefono: "",
-    estado: "ACTIVO",
+    actividad: "ACTIVO",
   });
 
   useEffect(() => {
     if (empleado) {
       setFormData({
-        codigo: empleado.codigo || "",
+        codigo: empleado.codigoUsuario || "",
         usuario: empleado.usuario || "",
         nombreCompleto: empleado.nombreCompleto || "",
         rol: empleado.rol || "",
         email: empleado.email || "",
         telefono: empleado.telefono || "",
-        estado: empleado.estado || "ACTIVO",
+        actividad: empleado.actividad ? "ACTIVO" : "INACTIVO",
       });
     }
   }, [empleado]);
@@ -131,7 +131,7 @@ const EmpleadoDetallePage: React.FC = () => {
               {editing ? "Editar Empleado" : "Detalle de Empleado"}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              {empleado.codigo} - {empleado.usuario}
+              {empleado.codigoUsuario} - {empleado.usuario}
             </Typography>
           </Box>
           <Box sx={{ display: "flex", gap: 1 }}>
@@ -242,7 +242,7 @@ const EmpleadoDetallePage: React.FC = () => {
               variant="outlined"
               label="Estado"
               name="estado"
-              value={formData.estado}
+              value={formData.actividad}
               onChange={handleChange}
               disabled={!editing}
               InputLabelProps={{ shrink: true }}
@@ -256,7 +256,7 @@ const EmpleadoDetallePage: React.FC = () => {
               <Typography variant="body2" color="text.secondary" gutterBottom>
                 Estado actual
               </Typography>
-              {renderEstadoChip(formData.estado)}
+              {renderEstadoChip(formData.actividad)}
             </Box>
           </Grid>
         </Grid>

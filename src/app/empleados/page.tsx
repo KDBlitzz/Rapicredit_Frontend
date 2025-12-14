@@ -227,7 +227,7 @@ const EmpleadosPage: React.FC = () => {
                       cursor: "pointer",
                     }}
                   >
-                    <TableCell>{empleado.codigo || "—"}</TableCell>
+                    <TableCell>{empleado.codigoUsuario || "—"}</TableCell>
                     <TableCell>{empleado.usuario || "—"}</TableCell>
                     <TableCell>{empleado.nombreCompleto}</TableCell>
                     <TableCell>{renderRolChip(empleado.rol)}</TableCell>
@@ -235,7 +235,7 @@ const EmpleadosPage: React.FC = () => {
                       {empleado.email || "—"}
                     </TableCell>
                     <TableCell>{empleado.telefono || "—"}</TableCell>
-                    <TableCell>{renderEstadoChip(empleado.estado)}</TableCell>
+                    <TableCell>{renderEstadoChip(empleado.actividad ? "ACTIVO" : "INACTIVO")}</TableCell>
                     <TableCell>
                       <Button
                         size="small"

@@ -48,15 +48,25 @@ export async function apiFetch<T = unknown>(
   });
 
   if (!res.ok) {
-    let errorBody: any = null;
-    try {
-      errorBody = await res.json();
-    } catch {
-      // ignore
-    }
-    console.error('API error:', res.status, res.statusText, errorBody);
-    throw new Error(errorBody?.message || `Error ${res.status}: ${res.statusText}`);
+  const raw = await res.text(); // SIEMPRE lee el body
+  let errorBody: any = null;
+
+  try {
+    errorBody = raw ? JSON.parse(raw) : null;
+  } catch {
+    errorBody = raw; // si no es JSON, igual lo vemos
   }
+
+  console.error("API error:", res.status, res.statusText, errorBody);
+
+  const msg =
+    (errorBody && errorBody.message) ||
+    (typeof errorBody === "string" ? errorBody : null) ||
+    `Error ${res.status}: ${res.statusText}`;
+
+  throw new Error(msg);
+}
+
 
   return res.json() as Promise<T>;
 }

@@ -168,6 +168,38 @@ const countryCodes = [
   { code: '+599', name: '🇨🇼 Curazao' },
 ];
 
+// =========================
+// Helper: genera el siguiente codigoCliente
+// =========================
+const nextCodigoFromExisting = (codigos: string[]) => {
+  const parsed = codigos
+    .map((c) => String(c || "").trim())
+    .filter(Boolean)
+    .map((c) => {
+      const m = c.match(/(\d+)\s*$/); // números al final
+      return {
+        original: c,
+        num: m ? parseInt(m[1], 10) : NaN,
+        digitsLen: m ? m[1].length : 0,
+        prefix: m ? c.slice(0, c.length - m[1].length) : "CLI-",
+      };
+    })
+    .filter((x) => Number.isFinite(x.num));
+
+  if (parsed.length === 0) {
+    return "CLI-0001";
+  }
+
+  const maxItem = parsed.reduce((a, b) => (b.num > a.num ? b : a));
+  const width = Math.max(4, maxItem.digitsLen || 0);
+
+  const nextNum = maxItem.num + 1;
+  const nextDigits = String(nextNum).padStart(width, "0");
+
+  return `${maxItem.prefix}${nextDigits}`;
+};
+
+
 const NuevoClientePage: React.FC = () => {
   const router = useRouter();
 
@@ -246,6 +278,35 @@ const NuevoClientePage: React.FC = () => {
     code: '+504',
     number: '',
   });
+
+  useEffect(() => {
+  (async () => {
+    try {
+      // Trae TODOS los clientes (activos o no)
+      const clientes = await apiFetch<any[]>("/clientes");
+
+      const codigos = (clientes || [])
+        .map((c) => c?.codigoCliente)
+        .filter(Boolean);
+
+      const nextCodigo = nextCodigoFromExisting(codigos);
+
+      setForm((prev) => ({
+        ...prev,
+        codigoCliente: nextCodigo,
+      }));
+    } catch (err) {
+      console.error("Error generando codigoCliente desde backend:", err);
+
+      // Fallback si falla el GET
+      setForm((prev) => ({
+        ...prev,
+        codigoCliente: `CLI-${Date.now()}`,
+      }));
+    }
+  })();
+}, []);
+
 
   useEffect(() => {
     (async () => {
@@ -435,7 +496,7 @@ const NuevoClientePage: React.FC = () => {
     });
   };
 
-  
+
 
   const addPhoneEntry = () => {
     setPhoneEntries((prev) =>
@@ -554,6 +615,7 @@ const NuevoClientePage: React.FC = () => {
   const handleBack = () => setActiveStep((s) => s - 1);
 
   const handleSubmit = async () => {
+    // Validaciones finales básicas
     if (
       !validateNombre(form.nombre) ||
       !validateApellido(form.apellido) ||
@@ -582,61 +644,87 @@ const NuevoClientePage: React.FC = () => {
       return;
     }
 
-    // Validación final adicional
     // Teléfono personal obligatorio
     const anyValidPersonal = phoneEntries.some(
-      (p) => p.number.replace(/[^\d]/g, '').length === 8,
+      (p) => p.number.replace(/[^\d]/g, '').length === 8
     );
     if (!anyValidPersonal) {
       alert('Debe ingresar al menos un teléfono personal de 8 dígitos');
       return;
     }
-    // Cónyuge opcional: si hay número, debe ser 8
+
+    // Cónyuge opcional: si existe, debe ser válido
     const spouseDigits = conyugePhoneEntry.number.replace(/[^\d]/g, '');
     if (spouseDigits.length > 0 && spouseDigits.length !== 8) {
       alert('El teléfono del cónyuge debe tener exactamente 8 dígitos');
       return;
     }
 
+    /**
+     * 🔥 PAYLOAD ALINEADO AL BACKEND (MONGOOSE)
+     */
     const payload = {
-      codigoCliente: form.codigoCliente || undefined,
+      codigoCliente: form.codigoCliente,
       identidadCliente: form.identidadCliente,
       nacionalidad: form.nacionalidad,
       RTN: form.RTN || undefined,
+
       estadoCivil: form.estadoCivil,
       nivelEducativo: form.nivelEducativo,
+
       nombre: form.nombre,
       apellido: form.apellido,
       email: form.email,
       sexo: form.sexo,
       fechaNacimiento: form.fechaNacimiento,
+
+      // Dirección
       departamentoResidencia: form.departamentoResidencia,
       municipioResidencia: form.municipioResidencia,
       zonaResidencialCliente: form.zonaResidencialCliente,
       direccion: form.direccion,
       tipoVivienda: form.tipoVivienda,
       antiguedadVivenda: Number(form.antiguedadVivenda),
+
+      // Contacto
       telefono: form.telefono,
+
+      // Cónyuge
       conyugeNombre: form.conyugeNombre || undefined,
       conyugeTelefono: form.conyugeTelefono || undefined,
+
+      // Financieros
       limiteCredito: Number(form.limiteCredito),
       tasaCliente: Number(form.tasaCliente),
       frecuenciaPago: form.frecuenciaPago,
-      estadoDeuda: form.estadoDeuda,
+
+      // 🔑 Backend field (antes estadoDeuda en el UI)
+      riesgoMora: form.estadoDeuda,
+
+      // Referencias
       referencias: form.referencias.filter((r) => r.trim() !== ''),
-      actividad: form.actividad,
+
+      // 🔑 Backend field (antes actividad en el UI)
+      activo: form.actividad,
+
+      // Negocio (NO usamos dirección)
       negocioNombre: form.negocioNombre || undefined,
       negocioTipo: form.negocioTipo || undefined,
       negocioTelefono: form.negocioTelefono || undefined,
-      negocioDireccion: form.negocioDireccion || undefined,
-      // NOTA: documentosFotos y negocioFotos requieren FormData en backend.
-      documentosFotos: [],
-      negocioFotos: [],
+      negocioDepartamento: form.negocioDepartamento || undefined,
+      negocioMunicipio: form.negocioMunicipio || undefined,
+      negocioZonaResidencial: form.negocioZonaResidencial || undefined,
+
+      // Fotos (por ahora vacías, backend acepta [])
+      fotosDocs: [],
+      fotosNegocio: [],
     };
 
     setSaving(true);
+
     try {
-      await apiFetch('/clientes', {
+      console.log("codigoCliente enviado:", form.codigoCliente);
+      await apiFetch('/clientes/', {
         method: 'POST',
         body: JSON.stringify(payload),
       });
@@ -644,8 +732,10 @@ const NuevoClientePage: React.FC = () => {
       setSnackbarSeverity('success');
       setSnackbarMsg('Cliente registrado correctamente.');
       setSnackbarOpen(true);
+      
+
       router.push('/clientes');
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
       setSnackbarSeverity('error');
       setSnackbarMsg('Error al registrar el cliente.');
@@ -654,6 +744,7 @@ const NuevoClientePage: React.FC = () => {
       setSaving(false);
     }
   };
+
 
   const handleCancel = () => {
     router.push('/clientes');
@@ -1019,7 +1110,7 @@ const NuevoClientePage: React.FC = () => {
                 <Box sx={{ gridColumn: { xs: '1', sm: '1 / span 2' }, mt: 2 }}>
                   <Typography variant="subtitle2">Datos del cónyuge</Typography>
                   <Grid container spacing={1} sx={{ mt: 0.5 }}>
-                    <Grid size={{ xs: 12, sm: 6 }}>
+                    <Grid size={{ xs: 12, sm: 6 }}>
                       <TextField
                         label="Nombre del cónyuge"
                         value={form.conyugeNombre}
@@ -1031,38 +1122,38 @@ const NuevoClientePage: React.FC = () => {
                         size="small"
                       />
                     </Grid>
-                      <Grid size={{ xs: 12, sm: 6 }}>
-                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-                          <FormControl sx={{ minWidth: 140 }} size="small">
-                            <InputLabel id="conyuge-country-code">País</InputLabel>
-                            <Select
-                              labelId="conyuge-country-code"
-                              value={conyugePhoneEntry.code}
-                              label="País"
-                              onChange={(e) =>
-                                handleConyugePhoneChange('code', e.target.value as string)
-                              }
-                            >
-                              {countryCodes.map((c) => (
-                                <MenuItem key={c.code} value={c.code}>
-                                  {c.name} ({c.code})
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                          <TextField
-                            value={conyugePhoneEntry.number}
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                        <FormControl sx={{ minWidth: 140 }} size="small">
+                          <InputLabel id="conyuge-country-code">País</InputLabel>
+                          <Select
+                            labelId="conyuge-country-code"
+                            value={conyugePhoneEntry.code}
+                            label="País"
                             onChange={(e) =>
-                              handleConyugePhoneChange('number', e.target.value)
+                              handleConyugePhoneChange('code', e.target.value as string)
                             }
-                            placeholder="XXXX-XXXX"
-                            size="small"
-                            sx={{ flex: 1 }}
-                            helperText="Ingrese solo 8 números"
-                            error={conyugePhoneEntry.number.replace(/[^\d]/g, '').length !== 8 && conyugePhoneEntry.number.length > 0}
-                          />
-                        </Box>
-                      </Grid>
+                          >
+                            {countryCodes.map((c) => (
+                              <MenuItem key={c.code} value={c.code}>
+                                {c.name} ({c.code})
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                        <TextField
+                          value={conyugePhoneEntry.number}
+                          onChange={(e) =>
+                            handleConyugePhoneChange('number', e.target.value)
+                          }
+                          placeholder="XXXX-XXXX"
+                          size="small"
+                          sx={{ flex: 1 }}
+                          helperText="Ingrese solo 8 números"
+                          error={conyugePhoneEntry.number.replace(/[^\d]/g, '').length !== 8 && conyugePhoneEntry.number.length > 0}
+                        />
+                      </Box>
+                    </Grid>
                   </Grid>
                 </Box>
               </>
@@ -1282,7 +1373,7 @@ const NuevoClientePage: React.FC = () => {
                 <Box sx={{ gridColumn: { xs: '1', sm: '1 / span 2' }, mt: 3 }}>
                   <Typography variant="subtitle2">Datos del negocio</Typography>
                   <Grid container spacing={1} sx={{ mt: 0.5 }}>
-                    <Grid size={{ xs: 12, sm: 6 }}>
+                    <Grid size={{ xs: 12, sm: 6 }}>
                       <TextField
                         label="Nombre del negocio"
                         value={form.negocioNombre}
@@ -1293,7 +1384,7 @@ const NuevoClientePage: React.FC = () => {
                         size="small"
                       />
                     </Grid>
-                    <Grid size={{ xs: 12, sm: 6 }}>
+                    <Grid size={{ xs: 12, sm: 6 }}>
                       <TextField
                         label="Tipo de negocio"
                         value={form.negocioTipo}
@@ -1304,7 +1395,7 @@ const NuevoClientePage: React.FC = () => {
                         size="small"
                       />
                     </Grid>
-                    <Grid size={{ xs: 12, sm: 6 }}>
+                    <Grid size={{ xs: 12, sm: 6 }}>
                       <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
                         <FormControl sx={{ minWidth: 140 }} size="small">
                           <InputLabel id="negocio-country-code">País</InputLabel>
@@ -1336,7 +1427,7 @@ const NuevoClientePage: React.FC = () => {
                         />
                       </Box>
                     </Grid>
-                    <Grid size={{ xs: 12, sm: 6 }}>
+                    <Grid size={{ xs: 12, sm: 6 }}>
                       <FormControl fullWidth size="small">
                         <InputLabel id="negocio-departamento">Departamento</InputLabel>
                         <Select
@@ -1353,7 +1444,7 @@ const NuevoClientePage: React.FC = () => {
                         </Select>
                       </FormControl>
                     </Grid>
-                    <Grid size={{ xs: 12, sm: 6 }}>
+                    <Grid size={{ xs: 12, sm: 6 }}>
                       <TextField
                         label="Municipio"
                         value={form.negocioMunicipio || ''}
@@ -1362,7 +1453,7 @@ const NuevoClientePage: React.FC = () => {
                         size="small"
                       />
                     </Grid>
-                    <Grid size={{ xs: 12, sm: 6 }}>
+                    <Grid size={{ xs: 12, sm: 6 }}>
                       <TextField
                         label="Zona residencial"
                         value={form.negocioZonaResidencial || ''}
