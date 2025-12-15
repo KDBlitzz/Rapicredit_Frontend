@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import { useEffect, useState } from "react";
-import { apiFetch } from "../lib/api";
+import { useEffect, useState } from 'react';
+import { apiFetch } from '../lib/api';
 
-export type EstadoEmpleadoFiltro = "TODOS" | "ACTIVO" | "INACTIVO";
+export type EstadoEmpleadoFiltro = 'TODOS' | 'ACTIVO' | 'INACTIVO';
 
 export interface Empleado {
   _id: string;
@@ -13,8 +13,7 @@ export interface Empleado {
   rol?: string;
   email?: string;
   telefono?: string;
-  estado?: boolean; // algunos backends usan 'estado'
-  actividad?: boolean; // en otros módulos se usa 'actividad'
+  estado: boolean;  // 'estado' indica si el empleado está activo o inactivo
   fechaRegistro?: string;
 }
 
@@ -42,15 +41,15 @@ export function useEmpleados(filters: EmpleadosFilters) {
       setLoading(true);
       setError(null);
       try {
-        const res = await apiFetch<UsersResponse>("/empleados/");
+        const res = await apiFetch<UsersResponse>('/empleados/codigos');
         const lista = Array.isArray(res?.users) ? res.users : [];
 
         if (!cancelled) setData(lista);
       } catch (err: unknown) {
         if (!cancelled) {
-          console.error("Error cargando empleados:", err);
+          console.error('Error cargando empleados:', err);
           setData([]);
-          const msg = err instanceof Error ? err.message : "Error cargando empleados";
+          const msg = err instanceof Error ? err.message : 'Error cargando empleados';
           setError(msg);
         }
       } finally {
@@ -59,35 +58,33 @@ export function useEmpleados(filters: EmpleadosFilters) {
     }
 
     load();
+
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const filtered = (Array.isArray(data) ? data : []).filter((empleado) => {
-    const q = filters.busqueda?.toLowerCase() ?? "";
+  // filtros en memoria
+  let filtrados = [...data];
 
-    const matchBusqueda = q
-      ? (empleado.nombreCompleto || "").toLowerCase().includes(q) ||
-      (empleado.codigoUsuario || "").toLowerCase().includes(q) ||
-      (empleado.usuario || "").toLowerCase().includes(q) ||
-      (empleado.email || "").toLowerCase().includes(q) ||
-      (empleado.telefono || "").toLowerCase().includes(q)
-      : true;
+  
 
-    const isActive = typeof empleado.estado === 'boolean'
-      ? empleado.estado
-      : !!empleado.actividad;
-    const estadoStr = isActive ? "ACTIVO" : "INACTIVO";
-    const matchEstado =
-      filters.estado === "TODOS" || estadoStr === filters.estado;
+  if (filters.busqueda.trim()) {
+    const q = filters.busqueda.trim().toLowerCase();
+    filtrados = filtrados.filter((empleado) => {
+      return (
+        empleado.codigoUsuario?.toLowerCase().includes(q) ||
+        empleado.nombreCompleto.toLowerCase().includes(q) ||
+        (empleado.usuario || '').toLowerCase().includes(q) ||
+        (empleado.email || '').toLowerCase().includes(q) ||
+        (empleado.telefono || '').toLowerCase().includes(q)
+      );
+    });
+  }
 
-    const matchRol = filters.rol
-      ? (empleado.rol || "").toLowerCase().includes(filters.rol.toLowerCase())
-      : true;
+  filtrados.sort((a, b) =>
+    (a.nombreCompleto || '').localeCompare(b.nombreCompleto || '', 'es'),
+  );
 
-    return matchBusqueda && matchEstado && matchRol;
-  });
-
-  return { data: filtered, loading, error };
+  return { data: filtrados, loading, error };
 }

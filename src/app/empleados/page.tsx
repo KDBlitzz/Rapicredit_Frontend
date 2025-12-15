@@ -86,7 +86,7 @@ const EmpleadosPage: React.FC = () => {
 
       await apiFetch(`/empleados/estado/${identifier}`, {
         method: 'PUT',
-        body: JSON.stringify({ estado: !estadoActual }),
+        body: JSON.stringify({ estado: !estadoActual  }),
       });
 
       // Recargar para reflejar cambios (o sustituir por refresh del hook si existe)
@@ -267,7 +267,7 @@ const EmpleadosPage: React.FC = () => {
                     </TableCell>
                     <TableCell>{empleado.telefono || "—"}</TableCell>
                     <TableCell>
-                      {renderEstadoChip((typeof empleado.estado === 'boolean' ? empleado.estado : !!empleado.actividad) ? "ACTIVO" : "INACTIVO")}
+                      {renderEstadoChip((typeof empleado.estado === 'boolean' ? empleado.estado : !!empleado.estado) ? "ACTIVO" : "INACTIVO")}
                     </TableCell>
                     <TableCell>
                       <Box sx={{ display: "flex", gap: 0.5 }}>
@@ -293,8 +293,8 @@ const EmpleadosPage: React.FC = () => {
                         <Button
                           size="small"
                           variant="outlined"
-                          color={(typeof empleado.estado === 'boolean' ? empleado.estado : !!empleado.actividad) ? 'error' : 'success'}
-                          onClick={() => toggleEstado(empleado._id, empleado.codigoUsuario, (typeof empleado.estado === 'boolean' ? empleado.estado : !!empleado.actividad))}
+                          color={(typeof empleado.estado === 'boolean' ? empleado.estado : !!empleado.estado) ? 'error' : 'success'}
+                          onClick={() => toggleEstado(empleado._id, empleado.codigoUsuario, (typeof empleado.estado === 'boolean' ? empleado.estado : !!empleado.estado))}
                           disabled={updatingCode === (empleado.codigoUsuario ?? empleado._id)}
                         >
                           {updatingCode === (empleado.codigoUsuario ?? empleado._id) ? (

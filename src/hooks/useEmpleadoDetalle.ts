@@ -31,7 +31,7 @@ export function useEmpleadoDetalle(id: string) {
           resData = (await res.json()) as Empleado;
         } else {
           // Fallback: cargar lista y filtrar por codigoUsuario
-          const list = await apiFetch<Empleado[] | { users?: Empleado[] }>(`/empleados/?estado=TODOS`);
+          const list = await apiFetch<Empleado[] | { users?: Empleado[] }>(`/empleados/`);
           const rawList: Empleado[] = Array.isArray(list) ? list : (list?.users ?? []);
           resData = rawList.find((u) => (u.codigoUsuario || "") === id) || null;
         }

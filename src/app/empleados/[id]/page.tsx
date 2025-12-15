@@ -127,7 +127,7 @@ const EmpleadoDetallePage: React.FC = () => {
       email: empleado.email || "",
       telefonoPais: pais,
       telefono: digits,
-      estado: (typeof empleado.estado === 'boolean' ? empleado.estado : !!empleado.actividad) ? "ACTIVO" : "INACTIVO",
+      estado: (typeof empleado.estado === 'boolean' ? empleado.estado : !!empleado.estado) ? "ACTIVO" : "INACTIVO",
       permisos: Array.isArray((empleado as unknown as { permisos?: string[] }).permisos)
         ? (empleado as unknown as { permisos?: string[] }).permisos || []
         : [],
@@ -217,19 +217,31 @@ const EmpleadoDetallePage: React.FC = () => {
         ...(formData.password ? { password: formData.password } : {}),
         permisos: formData.permisos,
         // Actualización usa 'actividad' boolean
-        actividad: formData.estado === "ACTIVO",
+        estado: formData.estado === "ACTIVO",
       };
 
       // Actualizar por _id (preferido). Si no hay _id, intentar con el id del path.
-      const byId = (empleado && (empleado as unknown as { _id?: string })._id) || undefined;
-      const targetId = id;
-
-      await apiFetch(`/empleados/${targetId}`, {
+      //const byId = (empleado && (empleado as unknown as { _id?: string })._id) || undefined;
+      //const targetId = byId || id;
+      // Usar codigoUsuario en lugar de _id/UID
+      const codigoUsuario =
+        empleado?.codigoUsuario || formData.codigoUsuario || (typeof id === 'string' ? id : '');
+      if (!codigoUsuario) {
+        throw new Error("No se pudo determinar el codigoUsuario del empleado.");
+      }
+      await apiFetch(`/empleados/codigo/${codigoUsuario}`, {
         method: 'PUT',
         body: JSON.stringify(payload),
       });
-
+      // Evitar la llamada posterior que usa UID
       setEditing(false);
+      return;
+      // await apiFetch(`/empleados/codigo/${targetId}`, {
+      //   method: 'PUT',
+      //   body: JSON.stringify(payload),
+      // });*/
+
+      // setEditing(false);
     } catch (err: unknown) {
       console.error("Error actualizando empleado:", err);
       alert(err instanceof Error ? err.message : "Error actualizando empleado");
