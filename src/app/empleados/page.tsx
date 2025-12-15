@@ -31,7 +31,7 @@ const EmpleadosPage: React.FC = () => {
   const [rol, setRol] = useState("");
   const [updatingCode, setUpdatingCode] = useState<string | null>(null);
 
-  const { data, loading } = useEmpleados({
+  const { data, loading, refresh } = useEmpleados({
     busqueda,
     estado,
     rol,
@@ -89,8 +89,9 @@ const EmpleadosPage: React.FC = () => {
         body: JSON.stringify({ estado: !estadoActual  }),
       });
 
-      // Recargar para reflejar cambios (o sustituir por refresh del hook si existe)
-      window.location.reload();
+      // Recargar para reflejar cambios: preferimos `refresh()` del hook
+      if (typeof refresh === 'function') await refresh();
+      else window.location.reload();
     } catch (err: unknown) {
       console.error('Error al cambiar estado del empleado:', err);
       const msg = err instanceof Error ? err.message : 'No se pudo actualizar el estado';

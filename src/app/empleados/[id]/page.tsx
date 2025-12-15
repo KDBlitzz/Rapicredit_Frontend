@@ -33,11 +33,15 @@ const EmpleadoDetallePage: React.FC = () => {
 
   const { data: empleado, loading, error } = useEmpleadoDetalle(id);
 
-  // Determinamos si estamos en modo edición
-  const qs = new URLSearchParams(window.location.search);
-  const isEditMode = qs.get("edit") === "1" || qs.get("edit") === "true";
+  // Determinamos si estamos en modo edición — solo leer `window` en cliente
+  const [editing, setEditing] = useState(false);
 
-  const [editing, setEditing] = useState(isEditMode);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const qs = new URLSearchParams(window.location.search);
+    const isEditMode = qs.get("edit") === "1" || qs.get("edit") === "true";
+    setEditing(isEditMode);
+  }, []);
   const [saving, setSaving] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);

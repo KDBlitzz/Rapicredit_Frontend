@@ -23,10 +23,9 @@ export interface EmpleadosFilters {
   rol: string;
 }
 
-type UsersResponse = {
-  ok: boolean;
-  total: number;
-  users: Empleado[];
+type CodigosResponse = {
+  activos: Array<{ codigoUsuario: string; nombreCompleto: string }>;
+  inactivos: Array<{ codigoUsuario: string; nombreCompleto: string }>;
 };
 
 export function useEmpleados(filters: EmpleadosFilters) {
@@ -34,38 +33,78 @@ export function useEmpleados(filters: EmpleadosFilters) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  const load = async () => {
+    setLoading(true);
+    setError(null);
 
-    async function load() {
-      setLoading(true);
-      setError(null);
+    const candidates = [
+      '/empleados/codigos',
+    ];
+    let used: CodigosResponse | null = null;
+    let lastErr: unknown = null;
+
+    for (const ep of candidates) {
       try {
-        const res = await apiFetch<UsersResponse>('/empleados/codigos');
-        const lista = Array.isArray(res?.users) ? res.users : [];
-
-        if (!cancelled) setData(lista);
+        const res = await apiFetch<CodigosResponse>(ep);
+        used = res;
+        break;
       } catch (err: unknown) {
-        if (!cancelled) {
-          console.error('Error cargando empleados:', err);
-          setData([]);
-          const msg = err instanceof Error ? err.message : 'Error cargando empleados';
-          setError(msg);
+        lastErr = err;
+        const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+        // If 404 or "cannot get" try next candidate, otherwise abort
+        if (msg.includes('404') || msg.includes('not found') || msg.includes('cannot get')) {
+          // try next
+          continue;
         }
-      } finally {
-        if (!cancelled) setLoading(false);
+        // not a not-found error, break and surface
+        break;
       }
     }
 
-    load();
+    try {
+      if (!used) throw lastErr ?? new Error('No se obtuvo respuesta de /empleado(s)/codigos');
 
-    return () => {
-      cancelled = true;
-    };
+      const activos = Array.isArray(used?.activos) ? used.activos : [];
+      const inactivos = Array.isArray(used?.inactivos) ? used.inactivos : [];
+
+      const mapped: Empleado[] = [
+        ...activos.map((a) => ({
+          _id: a.codigoUsuario,
+          codigoUsuario: a.codigoUsuario,
+          nombreCompleto: a.nombreCompleto,
+          estado: true,
+        })),
+        ...inactivos.map((a) => ({
+          _id: a.codigoUsuario,
+          codigoUsuario: a.codigoUsuario,
+          nombreCompleto: a.nombreCompleto,
+          estado: false,
+        })),
+      ];
+
+      setData(mapped);
+    } catch (err: unknown) {
+      console.error('Error cargando empleados (codigos):', err);
+      setData([]);
+      const msg = err instanceof Error ? err.message : 'Error cargando empleados';
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
   }, []);
 
   // filtros en memoria
   let filtrados = [...data];
+
+  // Filtrar por estado (TODOS / ACTIVO / INACTIVO)
+  if (filters.estado !== 'TODOS') {
+    const expectActivo = filters.estado === 'ACTIVO';
+    filtrados = filtrados.filter((e) => e.estado === expectActivo);
+  }
 
   
 
@@ -86,5 +125,5 @@ export function useEmpleados(filters: EmpleadosFilters) {
     (a.nombreCompleto || '').localeCompare(b.nombreCompleto || '', 'es'),
   );
 
-  return { data: filtrados, loading, error };
+  return { data: filtrados, loading, error, refresh: load };
 }
