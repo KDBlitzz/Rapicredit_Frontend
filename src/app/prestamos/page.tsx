@@ -95,9 +95,9 @@ const PrestamosPage: React.FC = () => {
             variant="contained"
             sx={{ borderRadius: 999, mt: { xs: 1, md: 0 } }}
             component={Link}
-            href="/prestamos/nuevo"
+            href="/solicitudes/nuevo"
           >
-            + Nuevo préstamo
+            + Nueva solicitud
           </Button>
         </Grid>
       </Grid>

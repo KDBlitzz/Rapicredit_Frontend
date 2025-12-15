@@ -18,9 +18,21 @@ import {
   TableBody,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  IconButton,
+  Stepper,
+  Step,
+  StepLabel,
 } from '@mui/material';
 import Link from 'next/link';
 import EditIcon from '@mui/icons-material/Edit';
+import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
+import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
+import CloseIcon from '@mui/icons-material/Close';
+import { useClienteDetalle } from '../../hooks/useClienteDetalle';
 import {
   useClientes,
   EstadoClienteFiltro,
@@ -29,6 +41,8 @@ import {
 const ClientesPage: React.FC = () => {
   const [busqueda, setBusqueda] = useState('');
   const [estado, setEstado] = useState<EstadoClienteFiltro>('TODOS');
+  const [viewerId, setViewerId] = useState<string | null>(null);
+  const [viewerStep, setViewerStep] = useState(0);
 
   const { data, loading, error } = useClientes({ busqueda, estado });
 
@@ -41,6 +55,16 @@ const ClientesPage: React.FC = () => {
   const toggleActividad = (id: string, original: boolean) => {
     const current = actividadOverrides[id] ?? original;
     setActividadOverrides((prev) => ({ ...prev, [id]: !current }));
+  };
+
+  const handleOpenViewer = (codigoCliente: string) => {
+    setViewerId(codigoCliente);
+    setViewerStep(0);
+  };
+
+  const handleCloseViewer = () => {
+    setViewerId(null);
+    setViewerStep(0);
   };
 
   const handleBusquedaChange = (
@@ -154,19 +178,12 @@ const ClientesPage: React.FC = () => {
                     <TableCell>{renderActividadChip(getActividad(c.id, c.actividad))}</TableCell>
                     <TableCell>
                       <Box sx={{ display: 'flex', gap: 0.5 }}>
+                        <Button size="small" variant="text" onClick={() => handleOpenViewer(c.codigoCliente)}>Ver</Button>
                         <Button
                           size="small"
                           variant="text"
                           component={Link}
-                          href={`/clientes/${c.id}`}
-                        >
-                          Ver
-                        </Button>
-                        <Button
-                          size="small"
-                          variant="text"
-                          component={Link}
-                          href={`/clientes/${c.id}?edit=1`}
+                          href={`/clientes/${c.codigoCliente}?edit=1`}
                           startIcon={<EditIcon fontSize="small" />}
                           aria-label="Editar"
                         />
@@ -176,7 +193,7 @@ const ClientesPage: React.FC = () => {
                           color={getActividad(c.id, c.actividad) ? 'error' : 'success'}
                           onClick={() => toggleActividad(c.id, c.actividad)}
                         >
-                          {getActividad(c.id, c.actividad) ? 'Desactivar Cliente' : 'Activar Cliente'}
+                          {getActividad(c.id, c.actividad) ? 'Desactivar' : 'Activar'}
                         </Button>
                       </Box>
                     </TableCell>
@@ -202,8 +219,85 @@ const ClientesPage: React.FC = () => {
           </Table>
         </TableContainer>
       </Paper>
+
+      {/* Viewer dialog (read-only client detail) */}
+      <Dialog open={Boolean(viewerId)} onClose={handleCloseViewer} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>Ver cliente</span>
+          <IconButton size="small" onClick={handleCloseViewer} aria-label="Cerrar"><CloseIcon /></IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          {viewerId ? <ClientViewer id={viewerId} step={viewerStep} onStepChange={setViewerStep} /> : null}
+        </DialogContent>
+        <DialogActions>
+          <Button startIcon={<ArrowBackIosNewIcon />} onClick={() => setViewerStep((s) => Math.max(0, s - 1))} disabled={viewerStep === 0}>Anterior</Button>
+          <Button endIcon={<ArrowForwardIosIcon />} onClick={() => setViewerStep((s) => s + 1)}>Siguiente</Button>
+          <Button onClick={handleCloseViewer}>Cerrar</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
+
+function ClientViewer({ id, step, onStepChange }: { id: string; step: number; onStepChange: (n: number) => void }) {
+  const { data, loading, error } = useClienteDetalle(id);
+  const steps = ['Información Personal', 'Dirección y Cónyuge', 'Financieros', 'Referencias y Negocio'];
+
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
+  if (error) return <Typography color="error">{error}</Typography>;
+  if (!data) return <Typography>No encontrado</Typography>;
+
+  return (
+    <Box>
+      <Stepper activeStep={step} alternativeLabel>
+        {steps.map((s) => (
+          <Step key={s}><StepLabel>{s}</StepLabel></Step>
+        ))}
+      </Stepper>
+
+      <Box sx={{ mt: 2 }}>
+        {step === 0 && (
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+            <TextField label="Código" value={data.codigoCliente || '—'} InputProps={{ readOnly: true }} margin="normal" />
+            <TextField label="Nombre completo" value={data.nombreCompleto || '—'} InputProps={{ readOnly: true }} margin="normal" />
+            <TextField label="Identidad" value={data.identidadCliente || '—'} InputProps={{ readOnly: true }} margin="normal" />
+            <TextField label="Email" value={data.email || '—'} InputProps={{ readOnly: true }} margin="normal" />
+            <TextField label="Sexo" value={data.sexo || '—'} InputProps={{ readOnly: true }} margin="normal" />
+            <TextField label="Fecha de nacimiento" value={data.fechaNacimiento || '—'} InputProps={{ readOnly: true }} margin="normal" />
+          </Box>
+        )}
+
+        {step === 1 && (
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+            <TextField label="Departamento" value={data.departamentoResidencia || '—'} InputProps={{ readOnly: true }} margin="normal" />
+            <TextField label="Municipio" value={data.municipioResidencia || '—'} InputProps={{ readOnly: true }} margin="normal" />
+            <TextField label="Zona residencial" value={data.zonaResidencialCliente || '—'} InputProps={{ readOnly: true }} margin="normal" />
+            <TextField label="Dirección" value={data.direccion || '—'} InputProps={{ readOnly: true }} margin="normal" fullWidth sx={{ gridColumn: { xs: '1', sm: '1 / span 2' } }} />
+            <TextField label="Nombre del cónyuge" value={data.conyugeNombre || '—'} InputProps={{ readOnly: true }} margin="normal" />
+            <TextField label="Teléfono del cónyuge" value={data.conyugeTelefono || '—'} InputProps={{ readOnly: true }} margin="normal" />
+          </Box>
+        )}
+
+        {step === 2 && (
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+            <TextField label="Límite de crédito" value={String(data.limiteCredito ?? '—')} InputProps={{ readOnly: true }} margin="normal" />
+            <TextField label="Tasa (%)" value={String(data.tasaCliente ?? '—')} InputProps={{ readOnly: true }} margin="normal" />
+            <TextField label="Frecuencia" value={data.frecuenciaPago || '—'} InputProps={{ readOnly: true }} margin="normal" />
+            <TextField label="Estado de deuda" value={data.riesgoMora || (data.estadoDeuda?.[0] ?? '—')} InputProps={{ readOnly: true }} margin="normal" />
+          </Box>
+        )}
+
+        {step === 3 && (
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+            <TextField label="Nombre del negocio" value={data.negocioNombre || '—'} InputProps={{ readOnly: true }} margin="normal" />
+            <TextField label="Tipo" value={data.negocioTipo || '—'} InputProps={{ readOnly: true }} margin="normal" />
+            <TextField label="Teléfono negocio" value={data.negocioTelefono || '—'} InputProps={{ readOnly: true }} margin="normal" />
+            <TextField label="Dirección negocio" value={data.negocioDireccion || '—'} InputProps={{ readOnly: true }} margin="normal" />
+          </Box>
+        )}
+      </Box>
+    </Box>
+  );
+}
 
 export default ClientesPage;

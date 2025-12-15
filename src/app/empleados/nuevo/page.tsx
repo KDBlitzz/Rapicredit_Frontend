@@ -276,6 +276,14 @@ const NuevoEmpleadoPage: React.FC = () => {
       return;
     }
 
+    // Validar teléfono obligatorio: exactamente 8 dígitos
+    const phoneDigits = formData.telefono.replace(/\D/g, "");
+    if (phoneDigits.length !== 8) {
+      setError("Ingrese un teléfono válido de 8 dígitos");
+      setLoading(false);
+      return;
+    }
+
     if (formData.password && !validatePassword(formData.password)) {
       setLoading(false);
       return;
@@ -448,6 +456,7 @@ const NuevoEmpleadoPage: React.FC = () => {
                     inputMode: 'numeric',
                     pattern: '\\d{8}',
                     maxLength: 8,
+                    required: true,
                   }}
                 />
               </Box>

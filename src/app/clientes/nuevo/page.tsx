@@ -273,6 +273,7 @@ const NuevoClientePage: React.FC = () => {
   ]);
   const [refsNames, setRefsNames] = useState<string[]>(['']);
 
+
   // Teléfono del cónyuge con mismo formato que teléfonos personales
   const [conyugePhoneEntry, setConyugePhoneEntry] = useState<PhoneEntry>({
     code: '+504',
@@ -280,32 +281,32 @@ const NuevoClientePage: React.FC = () => {
   });
 
   useEffect(() => {
-  (async () => {
-    try {
-      // Trae TODOS los clientes (activos o no)
-      const clientes = await apiFetch<any[]>("/clientes");
+    (async () => {
+      try {
+        // Trae TODOS los clientes (activos o no)
+        const clientes = await apiFetch<any[]>("/clientes");
 
-      const codigos = (clientes || [])
-        .map((c) => c?.codigoCliente)
-        .filter(Boolean);
+        const codigos = (clientes || [])
+          .map((c) => c?.codigoCliente)
+          .filter(Boolean);
 
-      const nextCodigo = nextCodigoFromExisting(codigos);
+        const nextCodigo = nextCodigoFromExisting(codigos);
 
-      setForm((prev) => ({
-        ...prev,
-        codigoCliente: nextCodigo,
-      }));
-    } catch (err) {
-      console.error("Error generando codigoCliente desde backend:", err);
+        setForm((prev) => ({
+          ...prev,
+          codigoCliente: nextCodigo,
+        }));
+      } catch (err) {
+        console.error("Error generando codigoCliente desde backend:", err);
 
-      // Fallback si falla el GET
-      setForm((prev) => ({
-        ...prev,
-        codigoCliente: `CLI-${Date.now()}`,
-      }));
-    }
-  })();
-}, []);
+        // Fallback si falla el GET
+        setForm((prev) => ({
+          ...prev,
+          codigoCliente: `CLI-${Date.now()}`,
+        }));
+      }
+    })();
+  }, []);
 
 
   useEffect(() => {
@@ -715,9 +716,10 @@ const NuevoClientePage: React.FC = () => {
       negocioMunicipio: form.negocioMunicipio || undefined,
       negocioZonaResidencial: form.negocioZonaResidencial || undefined,
 
-      // Fotos (por ahora vacías, backend acepta [])
-      fotosDocs: [],
-      fotosNegocio: [],
+      // Fotos (enviamos nombres de archivo por ahora)
+      fotosDocs: form.documentosFotos.map((f) => f.name),
+      fotosNegocio: form.negocioFotos.map((f) => f.name),
+      // Cobrador asociado (id)
     };
 
     setSaving(true);
@@ -732,7 +734,7 @@ const NuevoClientePage: React.FC = () => {
       setSnackbarSeverity('success');
       setSnackbarMsg('Cliente registrado correctamente.');
       setSnackbarOpen(true);
-      
+
 
       router.push('/clientes');
     } catch (err) {

@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import React, { useState } from "react";
 import {
@@ -20,6 +20,7 @@ import {
 } from "@mui/material";
 import Link from "next/link";
 import { useEmpleados, EstadoEmpleadoFiltro } from "../../hooks/useEmpleados";
+import EditIcon from "@mui/icons-material/Edit";  // Asegúrate de importar el ícono
 
 const EmpleadosPage: React.FC = () => {
   const [busqueda, setBusqueda] = useState("");
@@ -67,6 +68,13 @@ const EmpleadosPage: React.FC = () => {
     return (
       <Chip size="small" label={val || "—"} color={color} variant="outlined" />
     );
+  };
+
+  // Función para cambiar el estado de un empleado (Activar/Desactivar)
+  const toggleActividad = (id: string, currentStatus: boolean) => {
+    // Aquí se debe manejar la lógica para activar/desactivar el empleado.
+    // Puedes hacer una llamada a la API o actualizar el estado local según el caso.
+    console.log("Toggle actividad for:", id, currentStatus);
   };
 
   return (
@@ -154,9 +162,9 @@ const EmpleadosPage: React.FC = () => {
             viewBox="0 0 16 16"
             style={{ color: "#38bdf8" }}
           >
-            <path d="M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1H7zm4-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
-            <path fillRule="evenodd" d="M5.216 14A2.238 2.238 0 0 1 5 13c0-1.355.68-2.75 1.936-3.72A6.325 6.325 0 0 0 5 9c-4 0-5 3-5 4s1 1 1 1h4.216z"/>
-            <path d="M4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"/>
+            <path d="M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1H7zm4-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />
+            <path fillRule="evenodd" d="M5.216 14A2.238 2.238 0 0 1 5 13c0-1.355.68-2.75 1.936-3.72A6.325 6.325 0 0 0 5 9c-4 0-5 3-5 4s1 1 1 1h4.216z" />
+            <path d="M4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z" />
           </svg>
           <Typography variant="h6" fontSize={16} fontWeight={600}>
             Empleados
@@ -235,17 +243,39 @@ const EmpleadosPage: React.FC = () => {
                       {empleado.email || "—"}
                     </TableCell>
                     <TableCell>{empleado.telefono || "—"}</TableCell>
-                    <TableCell>{renderEstadoChip(empleado.actividad ? "ACTIVO" : "INACTIVO")}</TableCell>
                     <TableCell>
-                      <Button
-                        size="small"
-                        variant="text"
-                        component={Link}
-                        href={`/empleados/${empleado._id}`}
-                        sx={{ fontSize: 12, textTransform: "none" }}
-                      >
-                        Ver
-                      </Button>
+                      {renderEstadoChip(empleado.actividad ? "ACTIVO" : "INACTIVO")}
+                    </TableCell>
+                    <TableCell>
+                      <Box sx={{ display: "flex", gap: 0.5 }}>
+                        <Button
+                          size="small"
+                          variant="text"
+                          component={Link}
+                          href={`/empleados/${empleado.codigoUsuario}?edit=false`}  // Ver (View)
+                        >
+                          Ver
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="text"
+                          component={Link}
+                          href={`/empleados/${empleado.codigoUsuario}?edit=true`}   // Editar (Edit)
+                          startIcon={<EditIcon fontSize="small" />}
+                          aria-label="Editar"
+                        >
+                          Editar
+                        </Button>
+
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color={empleado.actividad ? 'error' : 'success'}
+                          onClick={() => toggleActividad(empleado._id, !!empleado.actividad)}
+                        >
+                          {empleado.actividad ? 'Desactivar' : 'Activar'}
+                        </Button>
+                      </Box>
                     </TableCell>
                   </TableRow>
                 ))}

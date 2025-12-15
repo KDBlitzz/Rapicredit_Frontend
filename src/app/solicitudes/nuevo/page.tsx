@@ -19,7 +19,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { useRouter } from 'next/navigation';
 // import { apiFetch } from '../../../lib/api';
 import { useClientes, ClienteResumen } from '../../../hooks/useClientes';
-import { useCobradores, Cobrador } from '../../../hooks/useCobradores';
+import { useEmpleados, Empleado } from '../../../hooks/useEmpleados';
 import { useTasasInteres, TasaInteres } from '../../../hooks/useTasasInteres';
 import { useFrecuenciasPago, FrecuenciaPago } from '../../../hooks/useFrecuenciasPago';
 
@@ -44,17 +44,17 @@ const NuevoSolicitudPage: React.FC = () => {
     estado: 'ACTIVO',
   });
 
-  const { data: cobradores, loading: loadingCobradores } = useCobradores({
+  const { data: cobradores, loading: loadingCobradores } = useEmpleados({
     busqueda: '',
     estado: 'ACTIVO',
-    zona: '',
+    rol: '',
   });
 
   const { data: tasas, loading: loadingTasas } = useTasasInteres();
   const { data: frecuencias } = useFrecuenciasPago();
 
   const [selectedCliente, setSelectedCliente] = useState<ClienteResumen | null>(null);
-  const [selectedCobrador, setSelectedCobrador] = useState<Cobrador | null>(null);
+  const [selectedCobrador, setSelectedCobrador] = useState<Empleado | null>(null);
   const [selectedTasa, setSelectedTasa] = useState<TasaInteres | null>(null);
   const [selectedFrecuencia, setSelectedFrecuencia] = useState<FrecuenciaPago | null>(null);
 
@@ -67,9 +67,9 @@ const NuevoSolicitudPage: React.FC = () => {
       .join(' • ');
   };
 
-  const getCobradorLabel = (v: Cobrador | null) => {
+  const getCobradorLabel = (v: Empleado | null) => {
     if (!v) return '';
-    return [v.nombreCompleto, v.correo].filter(Boolean).join(' • ');
+    return [v.codigoUsuario, v.nombreCompleto].filter(Boolean).join(' • ');
   };
 
   const getTasaLabel = (t: TasaInteres | null) => {
@@ -252,15 +252,15 @@ const NuevoSolicitudPage: React.FC = () => {
                   loading={loadingCobradores}
                   value={selectedCobrador as unknown}
                   onChange={(_, val) =>
-                    setSelectedCobrador(val as Cobrador | null)
+                    setSelectedCobrador(val as Empleado | null)
                   }
                   getOptionLabel={(option) =>
                     typeof option === 'string'
                       ? option
-                      : getCobradorLabel(option as Cobrador)
+                      : getCobradorLabel(option as Empleado)
                   }
                   isOptionEqualToValue={(opt, val) =>
-                    (opt as Cobrador)._id === (val as Cobrador)._id
+                    (opt as Empleado)._id === (val as Empleado)._id
                   }
                   renderInput={(params) => (
                     <TextField
@@ -286,7 +286,7 @@ const NuevoSolicitudPage: React.FC = () => {
                   required
                 />
               </Grid>
-              <Grid size={{ xs: 12, sm: 4 }}>
+              {/*<Grid size={{ xs: 12, sm: 4 }}>
                 <TextField
                   label="Plazo en cuotas"
                   name="plazoCuotas"
@@ -308,7 +308,7 @@ const NuevoSolicitudPage: React.FC = () => {
                   size="small"
                   placeholder="Crédito personal, capital de trabajo…"
                 />
-              </Grid>
+              </Grid>*/}
 
               {/* Fecha y comentario */}
               <Grid size={{ xs: 12, sm: 4 }}>

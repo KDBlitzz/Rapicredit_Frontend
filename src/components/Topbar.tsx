@@ -59,7 +59,7 @@ export default function Topbar() {
           />
           <Button
             component={Link}
-            href="/prestamos"
+            href="/solicitudes"
             size="small"
             sx={{
               borderRadius: 999,
@@ -69,7 +69,7 @@ export default function Topbar() {
             }}
             variant="contained"
           >
-            + Nuevo préstamo
+            + Nueva solicitud
           </Button>
         </Box>
       </Toolbar>
