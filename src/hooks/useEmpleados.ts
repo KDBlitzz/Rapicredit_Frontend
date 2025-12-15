@@ -13,7 +13,8 @@ export interface Empleado {
   rol?: string;
   email?: string;
   telefono?: string;
-  actividad?: boolean;
+  estado?: boolean; // algunos backends usan 'estado'
+  actividad?: boolean; // en otros módulos se usa 'actividad'
   fechaRegistro?: string;
 }
 
@@ -41,15 +42,16 @@ export function useEmpleados(filters: EmpleadosFilters) {
       setLoading(true);
       setError(null);
       try {
-        const res = await apiFetch<UsersResponse>("/users/");
+        const res = await apiFetch<UsersResponse>("/empleados/");
         const lista = Array.isArray(res?.users) ? res.users : [];
 
         if (!cancelled) setData(lista);
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!cancelled) {
           console.error("Error cargando empleados:", err);
           setData([]);
-          setError(err?.message ?? "Error cargando empleados");
+          const msg = err instanceof Error ? err.message : "Error cargando empleados";
+          setError(msg);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -73,9 +75,12 @@ export function useEmpleados(filters: EmpleadosFilters) {
       (empleado.telefono || "").toLowerCase().includes(q)
       : true;
 
-    const actividadStr = empleado.actividad ? "ACTIVO" : "INACTIVO";
+    const isActive = typeof empleado.estado === 'boolean'
+      ? empleado.estado
+      : !!empleado.actividad;
+    const estadoStr = isActive ? "ACTIVO" : "INACTIVO";
     const matchEstado =
-      filters.estado === "TODOS" || actividadStr === filters.estado;
+      filters.estado === "TODOS" || estadoStr === filters.estado;
 
     const matchRol = filters.rol
       ? (empleado.rol || "").toLowerCase().includes(filters.rol.toLowerCase())

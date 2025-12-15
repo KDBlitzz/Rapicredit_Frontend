@@ -26,7 +26,7 @@ export default function LoginPage() {
         setSuccessMessage("");
 
         try {
-            const res = await fetch(`${apiUrl}/users/login/`, {
+            const res = await fetch(`${apiUrl}/empleados/login/`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ usuario: user, password: pass }),

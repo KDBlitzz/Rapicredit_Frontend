@@ -17,17 +17,21 @@ import {
   TableBody,
   Chip,
   CircularProgress,
+  IconButton,
+  Tooltip,
 } from "@mui/material";
 import Link from "next/link";
 import { useEmpleados, EstadoEmpleadoFiltro } from "../../hooks/useEmpleados";
 import EditIcon from "@mui/icons-material/Edit";  // Asegúrate de importar el ícono
+import { apiFetch } from "../../lib/api";
 
 const EmpleadosPage: React.FC = () => {
   const [busqueda, setBusqueda] = useState("");
   const [estado, setEstado] = useState<EstadoEmpleadoFiltro>("TODOS");
   const [rol, setRol] = useState("");
+  const [updatingCode, setUpdatingCode] = useState<string | null>(null);
 
-  const { data, loading, error } = useEmpleados({
+  const { data, loading } = useEmpleados({
     busqueda,
     estado,
     rol,
@@ -70,11 +74,30 @@ const EmpleadosPage: React.FC = () => {
     );
   };
 
-  // Función para cambiar el estado de un empleado (Activar/Desactivar)
-  const toggleActividad = (id: string, currentStatus: boolean) => {
-    // Aquí se debe manejar la lógica para activar/desactivar el empleado.
-    // Puedes hacer una llamada a la API o actualizar el estado local según el caso.
-    console.log("Toggle actividad for:", id, currentStatus);
+  // Cambiar estado (Activar/Desactivar) usando apiFetch, similar a clientes
+  const toggleEstado = async (
+    id: string,
+    codigoUsuario: string | undefined,
+    estadoActual: boolean,
+  ) => {
+    try {
+      const identifier = codigoUsuario ?? id;
+      setUpdatingCode(identifier);
+
+      await apiFetch(`/empleados/estado/${identifier}`, {
+        method: 'PUT',
+        body: JSON.stringify({ estado: !estadoActual }),
+      });
+
+      // Recargar para reflejar cambios (o sustituir por refresh del hook si existe)
+      window.location.reload();
+    } catch (err: unknown) {
+      console.error('Error al cambiar estado del empleado:', err);
+      const msg = err instanceof Error ? err.message : 'No se pudo actualizar el estado';
+      alert(msg);
+    } finally {
+      setUpdatingCode(null);
+    }
   };
 
   return (
@@ -244,7 +267,7 @@ const EmpleadosPage: React.FC = () => {
                     </TableCell>
                     <TableCell>{empleado.telefono || "—"}</TableCell>
                     <TableCell>
-                      {renderEstadoChip(empleado.actividad ? "ACTIVO" : "INACTIVO")}
+                      {renderEstadoChip((typeof empleado.estado === 'boolean' ? empleado.estado : !!empleado.actividad) ? "ACTIVO" : "INACTIVO")}
                     </TableCell>
                     <TableCell>
                       <Box sx={{ display: "flex", gap: 0.5 }}>
@@ -256,24 +279,32 @@ const EmpleadosPage: React.FC = () => {
                         >
                           Ver
                         </Button>
-                        <Button
-                          size="small"
-                          variant="text"
-                          component={Link}
-                          href={`/empleados/${empleado.codigoUsuario}?edit=true`}   // Editar (Edit)
-                          startIcon={<EditIcon fontSize="small" />}
-                          aria-label="Editar"
-                        >
-                          Editar
-                        </Button>
+                        <Tooltip title="Editar" arrow>
+                          <IconButton
+                            size="small"
+                            component={Link}
+                            href={`/empleados/${empleado.codigoUsuario}?edit=true`}
+                            aria-label="Editar"
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
 
                         <Button
                           size="small"
                           variant="outlined"
-                          color={empleado.actividad ? 'error' : 'success'}
-                          onClick={() => toggleActividad(empleado._id, !!empleado.actividad)}
+                          color={(typeof empleado.estado === 'boolean' ? empleado.estado : !!empleado.actividad) ? 'error' : 'success'}
+                          onClick={() => toggleEstado(empleado._id, empleado.codigoUsuario, (typeof empleado.estado === 'boolean' ? empleado.estado : !!empleado.actividad))}
+                          disabled={updatingCode === (empleado.codigoUsuario ?? empleado._id)}
                         >
-                          {empleado.actividad ? 'Desactivar' : 'Activar'}
+                          {updatingCode === (empleado.codigoUsuario ?? empleado._id) ? (
+                            <>
+                              <CircularProgress size={16} sx={{ mr: 1 }} />
+                              Procesando...
+                            </>
+                          ) : (
+                            empleado.estado ? 'Desactivar' : 'Activar'
+                          )}
                         </Button>
                       </Box>
                     </TableCell>

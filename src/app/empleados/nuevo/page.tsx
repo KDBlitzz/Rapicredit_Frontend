@@ -56,11 +56,6 @@ const NuevoEmpleadoPage: React.FC = () => {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
-  // Generar código automático (formato E001) y actualizar con el siguiente disponible
-  const generateCode = () => {
-    // Valor por defecto mientras se consulta al backend
-    return "E001";
-  };
 
   const [formData, setFormData] = useState({
     codigoUsuario: "",
@@ -71,7 +66,7 @@ const NuevoEmpleadoPage: React.FC = () => {
     telefono: "",
     usuario: "",
     password: "",
-    actividad: "ACTIVO",
+    estado: "ACTIVO",
     permisos: [] as string[],
   });
 
@@ -82,14 +77,14 @@ const NuevoEmpleadoPage: React.FC = () => {
   type UsersResponse = {
     ok: boolean;
     total: number;
-    users: { codigoUsuario?: string }[];
+    empleado: { codigoUsuario?: string }[];
   };
 
   const getNextEmployeeCode = async (): Promise<string> => {
     // ✅ ESTE ES EL ENDPOINT REAL QUE YA USAS EN useEmpleados
-    const res = await apiFetch<UsersResponse>("/users/");
+    const res = await apiFetch<UsersResponse>("/empleados/");
 
-    const empleados = Array.isArray(res?.users) ? res.users : [];
+    const empleados = Array.isArray(res?.empleado) ? res.empleado : [];
 
     const nums = empleados
       .map((e) => (e.codigoUsuario ?? "").trim())
@@ -299,10 +294,10 @@ const NuevoEmpleadoPage: React.FC = () => {
         telefono: `${formData.telefonoPais} ${formData.telefono}`, // ✅
         password: formData.password,                   // ✅ (ASÍ SE LLAMA EN TU SCHEMA)
         permisos: formData.permisos,
-        actividad: formData.actividad === "ACTIVO",      // ✅ boolean
+        estado: formData.estado === "ACTIVO",      // ✅ boolean
       };
 
-      await apiFetch("/users/register", {
+      await apiFetch("/empleados/register", {
         method: "POST",
         body: JSON.stringify(payload),
       });
@@ -467,8 +462,8 @@ const NuevoEmpleadoPage: React.FC = () => {
                 select
                 variant="outlined"
                 label="Estado"
-                name="actividad"
-                value={formData.actividad}
+                name="estado"
+                value={formData.estado}
                 onChange={handleChange}
                 InputLabelProps={{ shrink: true }}
               >
