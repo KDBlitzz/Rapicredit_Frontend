@@ -31,6 +31,7 @@ import Link from 'next/link';
 import EditIcon from '@mui/icons-material/Edit';
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
+import { apiFetch } from '../../lib/api';
 import CloseIcon from '@mui/icons-material/Close';
 import { useClienteDetalle } from '../../hooks/useClienteDetalle';
 import {
@@ -44,7 +45,7 @@ const ClientesPage: React.FC = () => {
   const [viewerId, setViewerId] = useState<string | null>(null);
   const [viewerStep, setViewerStep] = useState(0);
 
-  const { data, loading, error } = useClientes({ busqueda, estado });
+  const { data, loading, error, refresh } = useClientes({ busqueda, estado });
 
   // Local override of actividad to simulate activate/deactivate without backend
   const [actividadOverrides, setActividadOverrides] = useState<Record<string, boolean>>({});
@@ -67,6 +68,8 @@ const ClientesPage: React.FC = () => {
     setViewerStep(0);
   };
 
+
+  
   const handleBusquedaChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => setBusqueda(e.target.value);
@@ -74,6 +77,35 @@ const ClientesPage: React.FC = () => {
   const handleEstadoChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => setEstado(e.target.value as EstadoClienteFiltro);
+
+  const handleActivarDesactivar = async (
+    id: string,
+    codigoCliente: string | undefined,
+    estado: boolean,
+  ) => {
+    try {
+      // Llamada al backend para actualizar estado
+      // Preferir `codigoCliente` en la URL si se proporciona (backend suele usar ese identificador),
+      // en caso contrario, usar el _id interno.
+      const identifier = codigoCliente ?? id;
+      await apiFetch(`/clientes/activo/${identifier}`, {
+        method: 'PUT',
+        body: JSON.stringify({ estado }),
+      });
+
+      // Remover override optimista y recargar la lista desde el servidor
+      setActividadOverrides((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        if (codigoCliente) delete next[codigoCliente];
+        return next;
+      });
+
+      if (typeof refresh === 'function') await refresh();
+    } catch (error) {
+      console.error('Error al cambiar estado del cliente:', error);
+    }
+  };
 
   const renderActividadChip = (activo: boolean) => {
     return (
@@ -90,7 +122,7 @@ const ClientesPage: React.FC = () => {
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       {/* Filtros y header */}
       <Grid container spacing={1}>
-        <Grid size={{ xs: 12, sm: 4, md: 4 }}>
+        <Grid size={{ xs: 12, sm: 4, md: 4 }}>
           <TextField
             fullWidth
             size="small"
@@ -100,7 +132,7 @@ const ClientesPage: React.FC = () => {
             onChange={handleBusquedaChange}
           />
         </Grid>
-        <Grid size={{ xs: 6, sm: 4, md: 3 }}>
+        <Grid size={{ xs: 6, sm: 4, md: 3 }}>
           <TextField
             fullWidth
             size="small"
@@ -115,7 +147,7 @@ const ClientesPage: React.FC = () => {
           </TextField>
         </Grid>
 
-        <Grid size={{ xs: 12, sm: 12, md: 5 }}
+        <Grid size={{ xs: 12, sm: 12, md: 5 }}
           sx={{ display: 'flex', justifyContent: { md: 'flex-end' } }}
         >
           <Button
@@ -190,10 +222,13 @@ const ClientesPage: React.FC = () => {
                         <Button
                           size="small"
                           variant="outlined"
-                          color={getActividad(c.id, c.actividad) ? 'error' : 'success'}
-                          onClick={() => toggleActividad(c.id, c.actividad)}
+                          color={getActividad(c.id, c.actividad) ? "error" : "success"}
+                          onClick={() => {
+                            const nuevoEstado = !getActividad(c.id, c.actividad);
+                            handleActivarDesactivar(c.id, c.codigoCliente, nuevoEstado);  // Llamada al backend
+                          }}
                         >
-                          {getActividad(c.id, c.actividad) ? 'Desactivar' : 'Activar'}
+                          {getActividad(c.id, c.actividad) ? "Desactivar" : "Activar"}
                         </Button>
                       </Box>
                     </TableCell>
@@ -230,10 +265,11 @@ const ClientesPage: React.FC = () => {
           {viewerId ? <ClientViewer id={viewerId} step={viewerStep} onStepChange={setViewerStep} /> : null}
         </DialogContent>
         <DialogActions>
-          <Button startIcon={<ArrowBackIosNewIcon />} onClick={() => setViewerStep((s) => Math.max(0, s - 1))} disabled={viewerStep === 0}>Anterior</Button>
-          <Button endIcon={<ArrowForwardIosIcon />} onClick={() => setViewerStep((s) => s + 1)}>Siguiente</Button>
+          <Button startIcon={<ArrowBackIosNewIcon />} onClick={() => setViewerStep((s) => Math.max(0, s - 1))} disabled={viewerStep === 0}>Anterior</Button> 
+          <Button endIcon={<ArrowForwardIosIcon />} onClick={() => setViewerStep((s) => s + 1)} disabled={viewerStep === 3} >Siguiente</Button>
           <Button onClick={handleCloseViewer}>Cerrar</Button>
         </DialogActions>
+
       </Dialog>
     </Box>
   );

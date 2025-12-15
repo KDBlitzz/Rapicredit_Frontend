@@ -28,59 +28,56 @@ export function useClientes(filters: ClientesFilters) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiFetch<any[]>('/clientes'); // GET /api/clientes
+
+      const mapped: ClienteResumen[] = (res || []).map((c: any) => {
+        const nombreCompleto =
+          c.nombreCompleto ||
+          [c.nombre, c.apellido].filter(Boolean).join(' ') ||
+          'Cliente';
+
+        const telefonos: string[] = Array.isArray(c.telefono)
+          ? c.telefono
+          : c.telefono
+          ? [c.telefono]
+          : [];
+
+        return {
+          id: String(c._id ?? c.id ?? ''),
+          codigoCliente: c.codigoCliente ?? '',
+          nombreCompleto,
+          identidadCliente: c.identidadCliente ?? c.identidad ?? undefined,
+          telefonoPrincipal: telefonos[0],
+          departamentoResidencia: c.departamentoResidencia ?? undefined,
+          municipioResidencia: c.municipioResidencia ?? undefined,
+          zonaResidencialCliente: c.zonaResidencialCliente ?? undefined,
+          actividad: c.actividad ?? true,
+        };
+      });
+
+      setData(mapped);
+    } catch (err: any) {
+      console.error('Error cargando clientes:', err);
+      setError(err.message || 'Error al cargar clientes');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
 
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await apiFetch<any[]>('/clientes'); // GET /api/clientes
-
-        if (cancelled) return;
-
-        const mapped: ClienteResumen[] = (res || []).map((c: any) => {
-          const nombreCompleto =
-            c.nombreCompleto ||
-            [c.nombre, c.apellido].filter(Boolean).join(' ') ||
-            'Cliente';
-
-          const telefonos: string[] = Array.isArray(c.telefono)
-            ? c.telefono
-            : c.telefono
-            ? [c.telefono]
-            : [];
-
-          return {
-            id: String(c._id ?? c.id ?? ''),
-            codigoCliente: c.codigoCliente ?? '',
-            nombreCompleto,
-            identidadCliente: c.identidadCliente ?? c.identidad ?? undefined,
-            telefonoPrincipal: telefonos[0],
-            departamentoResidencia: c.departamentoResidencia ?? undefined,
-            municipioResidencia: c.municipioResidencia ?? undefined,
-            zonaResidencialCliente: c.zonaResidencialCliente ?? undefined,
-            actividad: c.actividad ?? true,
-          };
-        });
-
-        setData(mapped);
-      } catch (err: any) {
-        console.error('Error cargando clientes:', err);
-        if (!cancelled) {
-          setError(err.message || 'Error al cargar clientes');
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
+    // We call load and ignore cancellations here; load manages state itself
     load();
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [filters.busqueda, filters.estado]);
 
   // filtros en memoria
   let filtrados = [...data];
@@ -105,5 +102,5 @@ export function useClientes(filters: ClientesFilters) {
     (a.nombreCompleto || '').localeCompare(b.nombreCompleto || '', 'es'),
   );
 
-  return { data: filtrados, loading, error };
+  return { data: filtrados, loading, error, refresh: load };
 }
