@@ -46,12 +46,17 @@ export function useClientes(filters: ClientesFilters) {
           ? [c.telefono]
           : [];
 
+        const telefonoPrincipalCandidate =
+          c.telefonoPrincipal ??
+          (telefonos.length > 0 ? telefonos[0] : undefined) ??
+          (Array.isArray(c.telefonos) ? c.telefonos[0] : c.telefonos ?? undefined);
+
         return {
           id: String(c._id ?? c.id ?? ''),
           codigoCliente: c.codigoCliente ?? '',
           nombreCompleto,
           identidadCliente: c.identidadCliente ?? c.identidad ?? undefined,
-          telefonoPrincipal: telefonos[0],
+          telefonoPrincipal: telefonoPrincipalCandidate,
           departamentoResidencia: c.departamentoResidencia ?? undefined,
           municipioResidencia: c.municipioResidencia ?? undefined,
           zonaResidencialCliente: c.zonaResidencialCliente ?? undefined,
