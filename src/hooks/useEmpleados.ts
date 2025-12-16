@@ -14,7 +14,7 @@ export interface Empleado {
   email?: string;
   telefono?: string;
   estado: boolean;  // 'estado' indica si el empleado está activo o inactivo
-  fechaRegistro?: string;
+  //fechaRegistro?: string;
 }
 
 export interface EmpleadosFilters {
@@ -38,14 +38,16 @@ export function useEmpleados(filters: EmpleadosFilters) {
     setError(null);
 
     const candidates = [
-      '/empleados/codigos',
+       // singular endpoint you mentioned
+      '/empleados/codigos' // full list fallback
     ];
-    let used: CodigosResponse | null = null;
+
+    let used: any = null;
     let lastErr: unknown = null;
 
     for (const ep of candidates) {
       try {
-        const res = await apiFetch<CodigosResponse>(ep);
+        const res = await apiFetch<any>(ep);
         used = res;
         break;
       } catch (err: unknown) {
@@ -64,23 +66,65 @@ export function useEmpleados(filters: EmpleadosFilters) {
     try {
       if (!used) throw lastErr ?? new Error('No se obtuvo respuesta de /empleado(s)/codigos');
 
-      const activos = Array.isArray(used?.activos) ? used.activos : [];
-      const inactivos = Array.isArray(used?.inactivos) ? used.inactivos : [];
+      let mapped: Empleado[] = [];
 
-      const mapped: Empleado[] = [
-        ...activos.map((a) => ({
-          _id: a.codigoUsuario,
-          codigoUsuario: a.codigoUsuario,
-          nombreCompleto: a.nombreCompleto,
-          estado: true,
-        })),
-        ...inactivos.map((a) => ({
-          _id: a.codigoUsuario,
-          codigoUsuario: a.codigoUsuario,
-          nombreCompleto: a.nombreCompleto,
-          estado: false,
-        })),
-      ];
+      if (Array.isArray(used)) {
+        // Your endpoint returns an array of empleados
+        mapped = used.map((a: any) => ({
+          _id: String(a._id ?? a.codigoUsuario ?? a.id ?? ''),
+          codigoUsuario: a.codigoUsuario ?? undefined,
+          usuario: a.usuario ?? undefined,
+          nombreCompleto: a.nombreCompleto || [a.nombre, a.apellido].filter(Boolean).join(' ') || a.usuario || '',
+          rol: a.rol ?? undefined,
+          email: a.email ?? undefined,
+          telefono: Array.isArray(a.telefono) ? a.telefono[0] : a.telefono ?? a.telefonoPrincipal ?? undefined,
+          estado: typeof a.estado === 'boolean' ? a.estado : (a.actividad ?? a.activo ?? true),
+        }));
+      } else if (used && (Array.isArray(used.activos) || Array.isArray(used.inactivos))) {
+        // Old shape: { activos: [...], inactivos: [...] }
+        const activos = Array.isArray(used.activos) ? used.activos : [];
+        const inactivos = Array.isArray(used.inactivos) ? used.inactivos : [];
+
+        mapped = [
+          ...activos.map((a: any) => ({
+            _id: String(a._id ?? a.codigoUsuario ?? a.id ?? ''),
+            codigoUsuario: a.codigoUsuario ?? undefined,
+            usuario: a.usuario ?? undefined,
+            nombreCompleto: a.nombreCompleto || [a.nombre, a.apellido].filter(Boolean).join(' ') || a.usuario || '',
+            rol: a.rol ?? undefined,
+            email: a.email ?? undefined,
+            telefono: Array.isArray(a.telefono) ? a.telefono[0] : a.telefono ?? a.telefonoPrincipal ?? undefined,
+            estado: true,
+          })),
+          ...inactivos.map((a: any) => ({
+            _id: String(a._id ?? a.codigoUsuario ?? a.id ?? ''),
+            codigoUsuario: a.codigoUsuario ?? undefined,
+            usuario: a.usuario ?? undefined,
+            nombreCompleto: a.nombreCompleto || [a.nombre, a.apellido].filter(Boolean).join(' ') || a.usuario || '',
+            rol: a.rol ?? undefined,
+            email: a.email ?? undefined,
+            telefono: Array.isArray(a.telefono) ? a.telefono[0] : a.telefono ?? a.telefonoPrincipal ?? undefined,
+            estado: false,
+          })),
+        ];
+      } else {
+        // Unknown shape: try best-effort mapping of object values
+        if (typeof used === 'object' && used !== null) {
+          mapped = Object.values(used)
+            .flat()
+            .filter(Boolean)
+            .map((a: any) => ({
+              _id: String(a._id ?? a.codigoUsuario ?? a.id ?? ''),
+              codigoUsuario: a.codigoUsuario ?? undefined,
+              usuario: a.usuario ?? undefined,
+              nombreCompleto: a.nombreCompleto || [a.nombre, a.apellido].filter(Boolean).join(' ') || a.usuario || '',
+              rol: a.rol ?? undefined,
+              email: a.email ?? undefined,
+              telefono: Array.isArray(a.telefono) ? a.telefono[0] : a.telefono ?? a.telefonoPrincipal ?? undefined,
+              estado: typeof a.estado === 'boolean' ? a.estado : (a.actividad ?? a.activo ?? true),
+            }));
+        }
+      }
 
       setData(mapped);
     } catch (err: unknown) {
@@ -94,8 +138,9 @@ export function useEmpleados(filters: EmpleadosFilters) {
   };
 
   useEffect(() => {
+    // Re-run load when requested estado changes so filter "TODOS" can trigger fetching inactivos
     load();
-  }, []);
+  }, [filters.estado]);
 
   // filtros en memoria
   let filtrados = [...data];
