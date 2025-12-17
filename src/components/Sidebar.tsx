@@ -1,5 +1,6 @@
 "use client";
 
+import React, { useState } from "react";
 import {
   Box,
   Typography,
@@ -8,9 +9,12 @@ import {
   ListSubheader,
   ListItemButton,
   ListItemText,
+  Collapse,
 } from "@mui/material";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import ExpandLess from "@mui/icons-material/ExpandLess";
+import ExpandMore from "@mui/icons-material/ExpandMore";
 
 const navItems = [
   {
@@ -32,7 +36,17 @@ const navItems = [
   },
   {
     section: "Análisis",
-    items: [{ label: "Reportes", href: "/reportes" }],
+    items: [
+      { 
+        label: "Reportes", 
+        href: "/reportes",
+        submenu: [
+          { label: "Central de Riesgos", href: "/reportes/central-riesgos" },
+          { label: "Seguro de Vida", href: "/reportes/seguro-vida" },
+          { label: "Pago al SAR", href: "/reportes/pago-sar" },
+        ]
+      }
+    ],
   },
   {
     section: "Sistema",
@@ -42,6 +56,11 @@ const navItems = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const [openSubmenu, setOpenSubmenu] = useState<string | null>(null);
+
+  const handleSubmenuToggle = (label: string) => {
+    setOpenSubmenu(openSubmenu === label ? null : label);
+  };
 
   return (
     <Box
@@ -94,31 +113,74 @@ export default function Sidebar() {
           >
             {section.items.map((item) => {
               const active = pathname.startsWith(item.href);
+              const hasSubmenu = item.submenu && item.submenu.length > 0;
+              const isOpen = openSubmenu === item.label;
+
               return (
-                <ListItemButton
-                  key={item.href}
-                  component={Link}
-                  href={item.href}
-                  selected={active}
-                  sx={{
-                    borderRadius: 2,
-                    mb: 0.5,
-                    "&.Mui-selected": {
-                      bgcolor: "rgba(56,189,248,0.18)",
-                    },
-                    "&:hover": {
-                      bgcolor: "rgba(148,163,184,0.12)",
-                    },
-                  }}
-                >
-                  <ListItemText
-                    primary={item.label}
-                    primaryTypographyProps={{
-                      fontSize: 14,
-                      color: active ? "text.primary" : "text.secondary",
+                <React.Fragment key={item.href}>
+                  <ListItemButton
+                    component={hasSubmenu ? "div" : Link}
+                    href={!hasSubmenu ? item.href : undefined}
+                    onClick={hasSubmenu ? () => handleSubmenuToggle(item.label) : undefined}
+                    selected={active}
+                    sx={{
+                      borderRadius: 2,
+                      mb: 0.5,
+                      "&.Mui-selected": {
+                        bgcolor: "rgba(56,189,248,0.18)",
+                      },
+                      "&:hover": {
+                        bgcolor: "rgba(148,163,184,0.12)",
+                      },
                     }}
-                  />
-                </ListItemButton>
+                  >
+                    <ListItemText
+                      primary={item.label}
+                      primaryTypographyProps={{
+                        fontSize: 14,
+                        color: active ? "text.primary" : "text.secondary",
+                      }}
+                    />
+                    {hasSubmenu && (isOpen ? <ExpandLess /> : <ExpandMore />)}
+                  </ListItemButton>
+
+                  {hasSubmenu && (
+                    <Collapse in={isOpen} timeout="auto" unmountOnExit>
+                      <List component="div" disablePadding dense>
+                        {item.submenu!.map((subItem) => {
+                          const subActive = pathname === subItem.href;
+                          return (
+                            <ListItemButton
+                              key={subItem.href}
+                              component={Link}
+                              href={subItem.href}
+                              selected={subActive}
+                              sx={{
+                                pl: 4,
+                                borderRadius: 2,
+                                mb: 0.5,
+                                "&.Mui-selected": {
+                                  bgcolor: "rgba(56,189,248,0.18)",
+                                },
+                                "&:hover": {
+                                  bgcolor: "rgba(148,163,184,0.12)",
+                                },
+                              }}
+                            >
+                              <ListItemText
+                                primary={subItem.label}
+                                primaryTypographyProps={{
+                                  fontSize: 13,
+                                  color: subActive ? "text.primary" : "text.secondary",
+                                }}
+                              />
+                            </ListItemButton>
+                          );
+                        })}
+                      </List>
+                    </Collapse>
+                  )}
+                </React.Fragment>
               );
             })}
           </List>
