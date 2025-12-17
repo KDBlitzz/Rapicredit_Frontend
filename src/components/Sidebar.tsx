@@ -16,7 +16,11 @@ import { usePathname } from "next/navigation";
 import ExpandLess from "@mui/icons-material/ExpandLess";
 import ExpandMore from "@mui/icons-material/ExpandMore";
 
-const navItems = [
+type NavSubItem = { label: string; href: string };
+type NavItem = NavSubItem & { submenu?: NavSubItem[] };
+type NavSection = { section: string; items: NavItem[] };
+
+const navItems: NavSection[] = [
   {
     section: "General",
     items: [
@@ -113,7 +117,7 @@ export default function Sidebar() {
           >
             {section.items.map((item) => {
               const active = pathname.startsWith(item.href);
-              const hasSubmenu = item.submenu && item.submenu.length > 0;
+              const hasSubmenu = !!item.submenu?.length;
               const isOpen = openSubmenu === item.label;
 
               return (
@@ -147,7 +151,7 @@ export default function Sidebar() {
                   {hasSubmenu && (
                     <Collapse in={isOpen} timeout="auto" unmountOnExit>
                       <List component="div" disablePadding dense>
-                        {item.submenu!.map((subItem) => {
+                        {item.submenu?.map((subItem) => {
                           const subActive = pathname === subItem.href;
                           return (
                             <ListItemButton
