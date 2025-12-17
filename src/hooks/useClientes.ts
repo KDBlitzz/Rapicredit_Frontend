@@ -2,7 +2,7 @@
 // src/hooks/useClientes.ts
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { apiFetch } from "@/lib/api";
 
 export type EstadoClienteFiltro = "TODOS" | "ACTIVO" | "INACTIVO";
@@ -28,32 +28,28 @@ export function useClientes({ busqueda, estado }: UseClientesOptions) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await apiFetch<ClienteResumen[]>("/clientes");
+      setData(result);
+    } catch (e: any) {
+      console.error(e);
+      setError(e.message || "Error cargando clientes");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
-
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        const result = await apiFetch<ClienteResumen[]>("/clientes");
-        if (!cancelled) {
-          setData(result);
-        }
-      } catch (e: any) {
-        console.error(e);
-        if (!cancelled) {
-          setError(e.message || "Error cargando clientes");
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
+    // Carga inicial
     load();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [load]);
 
   // Aplicar filtros en memoria
   let filtrados = [...data];
@@ -81,6 +77,7 @@ export function useClientes({ busqueda, estado }: UseClientesOptions) {
     data: filtrados,
     loading,
     error,
+    refresh: load,
   };
 }
 
