@@ -1,14 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-// import { apiFetch } from '../lib/api';
+import { apiFetch } from '../lib/api';
 
-export type EstadoSolicitudFiltro =
-  | 'TODAS'
-  | 'REGISTRADA'
-  | 'EN_REVISION'
-  | 'APROBADA'
-  | 'RECHAZADA';
+export type EstadoSolicitudFiltro = 'TODAS' | 'REGISTRADA' | 'EN_REVISION' | 'APROBADA' | 'RECHAZADA';
 
 export interface SolicitudResumen {
   id: string;
@@ -27,16 +22,11 @@ export interface SolicitudesFilters {
   estado: EstadoSolicitudFiltro;
 }
 
-interface SolicitudApiListItem {
-  _id?: string | number;
-  id?: string | number;
-  codigoSolicitud?: string;
-  fechaSolicitud?: string;
-  clienteId?: any;
-  cliente?: any;
-  capitalSolicitado?: number;
-  estadoSolicitud?: string;
-}
+type SolicitudesResponse = {
+  ok: boolean;
+  total: number;
+  solicitudes: SolicitudResumen[];
+};
 
 export function useSolicitudes(filters: SolicitudesFilters) {
   const [data, setData] = useState<SolicitudResumen[]>([]);
@@ -50,69 +40,21 @@ export function useSolicitudes(filters: SolicitudesFilters) {
       setLoading(true);
       setError(null);
       try {
-        // Backend deshabilitado: datos en duro
-        const res: SolicitudApiListItem[] = [
-          {
-            _id: 'sol1',
-            codigoSolicitud: 'SOL-001',
-            fechaSolicitud: new Date().toISOString(),
-            clienteId: {
-              nombres: 'Juan',
-              apellidos: 'Pérez',
-              identidadCliente: '0801-1990-00000',
-            },
-            cobradorId: { nombreCompleto: 'Carlos Gómez' } as any,
-            capitalSolicitado: 15000,
-            estadoSolicitud: 'REGISTRADA',
-            cuotaEstimadaComision: { cuota: 1250 } as any,
-          } as any,
-          {
-            _id: 'sol2',
-            codigoSolicitud: 'SOL-002',
-            fechaSolicitud: new Date().toISOString(),
-            clienteId: {
-              nombres: 'María',
-              apellidos: 'López',
-              identidadCliente: '0801-1992-11111',
-            },
-            cobradorId: { nombreCompleto: 'Ana Rivera' } as any,
-            capitalSolicitado: 22000,
-            estadoSolicitud: 'EN_REVISION',
-            cuotaEstimadaComision: { cuota: 1800 } as any,
-          } as any,
-        ];
-        if (cancelled) return;
+        // Construir la URL dinámica para la API, usando los filtros de búsqueda y estado
+        const { busqueda, estado } = filters;
+        const path = `/solicitudes/`;
 
-        const mapped: SolicitudResumen[] = (res || []).map((s) => {
-          const cliente = (s.clienteId as any) || (s.cliente as any) || {};
-          const cobrador = (s.cobradorId as any) || (s.cobrador as any) || {};
-          const nombreCliente =
-            cliente.nombreCompleto ||
-            [cliente.nombres, cliente.apellidos].filter(Boolean).join(' ') ||
-            'Cliente';
+        // Hacer la solicitud usando la función apiFetch
+        const res = await apiFetch<SolicitudesResponse>(path);
 
-          return {
-            id: String(s._id ?? s.id ?? ''),
-            codigoSolicitud: s.codigoSolicitud ?? '',
-            fechaSolicitud: s.fechaSolicitud,
-            clienteNombre: nombreCliente,
-            clienteIdentidad:
-              cliente.identidadCliente ?? cliente.identidad ?? undefined,
-            capitalSolicitado: s.capitalSolicitado ?? 0,
-            estadoSolicitud: s.estadoSolicitud ?? 'REGISTRADA',
-            cobradorNombre: (
-              cobrador.nombreCompleto ?? [cobrador.nombres, cobrador.apellidos].filter(Boolean).join(' ')
-            ) || undefined,
-            cuotaEstablecida: (s as any).cuotaEstimadaComision?.cuota ?? undefined,
-          };
-        });
-
-        setData(mapped);
-      } catch (err: unknown) {
-        console.error('Error cargando solicitudes:', err);
         if (!cancelled) {
-          const message = err instanceof Error ? err.message : 'Error al cargar solicitudes';
-          setError(message);
+          setData(res.solicitudes || []);
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          console.error('Error cargando solicitudes:', err);
+          setData([]);
+          setError(err?.message ?? 'Error cargando solicitudes');
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -120,38 +62,28 @@ export function useSolicitudes(filters: SolicitudesFilters) {
     }
 
     load();
-
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [filters]); // Dependemos de los filtros para recargar los datos
 
-  // Filtros en memoria
-  let filtradas = [...data];
+  // Filtrado en memoria de los datos ya cargados
+  const filteredData = data.filter((s) => {
+    const q = filters.busqueda.toLowerCase();
+    
+    // Filtrar por búsqueda
+    const matchBusqueda =
+      q
+        ? s.codigoSolicitud.toLowerCase().includes(q) ||
+          s.clienteNombre.toLowerCase().includes(q) ||
+          (s.clienteIdentidad || '').toLowerCase().includes(q)
+        : true;
 
-  if (filters.estado !== 'TODAS') {
-    filtradas = filtradas.filter(
-      (s) => s.estadoSolicitud.toUpperCase() === filters.estado,
-    );
-  }
+    // Filtrar por estado
+    const matchEstado = filters.estado === 'TODAS' || s.estadoSolicitud.toUpperCase() === filters.estado;
 
-  if (filters.busqueda.trim()) {
-    const q = filters.busqueda.trim().toLowerCase();
-    filtradas = filtradas.filter((s) => {
-      return (
-        s.codigoSolicitud.toLowerCase().includes(q) ||
-        s.clienteNombre.toLowerCase().includes(q) ||
-        (s.clienteIdentidad || '').toLowerCase().includes(q)
-      );
-    });
-  }
-
-  // Ordenar por fecha desc si viene
-  filtradas.sort((a, b) => {
-    const da = a.fechaSolicitud ? new Date(a.fechaSolicitud).getTime() : 0;
-    const db = b.fechaSolicitud ? new Date(b.fechaSolicitud).getTime() : 0;
-    return db - da;
+    return matchBusqueda && matchEstado;
   });
 
-  return { data: filtradas, loading, error };
+  return { data: filteredData, loading, error };
 }

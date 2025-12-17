@@ -7,13 +7,13 @@ export type EstadoEmpleadoFiltro = "TODOS" | "ACTIVO" | "INACTIVO";
 
 export interface Empleado {
   _id: string;
-  codigo?: string;
+  codigoUsuario?: string;
   usuario?: string;
   nombreCompleto: string;
   rol?: string;
   email?: string;
   telefono?: string;
-  estado?: string; // ACTIVO / INACTIVO
+  actividad?: boolean;
   fechaRegistro?: string;
 }
 
@@ -22,6 +22,12 @@ export interface EmpleadosFilters {
   estado: EstadoEmpleadoFiltro;
   rol: string;
 }
+
+type UsersResponse = {
+  ok: boolean;
+  total: number;
+  users: Empleado[];
+};
 
 export function useEmpleados(filters: EmpleadosFilters) {
   const [data, setData] = useState<Empleado[]>([]);
@@ -35,23 +41,15 @@ export function useEmpleados(filters: EmpleadosFilters) {
       setLoading(true);
       setError(null);
       try {
-        // 🔹 Cuando conectemos backend: GET /empleados
-        let res = await apiFetch<Empleado[]>("/empleados");
-        
-        // Si no hay respuesta del backend, usar datos de prueba
-        if (!res || res.length === 0) {
-          res = [];
-        }
-        
-        if (!cancelled) {
-          setData(res || []);
-        }
+        const res = await apiFetch<UsersResponse>("/users/");
+        const lista = Array.isArray(res?.users) ? res.users : [];
+
+        if (!cancelled) setData(lista);
       } catch (err: any) {
         if (!cancelled) {
           console.error("Error cargando empleados:", err);
-          // Usar datos vacíos en caso de error
           setData([]);
-          setError(null); // No mostrar error, solo mostrar tabla vacía
+          setError(err?.message ?? "Error cargando empleados");
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -64,29 +62,20 @@ export function useEmpleados(filters: EmpleadosFilters) {
     };
   }, []);
 
-  // Filtrado local
-  const filtered = data.filter((empleado) => {
-    const matchBusqueda = filters.busqueda
-      ? (empleado.nombreCompleto || "")
-          .toLowerCase()
-          .includes(filters.busqueda.toLowerCase()) ||
-        (empleado.codigo || "")
-          .toLowerCase()
-          .includes(filters.busqueda.toLowerCase()) ||
-        (empleado.usuario || "")
-          .toLowerCase()
-          .includes(filters.busqueda.toLowerCase()) ||
-        (empleado.email || "")
-          .toLowerCase()
-          .includes(filters.busqueda.toLowerCase()) ||
-        (empleado.telefono || "")
-          .toLowerCase()
-          .includes(filters.busqueda.toLowerCase())
+  const filtered = (Array.isArray(data) ? data : []).filter((empleado) => {
+    const q = filters.busqueda?.toLowerCase() ?? "";
+
+    const matchBusqueda = q
+      ? (empleado.nombreCompleto || "").toLowerCase().includes(q) ||
+      (empleado.codigoUsuario || "").toLowerCase().includes(q) ||
+      (empleado.usuario || "").toLowerCase().includes(q) ||
+      (empleado.email || "").toLowerCase().includes(q) ||
+      (empleado.telefono || "").toLowerCase().includes(q)
       : true;
 
+    const actividadStr = empleado.actividad ? "ACTIVO" : "INACTIVO";
     const matchEstado =
-      filters.estado === "TODOS" ||
-      (empleado.estado || "").toUpperCase() === filters.estado;
+      filters.estado === "TODOS" || actividadStr === filters.estado;
 
     const matchRol = filters.rol
       ? (empleado.rol || "").toLowerCase().includes(filters.rol.toLowerCase())

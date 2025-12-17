@@ -43,12 +43,19 @@ export interface ClienteDetalle {
   estadoDeuda: string[];
   referencias: string[];
   actividad: boolean;
+  // Backend name is `riesgoMora` (single value)
+  riesgoMora?: string;
+  // Optional cobrador id
+  codigoCobrador?: string;
 
   // Negocio
   negocioNombre?: string;
   negocioTipo?: string;
   negocioTelefono?: string;
   negocioDireccion?: string;
+  negocioDepartamento?: string;
+  negocioMunicipio?: string;
+  negocioZonaResidencial?: string;
 
   // Documentos (se asumen URLs o nombres de archivo)
   documentosFotos?: string[];
@@ -114,16 +121,28 @@ export function useClienteDetalle(id: string) {
           limiteCredito: res.limiteCredito ?? 0,
           tasaCliente: res.tasaCliente ?? 0,
           frecuenciaPago: res.frecuenciaPago ?? 'Mensual',
-          estadoDeuda: Array.isArray(res.estadoDeuda) ? res.estadoDeuda : [],
+          // Prefer `riesgoMora` (single value) falling back to legacy `estadoDeuda` array
+          estadoDeuda: res.riesgoMora
+            ? [res.riesgoMora]
+            : Array.isArray(res.estadoDeuda)
+            ? res.estadoDeuda
+            : [],
           referencias: Array.isArray(res.referencias) ? res.referencias : [],
-          actividad: res.actividad ?? true,
+          // Support both `actividad` and `activo` (backend uses `activo` in the model)
+          actividad: res.actividad ?? res.activo ?? true,
+          riesgoMora: res.riesgoMora || undefined,
+          codigoCobrador: res.codigoCobrador || undefined,
 
           negocioNombre: res.negocioNombre || undefined,
           negocioTipo: res.negocioTipo || undefined,
           negocioTelefono: res.negocioTelefono || undefined,
           negocioDireccion: res.negocioDireccion || undefined,
+          negocioDepartamento: res.negocioDepartamento || undefined,
+          negocioMunicipio: res.negocioMunicipio || undefined,
+          negocioZonaResidencial: res.negocioZonaResidencial || undefined,
 
-          documentosFotos: res.documentosFotos ?? [],
+          // Accept either `documentosFotos` or legacy `fotosDocs`
+          documentosFotos: res.documentosFotos ?? res.fotosDocs ?? [],
           negocioFotos: res.negocioFotos ?? [],
         };
 

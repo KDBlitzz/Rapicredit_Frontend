@@ -16,8 +16,13 @@ import {
   Select,
   Checkbox,
   ListItemText,
+  InputAdornment,
+  IconButton,
 } from "@mui/material";
+import Visibility from "@mui/icons-material/Visibility";
+import VisibilityOff from "@mui/icons-material/VisibilityOff";
 import { useRouter } from "next/navigation";
+import { apiFetch } from '../../../lib/api';
 
 // Lista de códigos de país igual al formulario de clientes
 const countryCodes = [
@@ -49,16 +54,16 @@ const NuevoEmpleadoPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
-  // Generar código automático
+  // Generar código automático (formato E001) y actualizar con el siguiente disponible
   const generateCode = () => {
-    const timestamp = Date.now().toString().slice(-6);
-    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-    return `EMP${timestamp}${random}`;
+    // Valor por defecto mientras se consulta al backend
+    return "E001";
   };
 
   const [formData, setFormData] = useState({
-    codigo: generateCode(),
+    codigoUsuario: "",
     nombreCompleto: "",
     rol: "",
     email: "",
@@ -66,15 +71,40 @@ const NuevoEmpleadoPage: React.FC = () => {
     telefono: "",
     usuario: "",
     password: "",
-    estado: "ACTIVO",
+    actividad: "ACTIVO",
     permisos: [] as string[],
   });
 
   type Permiso = { codigoPermiso: string; permiso: string };
   const [permisosBD, setPermisosBD] = useState<Permiso[]>([]);
 
+  // Obtener el siguiente código disponible basado en los empleados existentes
+  type UsersResponse = {
+    ok: boolean;
+    total: number;
+    users: { codigoUsuario?: string }[];
+  };
+
+  const getNextEmployeeCode = async (): Promise<string> => {
+    // ✅ ESTE ES EL ENDPOINT REAL QUE YA USAS EN useEmpleados
+    const res = await apiFetch<UsersResponse>("/users/");
+
+    const empleados = Array.isArray(res?.users) ? res.users : [];
+
+    const nums = empleados
+      .map((e) => (e.codigoUsuario ?? "").trim())
+      .map((c) => {
+        const m = /^E(\d+)$/.exec(c);
+        return m ? parseInt(m[1], 10) : null;
+      })
+      .filter((n): n is number => n !== null);
+
+    const max = nums.length ? Math.max(...nums) : 0;
+    return `E${String(max + 1).padStart(3, "0")}`;
+  };
+
   React.useEffect(() => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
     fetch(`${apiUrl}/permisos/`)
       .then((res) => res.json())
       .then((data) => {
@@ -86,6 +116,33 @@ const NuevoEmpleadoPage: React.FC = () => {
       })
       .catch(() => setPermisosBD([]));
   }, []);
+
+  // Al montar, calcular el siguiente código y asignarlo al formulario
+  // 🔹 ESTE ES EL useEffect CORRECTO PARA ASIGNAR EL NEXT EMPLEADO
+  React.useEffect(() => {
+    let cancelled = false;
+
+    const loadNextCode = async () => {
+      try {
+        const nextCode = await getNextEmployeeCode();
+        if (!cancelled) {
+          setFormData((prev) => ({
+            ...prev,
+            codigoUsuario: nextCode, // ✅ AQUÍ, ESTE CAMPO
+          }));
+        }
+      } catch (err) {
+        console.error("Error obteniendo código de empleado", err);
+      }
+    };
+
+    loadNextCode();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
 
   // Mapeo de permisos por rol (resumen según especificación)
   // Supervisor: usar los códigos de permiso del backend
@@ -192,7 +249,7 @@ const NuevoEmpleadoPage: React.FC = () => {
         setFormData({ ...formData, [name]: value });
       }
     }
-    
+
     if (name === "password") {
       if (value) {
         validatePassword(value);
@@ -206,31 +263,48 @@ const NuevoEmpleadoPage: React.FC = () => {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    // Validar que exista al menos un permiso
+
+    if (!formData.codigoUsuario) {
+      setError("No se pudo generar el código. Refresca la pantalla.");
+      setLoading(false);
+      return;
+    }
+
     if (!formData.permisos || formData.permisos.length === 0) {
       setError("Seleccione al menos un permiso");
       setLoading(false);
       return;
     }
 
-    // Validar contraseña antes de enviar
+    // Validar teléfono obligatorio: exactamente 8 dígitos
+    const phoneDigits = formData.telefono.replace(/\D/g, "");
+    if (phoneDigits.length !== 8) {
+      setError("Ingrese un teléfono válido de 8 dígitos");
+      setLoading(false);
+      return;
+    }
+
     if (formData.password && !validatePassword(formData.password)) {
       setLoading(false);
       return;
     }
 
     try {
-      // 🔹 Llamada al backend para crear empleado
-      // await apiFetch("/empleados", {
-      //   method: "POST",
-      //   body: JSON.stringify(formData),
-      // });
+      const payload = {
+        codigoUsuario: formData.codigoUsuario,           // ✅
+        usuario: formData.usuario,
+        nombreCompleto: formData.nombreCompleto,
+        rol: formData.rol,
+        email: formData.email,
+        telefono: `${formData.telefonoPais} ${formData.telefono}`, // ✅
+        password: formData.password,                   // ✅ (ASÍ SE LLAMA EN TU SCHEMA)
+        permisos: formData.permisos,
+        actividad: formData.actividad === "ACTIVO",      // ✅ boolean
+      };
 
-      // Simulación
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      console.log("Crear empleado:", {
-        ...formData,
-        telefono: `${formData.telefonoPais} ${formData.telefono}`,
+      await apiFetch("/users/register", {
+        method: "POST",
+        body: JSON.stringify(payload),
       });
 
       router.push("/empleados");
@@ -241,6 +315,7 @@ const NuevoEmpleadoPage: React.FC = () => {
       setLoading(false);
     }
   };
+
 
   return (
     <Box>
@@ -268,18 +343,8 @@ const NuevoEmpleadoPage: React.FC = () => {
 
         <form onSubmit={handleSubmit}>
           <Grid container spacing={2}>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <TextField
-                fullWidth
-                variant="outlined"
-                label="Código"
-                name="codigo"
-                value={formData.codigo}
-                disabled
-                InputLabelProps={{ shrink: true }}
-              />
-            </Grid>
-            
+            {/* Código de empleado oculto: se autogenera y no se muestra */}
+
             <Grid size={{ xs: 12, md: 6 }}>
               <TextField
                 fullWidth
@@ -367,7 +432,7 @@ const NuevoEmpleadoPage: React.FC = () => {
                     value={formData.telefonoPais}
                     label="País"
                     onChange={(e) => handleChange({
-                      // @ts-expect-error next mui types
+                      //// @ts-expect-error next mui types
                       target: { name: 'telefonoPais', value: e.target.value },
                     } as any)}
                   >
@@ -391,6 +456,7 @@ const NuevoEmpleadoPage: React.FC = () => {
                     inputMode: 'numeric',
                     pattern: '\\d{8}',
                     maxLength: 8,
+                    required: true,
                   }}
                 />
               </Box>
@@ -401,8 +467,8 @@ const NuevoEmpleadoPage: React.FC = () => {
                 select
                 variant="outlined"
                 label="Estado"
-                name="estado"
-                value={formData.estado}
+                name="actividad"
+                value={formData.actividad}
                 onChange={handleChange}
                 InputLabelProps={{ shrink: true }}
               >
@@ -426,7 +492,6 @@ const NuevoEmpleadoPage: React.FC = () => {
               <TextField
                 fullWidth
                 required
-                type="password"
                 variant="outlined"
                 label="Contraseña"
                 name="password"
@@ -435,6 +500,21 @@ const NuevoEmpleadoPage: React.FC = () => {
                 InputLabelProps={{ shrink: true }}
                 error={!!passwordError}
                 helperText={passwordError}
+                type={showPassword ? "text" : "password"}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                        onClick={() => setShowPassword((prev) => !prev)}
+                        onMouseDown={(e) => e.preventDefault()}
+                        edge="end"
+                      >
+                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
               />
             </Grid>
           </Grid>
