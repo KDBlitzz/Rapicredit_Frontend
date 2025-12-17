@@ -74,20 +74,31 @@ const NuevoEmpleadoPage: React.FC = () => {
   const [permisosBD, setPermisosBD] = useState<Permiso[]>([]);
 
   // Obtener el siguiente código disponible basado en los empleados existentes
-  type UsersResponse = {
-    ok: boolean;
-    total: number;
-    empleado: { codigoUsuario?: string }[];
-  };
-
   const getNextEmployeeCode = async (): Promise<string> => {
-    // ✅ ESTE ES EL ENDPOINT REAL QUE YA USAS EN useEmpleados
-    const res = await apiFetch<UsersResponse>("/empleados/");
+    // Usar el mismo endpoint que la lista: /empleados/codigos
+    const res = await apiFetch<any>("/empleados/codigos");
 
-    const empleados = Array.isArray(res?.empleado) ? res.empleado : [];
+    // Normalizar posibles formas de respuesta
+    let codigos: string[] = [];
 
-    const nums = empleados
-      .map((e) => (e.codigoUsuario ?? "").trim())
+    if (Array.isArray(res)) {
+      codigos = res
+        .map((e: any) => String(e?.codigoUsuario ?? "").trim())
+        .filter(Boolean);
+    } else if (res && (Array.isArray(res.activos) || Array.isArray(res.inactivos))) {
+      const activos = Array.isArray(res.activos) ? res.activos : [];
+      const inactivos = Array.isArray(res.inactivos) ? res.inactivos : [];
+      codigos = [...activos, ...inactivos]
+        .map((e: any) => String(e?.codigoUsuario ?? "").trim())
+        .filter(Boolean);
+    } else if (res && Array.isArray(res.empleado)) {
+      // Soporte para forma { empleado: [] }
+      codigos = res.empleado
+        .map((e: any) => String(e?.codigoUsuario ?? "").trim())
+        .filter(Boolean);
+    }
+
+    const nums = codigos
       .map((c) => {
         const m = /^E(\d+)$/.exec(c);
         return m ? parseInt(m[1], 10) : null;
@@ -120,6 +131,7 @@ const NuevoEmpleadoPage: React.FC = () => {
     const loadNextCode = async () => {
       try {
         const nextCode = await getNextEmployeeCode();
+        
         if (!cancelled) {
           setFormData((prev) => ({
             ...prev,
@@ -259,11 +271,7 @@ const NuevoEmpleadoPage: React.FC = () => {
     setLoading(true);
     setError(null);
 
-    if (!formData.codigoUsuario) {
-      setError("No se pudo generar el código. Refresca la pantalla.");
-      setLoading(false);
-      return;
-    }
+    // Si por alguna razón no está el código, no bloquear: se recalcula más abajo
 
     if (!formData.permisos || formData.permisos.length === 0) {
       setError("Seleccione al menos un permiso");
@@ -285,8 +293,10 @@ const NuevoEmpleadoPage: React.FC = () => {
     }
 
     try {
+      // Recalcular el código por si cambió el estado en el backend
+      const nextCode = await getNextEmployeeCode();
       const payload = {
-        codigoUsuario: formData.codigoUsuario,           // ✅
+        codigoUsuario: nextCode,           // ✅ asegurar código único
         usuario: formData.usuario,
         nombreCompleto: formData.nombreCompleto,
         rol: formData.rol,
