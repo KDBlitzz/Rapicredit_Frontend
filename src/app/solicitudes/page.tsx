@@ -103,6 +103,14 @@ const SolicitudesPage: React.FC = () => {
           >
             + Nueva solicitud
           </Button>
+          <Button
+            variant="outlined"
+            sx={{ ml: 1, mt: { xs: 1, md: 0 } }}
+            component={Link}
+            href="/solicitudes/aprobacion"
+          >
+            Pre-aprobación
+          </Button>
         </Grid>
       </Grid>
 
