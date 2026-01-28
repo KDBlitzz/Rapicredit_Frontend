@@ -44,6 +44,11 @@ const ClientesPage: React.FC = () => {
   const [estado, setEstado] = useState<EstadoClienteFiltro>('TODOS');
   const [viewerId, setViewerId] = useState<string | null>(null);
   const [viewerStep, setViewerStep] = useState(0);
+  const [confirmCliente, setConfirmCliente] = useState<{
+    id: string;
+    codigo?: string;
+    estado: boolean;
+  } | null>(null);
 
   const { data, loading, error, refresh } = useClientes({ busqueda, estado });
 
@@ -221,7 +226,8 @@ const ClientesPage: React.FC = () => {
                           color={getActividad(c.id, c.actividad) ? "error" : "success"}
                           onClick={() => {
                             const nuevoEstado = !getActividad(c.id, c.actividad);
-                            handleActivarDesactivar(c.id, c.codigoCliente, nuevoEstado);  // Llamada al backend
+                            // Abrir confirmación para ambos casos (activar/desactivar)
+                            setConfirmCliente({ id: c.id, codigo: c.codigoCliente, estado: nuevoEstado });
                           }}
                         >
                           {getActividad(c.id, c.actividad) ? "Desactivar" : "Activar"}
@@ -250,6 +256,30 @@ const ClientesPage: React.FC = () => {
           </Table>
         </TableContainer>
       </Paper>
+
+      {/* Confirmación para activar/desactivar cliente */}
+      <Dialog open={Boolean(confirmCliente)} onClose={() => setConfirmCliente(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>
+          {confirmCliente?.estado === false
+            ? '¿Desea desactivar este cliente?'
+            : '¿Desea activar este cliente?'}
+        </DialogTitle>
+        <DialogActions>
+          <Button onClick={() => setConfirmCliente(null)}>Cancelar</Button>
+          <Button
+            variant="contained"
+            color={confirmCliente?.estado === false ? 'error' : 'success'}
+            onClick={async () => {
+              if (confirmCliente) {
+                await handleActivarDesactivar(confirmCliente.id, confirmCliente.codigo, confirmCliente.estado);
+              }
+              setConfirmCliente(null);
+            }}
+          >
+            {confirmCliente?.estado === false ? 'Desactivar' : 'Activar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Viewer dialog (read-only client detail) */}
       <Dialog open={Boolean(viewerId)} onClose={handleCloseViewer} maxWidth="md" fullWidth>

@@ -19,6 +19,9 @@ import {
   CircularProgress,
   IconButton,
   Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogActions,
 } from "@mui/material";
 import Link from "next/link";
 import { useEmpleados, EstadoEmpleadoFiltro } from "../../hooks/useEmpleados";
@@ -30,6 +33,11 @@ const EmpleadosPage: React.FC = () => {
   const [estado, setEstado] = useState<EstadoEmpleadoFiltro>("TODOS");
   const [rol, setRol] = useState("");
   const [updatingCode, setUpdatingCode] = useState<string | null>(null);
+  const [confirmEmpleado, setConfirmEmpleado] = useState<{
+    id: string;
+    codigo?: string;
+    nextState: boolean;
+  } | null>(null);
 
   const { data, loading, refresh } = useEmpleados({
     busqueda,
@@ -295,7 +303,12 @@ const EmpleadosPage: React.FC = () => {
                           size="small"
                           variant="outlined"
                           color={(typeof empleado.estado === 'boolean' ? empleado.estado : !!empleado.estado) ? 'error' : 'success'}
-                          onClick={() => toggleEstado(empleado._id, empleado.codigoUsuario, (typeof empleado.estado === 'boolean' ? empleado.estado : !!empleado.estado))}
+                          onClick={() => {
+                            const current = (typeof empleado.estado === 'boolean' ? empleado.estado : !!empleado.estado);
+                            const nextState = !current;
+                            // Abrir confirmación tanto para activar como desactivar
+                            setConfirmEmpleado({ id: empleado._id, codigo: empleado.codigoUsuario, nextState });
+                          }}
                           disabled={updatingCode === (empleado.codigoUsuario ?? empleado._id)}
                         >
                           {updatingCode === (empleado.codigoUsuario ?? empleado._id) ? (
@@ -316,6 +329,31 @@ const EmpleadosPage: React.FC = () => {
           </TableContainer>
         )}
       </Paper>
+
+      {/* Confirmación para activar/desactivar empleado */}
+      <Dialog open={Boolean(confirmEmpleado)} onClose={() => setConfirmEmpleado(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>
+          {confirmEmpleado?.nextState === false
+            ? '¿Desea desactivar este empleado?'
+            : '¿Desea activar este empleado?'}
+        </DialogTitle>
+        <DialogActions>
+          <Button onClick={() => setConfirmEmpleado(null)}>Cancelar</Button>
+          <Button
+            variant="contained"
+            color={confirmEmpleado?.nextState === false ? 'error' : 'success'}
+            onClick={async () => {
+              if (confirmEmpleado) {
+                // toggleEstado recibe estadoActual y dentro invierte; usamos !nextState para obtener el nuevo estado
+                await toggleEstado(confirmEmpleado.id, confirmEmpleado.codigo, !confirmEmpleado.nextState);
+              }
+              setConfirmEmpleado(null);
+            }}
+          >
+            {confirmEmpleado?.nextState === false ? 'Desactivar' : 'Activar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
         Mostrando {data.length} empleado(s)
