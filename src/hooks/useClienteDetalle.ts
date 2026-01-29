@@ -17,7 +17,7 @@ export interface ClienteDetalle {
   nombre: string;
   apellido: string;
   nombreCompleto: string;
-  email: string;
+  email?: string;
   telefono: string[];
 
   sexo: string;
@@ -42,6 +42,7 @@ export interface ClienteDetalle {
   frecuenciaPago: string;
   estadoDeuda: string[];
   referencias: string[];
+  refsParentescoTelefonos?: string[];
   actividad: boolean;
   // Backend name is `riesgoMora` (single value)
   riesgoMora?: string;
@@ -56,10 +57,16 @@ export interface ClienteDetalle {
   negocioDepartamento?: string;
   negocioMunicipio?: string;
   negocioZonaResidencial?: string;
+  negocioParentesco?: string;
+  negocioParentescoTelefono?: string;
+  ventaDiaria?: number;
+  capacidadPago?: number;
 
   // Documentos (se asumen URLs o nombres de archivo)
   documentosFotos?: string[];
   negocioFotos?: string[];
+  fotosDireccion?: string[];
+  fotosDireccionConyuge?: string[];
 }
 
 export function useClienteDetalle(id: string) {
@@ -101,7 +108,7 @@ export function useClienteDetalle(id: string) {
             res.nombreCompleto ||
             [res.nombre, res.apellido].filter(Boolean).join(' ') ||
             'Cliente',
-          email: res.email ?? '',
+          email: res.email ?? undefined,
           telefono: telefonos,
 
           sexo: res.sexo ?? '',
@@ -128,6 +135,7 @@ export function useClienteDetalle(id: string) {
             ? res.estadoDeuda
             : [],
           referencias: Array.isArray(res.referencias) ? res.referencias : [],
+          refsParentescoTelefonos: Array.isArray(res.refsParentescoTelefonos) ? res.refsParentescoTelefonos : undefined,
           // Support both `actividad` and `activo` (backend uses `activo` in the model)
           actividad: res.actividad ?? res.activo ?? true,
           riesgoMora: res.riesgoMora || undefined,
@@ -140,10 +148,16 @@ export function useClienteDetalle(id: string) {
           negocioDepartamento: res.negocioDepartamento || undefined,
           negocioMunicipio: res.negocioMunicipio || undefined,
           negocioZonaResidencial: res.negocioZonaResidencial || undefined,
+          negocioParentesco: res.negocioParentesco || undefined,
+          negocioParentescoTelefono: res.negocioParentescoTelefono || undefined,
+          ventaDiaria: typeof res.ventaDiaria === 'number' ? res.ventaDiaria : undefined,
+          capacidadPago: typeof res.capacidadPago === 'number' ? res.capacidadPago : undefined,
 
           // Accept either `documentosFotos` or legacy `fotosDocs`
           documentosFotos: res.documentosFotos ?? res.fotosDocs ?? [],
           negocioFotos: res.negocioFotos ?? [],
+          fotosDireccion: res.fotosDireccion ?? res.direccionFotos ?? [],
+          fotosDireccionConyuge: res.fotosDireccionConyuge ?? res.conyugeDireccionFotos ?? [],
         };
 
         if (!cancelled) setData(detalle);

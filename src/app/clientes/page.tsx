@@ -331,8 +331,14 @@ function ClientViewer({ id, step, onStepChange }: { id: string; step: number; on
 
   const splitReferencia = (r: string) => {
     const parts = r.split(' - ');
-    if (parts.length === 2) return { nombre: parts[0].trim(), telefono: parts[1].trim() };
-    return { nombre: '', telefono: r.trim() };
+    if (parts.length === 2) {
+      const mName = parts[0].match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+      if (mName) {
+        return { nombre: mName[1].trim(), parentesco: mName[2].trim(), telefono: parts[1].trim() };
+      }
+      return { nombre: parts[0].trim(), parentesco: '', telefono: parts[1].trim() };
+    }
+    return { nombre: '', parentesco: '', telefono: r.trim() };
   };
 
   const fotosDocs: string[] = Array.isArray((data as any).fotosDocs)
@@ -345,6 +351,16 @@ function ClientViewer({ id, step, onStepChange }: { id: string; step: number; on
     ? (data as any).fotosNegocio
     : Array.isArray((data as any).negocioFotos)
     ? (data as any).negocioFotos
+    : [];
+  const fotosDireccion: string[] = Array.isArray((data as any).fotosDireccion)
+    ? (data as any).fotosDireccion
+    : Array.isArray((data as any).direccionFotos)
+    ? (data as any).direccionFotos
+    : [];
+  const fotosDireccionConyuge: string[] = Array.isArray((data as any).fotosDireccionConyuge)
+    ? (data as any).fotosDireccionConyuge
+    : Array.isArray((data as any).conyugeDireccionFotos)
+    ? (data as any).conyugeDireccionFotos
     : [];
 
   return (
@@ -415,8 +431,10 @@ function ClientViewer({ id, step, onStepChange }: { id: string; step: number; on
                 const s = splitReferencia(r);
                 return (
                   <Box key={`ref-${i}`} sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                    <TextField label={`Nombre referencia ${i + 1}`} value={s.nombre || '—'} InputProps={{ readOnly: true }} size="small" sx={{ minWidth: 220, ...viewerTextFieldSx }} />
+                    <TextField label={`Nombre referencia ${i + 1}`} value={s.nombre || '—'} InputProps={{ readOnly: true }} size="small" sx={{ minWidth: 180, ...viewerTextFieldSx }} />
+                    <TextField label={`Parentesco ${i + 1}`} value={s.parentesco || '—'} InputProps={{ readOnly: true }} size="small" sx={{ minWidth: 160, ...viewerTextFieldSx }} />
                     <TextField label={`Teléfono referencia ${i + 1}`} value={s.telefono || '—'} InputProps={{ readOnly: true }} size="small" sx={{ flex: 1, ...viewerTextFieldSx }} />
+                    <TextField label={`Teléfono pariente ${i + 1}`} value={Array.isArray((data as any).refsParentescoTelefonos) ? ((data as any).refsParentescoTelefonos[i] || '—') : '—'} InputProps={{ readOnly: true }} size="small" sx={{ flex: 1, ...viewerTextFieldSx }} />
                   </Box>
                 );
               })}
@@ -430,6 +448,10 @@ function ClientViewer({ id, step, onStepChange }: { id: string; step: number; on
               <TextField label="Departamento" value={data.negocioDepartamento || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
               <TextField label="Municipio" value={data.negocioMunicipio || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
               <TextField label="Zona" value={data.negocioZonaResidencial || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
+              <TextField label="Parentesco del propietario" value={(data as any).negocioParentesco || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
+              <TextField label="Teléfono del pariente (negocio)" value={(data as any).negocioParentescoTelefono || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
+              <TextField label="Venta diaria" value={String((data as any).ventaDiaria ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
+              <TextField label="Capacidad de pago" value={String((data as any).capacidadPago ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
             </Box>
 
             <Box sx={{ gridColumn: '1 / -1' }}>
@@ -437,6 +459,24 @@ function ClientViewer({ id, step, onStepChange }: { id: string; step: number; on
               {fotosDocs.length > 0 ? (
                 fotosDocs.map((f, idx) => (
                   <Typography key={`doc-${idx}`} variant="body2">{f}</Typography>
+                ))
+              ) : (
+                <Typography variant="body2">—</Typography>
+              )}
+
+              <Typography variant="subtitle2" sx={{ mt: 1 }}>Foto(s) de dirección</Typography>
+              {fotosDireccion.length > 0 ? (
+                fotosDireccion.map((f, idx) => (
+                  <Typography key={`dir-${idx}`} variant="body2">{f}</Typography>
+                ))
+              ) : (
+                <Typography variant="body2">—</Typography>
+              )}
+
+              <Typography variant="subtitle2" sx={{ mt: 1 }}>Foto(s) de dirección del cónyuge</Typography>
+              {fotosDireccionConyuge.length > 0 ? (
+                fotosDireccionConyuge.map((f, idx) => (
+                  <Typography key={`dirc-${idx}`} variant="body2">{f}</Typography>
                 ))
               ) : (
                 <Typography variant="body2">—</Typography>

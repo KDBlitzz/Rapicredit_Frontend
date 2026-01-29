@@ -54,7 +54,7 @@ interface ClienteForm {
 
   nombre: string;
   apellido: string;
-  email: string;
+  email?: string;
   sexo: string;
   fechaNacimiento: string;
 
@@ -64,17 +64,21 @@ interface ClienteForm {
   direccion: string;
   tipoVivienda: string;
   antiguedadVivenda: string;
+  direccionFotos: File[];
 
   telefono: string[];
 
   conyugeNombre: string;
   conyugeTelefono: string;
+  conyugeDireccionFotos: File[];
 
   limiteCredito: string;
   tasaCliente: string;
   frecuenciaPago: string;
   estadoDeuda: EstadoDeuda;
   referencias: string[];
+  refsParentescos: string[];
+  refsParentescoTelefonos: string[];
   actividad: boolean;
 
   negocioNombre: string;
@@ -84,6 +88,10 @@ interface ClienteForm {
   negocioDepartamento?: string;
   negocioMunicipio?: string;
   negocioZonaResidencial?: string;
+  negocioParentesco?: string;
+  negocioParentescoTelefono?: string;
+  ventaDiaria?: string;
+  capacidadPago?: string;
 
   documentosFotos: File[];
   negocioFotos: File[];
@@ -224,23 +232,31 @@ const NuevoClientePage: React.FC = () => {
     direccion: '',
     tipoVivienda: '',
     antiguedadVivenda: '1',
+    direccionFotos: [],
 
     telefono: [],
 
     conyugeNombre: '',
     conyugeTelefono: '',
+    conyugeDireccionFotos: [],
 
     limiteCredito: '0',
     tasaCliente: '0',
     frecuenciaPago: 'Mensual',
     estadoDeuda: 'Al día',
     referencias: [''],
+    refsParentescos: [''],
+    refsParentescoTelefonos: [''],
     actividad: true,
 
     negocioNombre: '',
     negocioTipo: '',
     negocioTelefono: '',
     negocioDireccion: '',
+    negocioParentesco: '',
+    negocioParentescoTelefono: '',
+    ventaDiaria: '0',
+    capacidadPago: '0',
 
     documentosFotos: [],
     negocioFotos: [],
@@ -271,7 +287,11 @@ const NuevoClientePage: React.FC = () => {
   const [refsPhoneEntries, setRefsPhoneEntries] = useState<PhoneEntry[]>([
     { code: '+504', number: '' },
   ]);
+  const [refsParientePhoneEntries, setRefsParientePhoneEntries] = useState<PhoneEntry[]>([
+    { code: '+504', number: '' },
+  ]);
   const [refsNames, setRefsNames] = useState<string[]>(['']);
+  const [refsParentescosState, setRefsParentescosState] = useState<string[]>(['']);
 
 
   // Teléfono del cónyuge con mismo formato que teléfonos personales
@@ -348,19 +368,37 @@ const NuevoClientePage: React.FC = () => {
     const refs = refsPhoneEntries.map((r, idx) => {
       const phone = `${r.code} ${r.number}`.trim();
       const name = (refsNames[idx] || '').trim();
-      return name ? `${name} - ${phone}` : phone;
+      const parentesco = (refsParentescosState[idx] || '').trim();
+      const nameWithParen = parentesco ? `${name} (${parentesco})` : name;
+      return nameWithParen ? `${nameWithParen} - ${phone}` : phone;
     });
-    setForm((prev) => ({ ...prev, referencias: refs }));
+    const parientePhones = refsParientePhoneEntries.map((p) => `${p.code} ${p.number}`.trim());
+    setForm((prev) => ({ ...prev, referencias: refs, refsParentescoTelefonos: parientePhones }));
   }, [refsPhoneEntries]);
 
   useEffect(() => {
     const refs = refsPhoneEntries.map((r, idx) => {
       const phone = `${r.code} ${r.number}`.trim();
       const name = (refsNames[idx] || '').trim();
-      return name ? `${name} - ${phone}` : phone;
+      const parentesco = (refsParentescosState[idx] || '').trim();
+      const nameWithParen = parentesco ? `${name} (${parentesco})` : name;
+      return nameWithParen ? `${nameWithParen} - ${phone}` : phone;
     });
-    setForm((prev) => ({ ...prev, referencias: refs }));
+    const parientePhones = refsParientePhoneEntries.map((p) => `${p.code} ${p.number}`.trim());
+    setForm((prev) => ({ ...prev, referencias: refs, refsParentescoTelefonos: parientePhones }));
   }, [refsNames]);
+
+  useEffect(() => {
+    const refs = refsPhoneEntries.map((r, idx) => {
+      const phone = `${r.code} ${r.number}`.trim();
+      const name = (refsNames[idx] || '').trim();
+      const parentesco = (refsParentescosState[idx] || '').trim();
+      const nameWithParen = parentesco ? `${name} (${parentesco})` : name;
+      return nameWithParen ? `${nameWithParen} - ${phone}` : phone;
+    });
+    const parientePhones = refsParientePhoneEntries.map((p) => `${p.code} ${p.number}`.trim());
+    setForm((prev) => ({ ...prev, referencias: refs, refsParentescos: [...refsParentescosState], refsParentescoTelefonos: parientePhones }));
+  }, [refsParentescosState]);
 
   const handleChange = <K extends keyof ClienteForm>(
     key: K,
@@ -375,9 +413,10 @@ const NuevoClientePage: React.FC = () => {
   };
 
   const validateEmail = (email: string) => {
+    // Email es opcional; si está vacío, es válido
     if (!email) {
-      setEmailError('El email es requerido');
-      return false;
+      setEmailError('');
+      return true;
     }
     if (!/\S+@\S+\.\S+/.test(email)) {
       setEmailError('Ingrese un email válido');
@@ -458,6 +497,21 @@ const NuevoClientePage: React.FC = () => {
         };
       return next;
     });
+
+  const handleReferenciaParientePhoneChange = (
+    index: number,
+    field: 'code' | 'number',
+    value: string,
+  ) => {
+    setRefsParientePhoneEntries((prev) => {
+      const next = [...prev];
+      next[index] =
+        field === 'code'
+          ? { ...next[index], code: value }
+          : { ...next[index], number: value.replace(/[^\d]/g, '').slice(0, 8) };
+      return next;
+    });
+  };
   };
 
   const handleConyugePhoneChange = (
@@ -591,6 +645,11 @@ const NuevoClientePage: React.FC = () => {
         alert('La dirección es requerida');
         isValid = false;
       }
+      // Requerir al menos una foto de dirección
+      if (!form.direccionFotos || form.direccionFotos.length === 0) {
+        alert('Debe adjuntar al menos una foto de la dirección');
+        isValid = false;
+      }
       // Teléfono del cónyuge opcional: si se ingresa, debe ser de 8 dígitos
       const spouseDigits = conyugePhoneEntry.number.replace(/[^\d]/g, '');
       if (spouseDigits.length > 0 && spouseDigits.length !== 8) {
@@ -629,6 +688,11 @@ const NuevoClientePage: React.FC = () => {
 
     if (Number(form.antiguedadVivenda) <= 0) {
       alert('La antigüedad de vivienda debe ser mayor a 0 años');
+      return;
+    }
+
+    if (!form.direccionFotos || form.direccionFotos.length === 0) {
+      alert('Debe adjuntar al menos una foto de la dirección');
       return;
     }
 
@@ -675,7 +739,7 @@ const NuevoClientePage: React.FC = () => {
 
       nombre: form.nombre,
       apellido: form.apellido,
-      email: form.email,
+      email: form.email || undefined,
       sexo: form.sexo,
       fechaNacimiento: form.fechaNacimiento,
 
@@ -686,6 +750,7 @@ const NuevoClientePage: React.FC = () => {
       direccion: form.direccion,
       tipoVivienda: form.tipoVivienda,
       antiguedadVivenda: Number(form.antiguedadVivenda),
+      fotosDireccion: (form.direccionFotos || []).map((f) => f.name),
 
       // Contacto
       telefono: form.telefono,
@@ -704,6 +769,7 @@ const NuevoClientePage: React.FC = () => {
 
       // Referencias
       referencias: form.referencias.filter((r) => r.trim() !== ''),
+      refsParentescoTelefonos: (form.refsParentescoTelefonos || []).filter((t) => t && t.replace(/\s/g, '').length > 0),
 
       // 🔑 Backend field (antes actividad en el UI)
       activo: form.actividad,
@@ -715,10 +781,15 @@ const NuevoClientePage: React.FC = () => {
       negocioDepartamento: form.negocioDepartamento || undefined,
       negocioMunicipio: form.negocioMunicipio || undefined,
       negocioZonaResidencial: form.negocioZonaResidencial || undefined,
+      negocioParentesco: form.negocioParentesco || undefined,
+      negocioParentescoTelefono: form.negocioParentescoTelefono || undefined,
+      ventaDiaria: form.ventaDiaria ? Number(form.ventaDiaria) : undefined,
+      capacidadPago: form.capacidadPago ? Number(form.capacidadPago) : undefined,
 
       // Fotos (enviamos nombres de archivo por ahora)
       fotosDocs: form.documentosFotos.map((f) => f.name),
       fotosNegocio: form.negocioFotos.map((f) => f.name),
+      fotosDireccionConyuge: (form.conyugeDireccionFotos || []).map((f) => f.name),
       // Cobrador asociado (id)
     };
 
@@ -772,12 +843,16 @@ const NuevoClientePage: React.FC = () => {
 
   const addReferencia = () => {
     setRefsPhoneEntries((prev) => [...prev, { code: '+504', number: '' }]);
+    setRefsParientePhoneEntries((prev) => [...prev, { code: '+504', number: '' }]);
     setRefsNames((prev) => [...prev, '']);
+    setRefsParentescosState((prev) => [...prev, '']);
   };
 
   const removeReferencia = (index: number) => {
     setRefsPhoneEntries((prev) => prev.filter((_, i) => i !== index));
+    setRefsParientePhoneEntries((prev) => prev.filter((_, i) => i !== index));
     setRefsNames((prev) => prev.filter((_, i) => i !== index));
+    setRefsParentescosState((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleReferenciaNameChange = (index: number, value: string) => {
@@ -938,7 +1013,6 @@ const NuevoClientePage: React.FC = () => {
                   type="email"
                   value={form.email}
                   onChange={(e) => handleChange('email', e.target.value)}
-                  required
                   margin="normal"
                   error={!!emailError}
                   helperText={emailError || 'Ejemplo: usuario@dominio.com'}
@@ -1035,26 +1109,15 @@ const NuevoClientePage: React.FC = () => {
             {/* PASO 1: DIRECCIÓN + CÓNYUGE */}
             {activeStep === 1 && (
               <>
-                <FormControl margin="normal">
-                  <InputLabel id="departamento-label">Departamento</InputLabel>
-                  <Select
-                    labelId="departamento-label"
-                    value={form.departamentoResidencia}
-                    label="Departamento"
-                    onChange={(e) =>
-                      handleChange(
-                        'departamentoResidencia',
-                        e.target.value as string,
-                      )
-                    }
-                  >
-                    {departamentosHonduras.map((d) => (
-                      <MenuItem key={d} value={d}>
-                        {d}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                <TextField
+                  label="Departamento"
+                  value={form.departamentoResidencia}
+                  onChange={(e) =>
+                    handleChange('departamentoResidencia', e.target.value)
+                  }
+                  required
+                  margin="normal"
+                />
 
                 <TextField
                   label="Municipio"
@@ -1108,6 +1171,57 @@ const NuevoClientePage: React.FC = () => {
                   fullWidth
                   sx={{ gridColumn: { xs: '1', sm: '1 / span 2' } }}
                 />
+                {/* Foto(s) de dirección */}
+                <Box sx={{ gridColumn: { xs: '1', sm: '1 / span 2' }, mt: 1 }}>
+                  <Typography variant="subtitle2">Foto(s) de dirección</Typography>
+                  <Button
+                    variant="outlined"
+                    component="label"
+                    size="small"
+                    sx={{ mt: 1 }}
+                  >
+                    Cargar foto de dirección
+                    <input
+                      type="file"
+                      hidden
+                      accept="image/*"
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files ?? []);
+                        setForm((prev) => ({
+                          ...prev,
+                          direccionFotos: [...(prev.direccionFotos || []), ...(files as File[])],
+                        }));
+                      }}
+                    />
+                  </Button>
+                  {(form.direccionFotos || []).length > 0 && (
+                    <List dense>
+                      {(form.direccionFotos || []).map((f, idx) => (
+                        <ListItem
+                          key={idx}
+                          sx={{ py: 0, display: 'flex', alignItems: 'center' }}
+                          secondaryAction={
+                            <IconButton
+                              edge="end"
+                              aria-label="eliminar"
+                              size="small"
+                              onClick={() =>
+                                setForm((prev) => ({
+                                  ...prev,
+                                  direccionFotos: (prev.direccionFotos || []).filter((_, i) => i !== idx),
+                                }))
+                              }
+                            >
+                              <RemoveCircleOutlineIcon fontSize="small" />
+                            </IconButton>
+                          }
+                        >
+                          <ListItemText primary={f.name} />
+                        </ListItem>
+                      ))}
+                    </List>
+                  )}
+                </Box>
 
                 <Box sx={{ gridColumn: { xs: '1', sm: '1 / span 2' }, mt: 2 }}>
                   <Typography variant="subtitle2">Datos del cónyuge</Typography>
@@ -1154,6 +1268,58 @@ const NuevoClientePage: React.FC = () => {
                           helperText="Ingrese solo 8 números"
                           error={conyugePhoneEntry.number.replace(/[^\d]/g, '').length !== 8 && conyugePhoneEntry.number.length > 0}
                         />
+                      </Box>
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 12 }}>
+                      <Box sx={{ mt: 1 }}>
+                        <Typography variant="subtitle2">Foto(s) de dirección del cónyuge (opcional)</Typography>
+                        <Button
+                          variant="outlined"
+                          component="label"
+                          size="small"
+                          sx={{ mt: 1 }}
+                        >
+                          Cargar foto de dirección del cónyuge
+                          <input
+                            type="file"
+                            hidden
+                            accept="image/*"
+                            onChange={(e) => {
+                              const files = Array.from(e.target.files ?? []);
+                              setForm((prev) => ({
+                                ...prev,
+                                conyugeDireccionFotos: [...(prev.conyugeDireccionFotos || []), ...(files as File[])],
+                              }));
+                            }}
+                          />
+                        </Button>
+                        {(form.conyugeDireccionFotos || []).length > 0 && (
+                          <List dense>
+                            {(form.conyugeDireccionFotos || []).map((f, idx) => (
+                              <ListItem
+                                key={idx}
+                                sx={{ py: 0, display: 'flex', alignItems: 'center' }}
+                                secondaryAction={
+                                  <IconButton
+                                    edge="end"
+                                    aria-label="eliminar"
+                                    size="small"
+                                    onClick={() =>
+                                      setForm((prev) => ({
+                                        ...prev,
+                                        conyugeDireccionFotos: (prev.conyugeDireccionFotos || []).filter((_, i) => i !== idx),
+                                      }))
+                                    }
+                                  >
+                                    <RemoveCircleOutlineIcon fontSize="small" />
+                                  </IconButton>
+                                }
+                              >
+                                <ListItemText primary={f.name} />
+                              </ListItem>
+                            ))}
+                          </List>
+                        )}
                       </Box>
                     </Grid>
                   </Grid>
@@ -1266,6 +1432,50 @@ const NuevoClientePage: React.FC = () => {
                         }
                         size="small"
                         sx={{ minWidth: 220 }}
+                      />
+                      <TextField
+                        label={`Parentesco referencia ${index + 1}`}
+                        value={refsParentescosState[index] || ''}
+                        onChange={(e) =>
+                          setRefsParentescosState((prev) => {
+                            const next = [...prev];
+                            next[index] = e.target.value;
+                            return next;
+                          })
+                        }
+                        size="small"
+                        sx={{ flex: 1 }}
+                      />
+                      <FormControl sx={{ minWidth: 140 }} size="small">
+                        <InputLabel id={`ref-pariente-country-${index}`}>País</InputLabel>
+                        <Select
+                          labelId={`ref-pariente-country-${index}`}
+                          value={refsParientePhoneEntries[index]?.code || '+504'}
+                          label="País"
+                          onChange={(e) =>
+                            handleReferenciaParientePhoneChange(index, 'code', e.target.value as string)
+                          }
+                        >
+                          {countryCodes.map((c) => (
+                            <MenuItem key={c.code} value={c.code}>
+                              {c.name} ({c.code})
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      <TextField
+                        value={refsParientePhoneEntries[index]?.number || ''}
+                        onChange={(e) =>
+                          handleReferenciaParientePhoneChange(index, 'number', e.target.value)
+                        }
+                        placeholder="XXXX-XXXX"
+                        size="small"
+                        sx={{ flex: 1 }}
+                        helperText="Teléfono del pariente (8 dígitos)"
+                        error={
+                          (refsParientePhoneEntries[index]?.number || '').replace(/[^\d]/g, '').length > 0 &&
+                          (refsParientePhoneEntries[index]?.number || '').replace(/[^\d]/g, '').length !== 8
+                        }
                       />
                       <FormControl sx={{ minWidth: 140 }} size="small">
                         <InputLabel id={`ref-country-${index}`}>País</InputLabel>
@@ -1398,6 +1608,46 @@ const NuevoClientePage: React.FC = () => {
                       />
                     </Grid>
                     <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextField
+                        label="Parentesco del propietario"
+                        value={form.negocioParentesco || ''}
+                        onChange={(e) => handleChange('negocioParentesco', e.target.value)}
+                        fullWidth
+                        margin="normal"
+                        size="small"
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                        <FormControl sx={{ minWidth: 140 }} size="small">
+                          <InputLabel id="negocio-pariente-country-code">País</InputLabel>
+                          <Select
+                            labelId="negocio-pariente-country-code"
+                            value={(form.negocioParentescoTelefono || '+504').split(' ')[0]}
+                            label="País"
+                            onChange={(e) => {
+                              const digits = (form.negocioParentescoTelefono || '').replace(/[^\d]/g, '').slice(-8);
+                              handleChange('negocioParentescoTelefono', `${e.target.value as string} ${digits}`);
+                            }}
+                          >
+                            {countryCodes.map((c) => (
+                              <MenuItem key={c.code} value={c.code}>
+                                {c.name} ({c.code})
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                        <TextField
+                          value={(form.negocioParentescoTelefono || '').replace(/^\+\d{1,4}\s*/, '')}
+                          onChange={(e) => handleChange('negocioParentescoTelefono', `${(form.negocioParentescoTelefono || '+504').split(' ')[0]} ${e.target.value.replace(/[^\d]/g, '').slice(0, 8)}`)}
+                          placeholder="XXXX-XXXX"
+                          size="small"
+                          sx={{ flex: 1 }}
+                          helperText="Teléfono del pariente (8 dígitos)"
+                        />
+                      </Box>
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
                       <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
                         <FormControl sx={{ minWidth: 140 }} size="small">
                           <InputLabel id="negocio-country-code">País</InputLabel>
@@ -1430,21 +1680,37 @@ const NuevoClientePage: React.FC = () => {
                       </Box>
                     </Grid>
                     <Grid size={{ xs: 12, sm: 6 }}>
-                      <FormControl fullWidth size="small">
-                        <InputLabel id="negocio-departamento">Departamento</InputLabel>
-                        <Select
-                          labelId="negocio-departamento"
-                          value={form.negocioDepartamento || ''}
-                          label="Departamento"
-                          onChange={(e) => handleChange('negocioDepartamento', e.target.value as string)}
-                        >
-                          {departamentosHonduras.map((d) => (
-                            <MenuItem key={d} value={d}>
-                              {d}
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
+                      <TextField
+                        label="Venta diaria"
+                        type="number"
+                        value={form.ventaDiaria || ''}
+                        onChange={(e) => handleChange('ventaDiaria', String(Math.max(0, Number(e.target.value) || 0)))}
+                        fullWidth
+                        margin="normal"
+                        size="small"
+                        inputProps={{ min: 0 }}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextField
+                        label="Capacidad de pago"
+                        type="number"
+                        value={form.capacidadPago || ''}
+                        onChange={(e) => handleChange('capacidadPago', String(Math.max(0, Number(e.target.value) || 0)))}
+                        fullWidth
+                        margin="normal"
+                        size="small"
+                        inputProps={{ min: 0 }}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextField
+                        label="Departamento"
+                        value={form.negocioDepartamento || ''}
+                        onChange={(e) => handleChange('negocioDepartamento', e.target.value as string)}
+                        fullWidth
+                        size="small"
+                      />
                     </Grid>
                     <Grid size={{ xs: 12, sm: 6 }}>
                       <TextField
