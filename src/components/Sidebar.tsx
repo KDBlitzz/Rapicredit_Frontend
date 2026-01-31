@@ -49,7 +49,8 @@ const navItems: NavSection[] = [
           { label: "Seguro de Vida", href: "/reportes/seguro-vida" },
           { label: "Pago al SAR", href: "/reportes/pago-sar" },
         ]
-      }
+      },
+      { label: "Estadísticas Asesor", href: "/empleados/estadisticas" }
     ],
   },
   {
