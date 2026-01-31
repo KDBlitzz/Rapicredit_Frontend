@@ -17,11 +17,12 @@ import {
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { useRouter } from 'next/navigation';
-// import { apiFetch } from '../../../lib/api';
+import { apiFetch } from '../../../lib/api';
 import { useClientes, ClienteResumen } from '../../../hooks/useClientes';
 import { useEmpleados, Empleado } from '../../../hooks/useEmpleados';
 import { useTasasInteres, TasaInteres } from '../../../hooks/useTasasInteres';
 import { useFrecuenciasPago, FrecuenciaPago } from '../../../hooks/useFrecuenciasPago';
+import { useClienteDetalle } from '../../../hooks/useClienteDetalle';
 
 type EstadoInicial = 'REGISTRADA';
 
@@ -58,10 +59,89 @@ const NuevoSolicitudPage: React.FC = () => {
   const [selectedTasa, setSelectedTasa] = useState<TasaInteres | null>(null);
   const [selectedFrecuencia, setSelectedFrecuencia] = useState<FrecuenciaPago | null>(null);
 
+  // Detalle del cliente seleccionado para completar datos adicionales
+  // Usa codigoCliente porque el backend busca por código, no por ObjectId
+  const selectedClienteCodigo = selectedCliente?.codigoCliente || '';
+  const { data: clienteDetalle } = useClienteDetalle(selectedClienteCodigo);
+
+  // Generador local de códigos estilo S001, S002… (persistido en localStorage)
+  const nextCodigoSolicitud = () => {
+    try {
+      if (typeof window !== 'undefined') {
+        const key = 'solicitudes_seq';
+        const prev = parseInt(window.localStorage.getItem(key) || '0', 10);
+        const next = Number.isFinite(prev) ? prev + 1 : 1;
+        window.localStorage.setItem(key, String(next));
+        return `SOL-${String(next).padStart(3, '0')}`;
+      }
+    } catch {}
+    // Fallback si localStorage no está disponible
+    const rnd = Math.floor(Math.random() * 999) + 1;
+    return `SOL-${String(rnd).padStart(3, '0')}`;
+  };
+
+  // Resolver el ObjectId de Mongo del empleado (vendedor/usuario creador)
+  const isMongoObjectId = (v?: string | null) => typeof v === 'string' && /^[a-f\d]{24}$/i.test(v);
+  const resolveEmpleadoMongoId = async (emp: Empleado | null): Promise<string | null> => {
+    if (!emp) return null;
+    // If already a 24-hex, use it directly
+    if (isMongoObjectId(emp._id)) return emp._id;
+
+    const code = emp.codigoUsuario || emp.usuario || null;
+    if (!code) return null;
+
+    // Try to fetch full list of empleados and find matching record to get real _id
+    const listCandidates = [`/empleados/codigos`, `/empleados`];
+    for (const ep of listCandidates) {
+      try {
+        const res: any = await apiFetch<any>(ep);
+
+        let all: any[] = [];
+        if (Array.isArray(res)) {
+          all = res;
+        } else if (res && (Array.isArray(res.activos) || Array.isArray(res.inactivos))) {
+          all = [
+            ...(Array.isArray(res.activos) ? res.activos : []),
+            ...(Array.isArray(res.inactivos) ? res.inactivos : []),
+          ];
+        } else if (typeof res === 'object' && res !== null) {
+          all = Object.values(res).flat().filter(Boolean) as any[];
+        }
+
+        const match = all.find((a: any) => {
+          const c = a.codigoUsuario ?? a.usuario ?? a._id ?? a.id ?? '';
+          return String(c) === String(code);
+        }) || all.find((a: any) => String(a._id ?? a.id ?? '') === String(emp._id));
+
+        const mongoId = String(match?._id ?? match?.id ?? '');
+        if (isMongoObjectId(mongoId)) return mongoId;
+      } catch {
+        // continue to next candidate
+      }
+    }
+
+    // As a last attempt, try common detail endpoints by code
+    const detailCandidates = [
+      `/empleados/codigo/${code}`,
+      `/empleados/by-codigo/${code}`,
+      `/empleados/${code}`,
+    ];
+    for (const ep of detailCandidates) {
+      try {
+        const res: any = await apiFetch<any>(ep);
+        const mongoId = String(res?._id ?? res?.id ?? '');
+        if (isMongoObjectId(mongoId)) return mongoId;
+      } catch {
+        // ignore and continue
+      }
+    }
+
+    return null;
+  };
+
   // Etiquetas de opción
   const getClienteLabel = (c: ClienteResumen | null) => {
     if (!c) return '';
-    // nombreCompleto ya viene armado del hook
     return [c.codigoCliente, c.nombreCompleto, c.identidadCliente]
       .filter(Boolean)
       .join(' • ');
@@ -144,23 +224,87 @@ const NuevoSolicitudPage: React.FC = () => {
     setSaving(true);
 
     try {
+      // Mapear la frecuencia (Días/Semanas/Quincenas/Meses) al enum del backend
+      const frecuenciaEnum = (() => {
+        const nombre = selectedFrecuencia?.nombre;
+        switch (nombre) {
+          case 'Días':
+            return 'DIARIO';
+          case 'Semanas':
+            return 'SEMANAL';
+          case 'Quincenas':
+            return 'QUINCENAL';
+          case 'Meses':
+            return 'MENSUAL';
+          default:
+            return null;
+        }
+      })();
+
+      // Completar datos extra desde el cliente
+      const datosNegocio = clienteDetalle
+        ? {
+            nombre: clienteDetalle.negocioNombre || undefined,
+            tipo: clienteDetalle.negocioTipo || undefined,
+            telefono: clienteDetalle.negocioTelefono || undefined,
+            direccion: clienteDetalle.negocioDireccion || undefined,
+            departamento: clienteDetalle.negocioDepartamento || undefined,
+            municipio: clienteDetalle.negocioMunicipio || undefined,
+            zonaResidencial: clienteDetalle.negocioZonaResidencial || undefined,
+            fotos: clienteDetalle.negocioFotos || undefined,
+          }
+        : {};
+
+      const datosConyuge = clienteDetalle
+        ? {
+            nombre: clienteDetalle.conyugeNombre || undefined,
+            telefono: clienteDetalle.conyugeTelefono || undefined,
+          }
+        : {};
+
+      const referenciasPersonales = clienteDetalle?.referencias
+        ? clienteDetalle.referencias.map((r) => ({ referencia: r }))
+        : [];
+
+      // Generar código estilo S001 usando secuencia local
+      const codigoSolicitud = nextCodigoSolicitud();
+
+      // Resolver IDs de vendedor/usuario creador como ObjectId
+      const vendedorMongoId = await resolveEmpleadoMongoId(selectedCobrador);
+      if (!vendedorMongoId) {
+        throw new Error('No se pudo resolver el ID de vendedor (ObjectId).');
+      }
+
       const payload = {
-        // Enviar IDs directos según el esquema
-        // OJO: useClientes ya mapea id = _id del backend si existe
+        codigoSolicitud,
         clienteId: selectedCliente?.id,
-        cobradorId: selectedCobrador?._id,
+        vendedorId: vendedorMongoId,
+
         capitalSolicitado: Number(form.capitalSolicitado),
-        plazoCuotas: form.plazoCuotas ? Number(form.plazoCuotas) : null,
-        finalidadCredito: form.finalidadCredito || null,
-        fechaSolicitud: form.fechaSolicitud,
-        observaciones: form.observaciones || '',
         tasInteresId: selectedTasa?._id || null,
-        frecuenciaPagoId: selectedFrecuencia?._id || null,
+        // Algunos controladores exigen el valor numérico además del id
+        tasaInteres: selectedTasa?.porcentajeInteres ?? undefined,
+        frecuenciaPago: frecuenciaEnum,
+        plazoCuotas: form.plazoCuotas ? Number(form.plazoCuotas) : 1,
+
+        fechaSolicitud: form.fechaSolicitud,
+        finalidadCredito: form.finalidadCredito || 'Sin especificar',
+
+        datosNegocio,
+        datosConyuge,
+        referenciasPersonales,
+        garantias: [],
+
         estadoSolicitud: 'REGISTRADA' as EstadoInicial,
+        observaciones: form.observaciones || '',
+        // Usuario creador igual al vendedor seleccionado (hasta tener auth real)
+        usuarioCreacionId: vendedorMongoId,
       };
 
-      // Backend deshabilitado: simular guardado
-      console.log('Solicitud (simulada) enviada:', payload);
+      await apiFetch<any>('/solicitudes', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
 
       setSnackbarSeverity('success');
       setSnackbarMsg('Solicitud registrada correctamente.');
@@ -169,7 +313,8 @@ const NuevoSolicitudPage: React.FC = () => {
     } catch (err: unknown) {
       console.error(err);
       setSnackbarSeverity('error');
-      setSnackbarMsg('Error al registrar la solicitud.');
+      const msg = err instanceof Error ? err.message : 'Error al registrar la solicitud.';
+      setSnackbarMsg(msg);
       setSnackbarOpen(true);
     } finally {
       setSaving(false);
@@ -273,7 +418,7 @@ const NuevoSolicitudPage: React.FC = () => {
                 />
               </Grid>
 
-              {/* Capital y plazo */}
+              {/* Capital */}
               <Grid size={{ xs: 12, sm: 4 }}>
                 <TextField
                   label="Capital solicitado"
@@ -286,29 +431,6 @@ const NuevoSolicitudPage: React.FC = () => {
                   required
                 />
               </Grid>
-              {/*<Grid size={{ xs: 12, sm: 4 }}>
-                <TextField
-                  label="Plazo en cuotas"
-                  name="plazoCuotas"
-                  value={form.plazoCuotas}
-                  onChange={handleChange}
-                  fullWidth
-                  size="small"
-                  inputProps={{ inputMode: 'numeric' }}
-                  placeholder="Opcional"
-                />
-              </Grid>
-              <Grid size={{ xs: 12, sm: 4 }}>
-                <TextField
-                  label="Finalidad del crédito"
-                  name="finalidadCredito"
-                  value={form.finalidadCredito}
-                  onChange={handleChange}
-                  fullWidth
-                  size="small"
-                  placeholder="Crédito personal, capital de trabajo…"
-                />
-              </Grid>*/}
 
               {/* Fecha y comentario */}
               <Grid size={{ xs: 12, sm: 4 }}>
