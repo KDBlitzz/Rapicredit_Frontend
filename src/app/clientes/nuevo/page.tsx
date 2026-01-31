@@ -1109,15 +1109,23 @@ const NuevoClientePage: React.FC = () => {
             {/* PASO 1: DIRECCIÓN + CÓNYUGE */}
             {activeStep === 1 && (
               <>
-                <TextField
-                  label="Departamento"
-                  value={form.departamentoResidencia}
-                  onChange={(e) =>
-                    handleChange('departamentoResidencia', e.target.value)
-                  }
-                  required
-                  margin="normal"
-                />
+                <FormControl margin="normal" required>
+                  <InputLabel id="departamento-residencia-label">Departamento</InputLabel>
+                  <Select
+                    labelId="departamento-residencia-label"
+                    value={form.departamentoResidencia}
+                    label="Departamento"
+                    onChange={(e) =>
+                      handleChange('departamentoResidencia', e.target.value as string)
+                    }
+                  >
+                    {departamentosHonduras.map((dep) => (
+                      <MenuItem key={dep} value={dep}>
+                        {dep}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
 
                 <TextField
                   label="Municipio"
@@ -1704,13 +1712,21 @@ const NuevoClientePage: React.FC = () => {
                       />
                     </Grid>
                     <Grid size={{ xs: 12, sm: 6 }}>
-                      <TextField
-                        label="Departamento"
-                        value={form.negocioDepartamento || ''}
-                        onChange={(e) => handleChange('negocioDepartamento', e.target.value as string)}
-                        fullWidth
-                        size="small"
-                      />
+                      <FormControl fullWidth size="small" margin="normal">
+                        <InputLabel id="negocio-departamento-label">Departamento</InputLabel>
+                        <Select
+                          labelId="negocio-departamento-label"
+                          value={form.negocioDepartamento || ''}
+                          label="Departamento"
+                          onChange={(e) => handleChange('negocioDepartamento', e.target.value as string)}
+                        >
+                          {departamentosHonduras.map((dep) => (
+                            <MenuItem key={dep} value={dep}>
+                              {dep}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
                     </Grid>
                     <Grid size={{ xs: 12, sm: 6 }}>
                       <TextField
