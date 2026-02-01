@@ -16,7 +16,7 @@
     "@mui/material": "^7.3.6",
     "@mui/material-nextjs": "^7.3.6",
     "admin": "^1.4.1",
-    "firebase": "^12.6.0",
+    "firebase": "^12.8.0",
     "next": "16.0.7",
     "react": "19.2.0",
     "react-dom": "19.2.0"

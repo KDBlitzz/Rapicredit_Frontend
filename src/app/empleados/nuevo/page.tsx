@@ -110,17 +110,29 @@ const NuevoEmpleadoPage: React.FC = () => {
   };
 
   React.useEffect(() => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-    fetch(`${apiUrl}/permisos/`)
-      .then((res) => res.json())
-      .then((data) => {
+    let cancelled = false;
+
+    const loadPermisos = async () => {
+      try {
+        const data = await apiFetch<any>(`/permisos/`); // ✅ usa apiFetch (manda token)
+
         const permisos = (data || []).map((p: any) => ({
           codigoPermiso: p.codigoPermiso,
           permiso: p.permiso,
         }));
-        setPermisosBD(permisos);
-      })
-      .catch(() => setPermisosBD([]));
+
+        if (!cancelled) setPermisosBD(permisos);
+      } catch (err) {
+        console.error("Error cargando permisos:", err);
+        if (!cancelled) setPermisosBD([]);
+      }
+    };
+
+    loadPermisos();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Al montar, calcular el siguiente código y asignarlo al formulario
@@ -131,7 +143,7 @@ const NuevoEmpleadoPage: React.FC = () => {
     const loadNextCode = async () => {
       try {
         const nextCode = await getNextEmployeeCode();
-        
+
         if (!cancelled) {
           setFormData((prev) => ({
             ...prev,
