@@ -42,10 +42,15 @@ export default function LoginPage() {
 
       //  navegación suave (evita carreras y recargas)
       router.push("/dashboard");
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("LOGIN FAIL:", err);
       showTemporaryMessage(setErrorMessage, "Credenciales incorrectas");
     }
+  };
+
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    handleLogin();
   };
 
   return (
@@ -93,7 +98,8 @@ export default function LoginPage() {
           {errorMessage && <Alert severity="error" sx={{ mb: 2 }}>{errorMessage}</Alert>}
           {successMessage && <Alert severity="success" sx={{ mb: 2 }}>{successMessage}</Alert>}
 
-          <Stack spacing={2}>
+          <Box component="form" onSubmit={handleSubmit}>
+            <Stack spacing={2}>
             <TextField
               label="Usuario (email)"
               fullWidth
@@ -141,7 +147,7 @@ export default function LoginPage() {
             <Button
               variant="contained"
               size="large"
-              onClick={handleLogin}
+                type="submit"
               sx={{
                 mt: 1,
                 py: 1.3,
@@ -154,7 +160,8 @@ export default function LoginPage() {
             >
               Entrar
             </Button>
-          </Stack>
+            </Stack>
+          </Box>
         </CardContent>
       </Card>
     </Box>
