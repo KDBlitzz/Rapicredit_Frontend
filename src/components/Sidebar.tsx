@@ -36,6 +36,7 @@ const navItems: NavSection[] = [
     section: "Personal",
     items: [
       { label: "Empleados", href: "/empleados" },
+      { label: "Gestión de Carteras", href: "/carteras" },
     ],
   },
   {
