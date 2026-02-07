@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   Alert,
   Box,
@@ -15,7 +15,6 @@ import {
   Grid,
   IconButton,
   LinearProgress,
-  MenuItem,
   Paper,
   Stack,
   Switch,
@@ -25,91 +24,88 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Tabs,
   Tab,
+  Tabs,
   TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
-import { Add, Edit, Refresh, Delete } from "@mui/icons-material";
+import { Add, Delete, Edit, Refresh } from "@mui/icons-material";
 import { useTasas, Tasa } from "../../hooks/useTasas";
 
-const FRECUENCIAS = [
-  { value: "DIARIO", label: "Diario" },
-  { value: "SEMANAL", label: "Semanal" },
-  { value: "QUINCENAL", label: "Quincenal" },
-  { value: "MENSUAL", label: "Mensual" },
-];
-
-
 const emptyForm = {
+  codigoTasa: "",
   nombre: "",
-  tasaAnual: "24",
-  tasaMora: "36",
-  minCapital: "",
-  maxCapital: "",
-  solicitudRequerida: true,
-  frecuenciaCobro: "MENSUAL",
-  vigenciaDesde: "",
-  vigenciaHasta: "",
+  descripcion: "",
+  porcentajeInteres: "24",
+  porcentajeMora: "0",
+  capitalMin: "",
+  capitalMax: "",
+  requiereSolicitud: false,
   activa: true,
-  notas: "",
 };
 
 type FormState = typeof emptyForm;
 
 export default function TasasPage() {
-  const { data, loading, saving, error, reload, createTasa, updateTasa, deleteTasa, setEstadoTasa } = useTasas();
+  const {
+    data,
+    loading,
+    saving,
+    error,
+    reload,
+    createTasa,
+    updateTasaByCodigo,
+    deleteTasa,
+    toggleActiveByCodigo,
+  } = useTasas();
+
   const [tab, setTab] = useState<"ACTIVAS" | "INACTIVAS">("ACTIVAS");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Tasa | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
-  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const [updatingCode, setUpdatingCode] = useState<string | null>(null);
-  const [confirmTasa, setConfirmTasa] = useState<{ codigo: string; nextState: boolean; nombre?: string } | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<{ codigo: string; nombre?: string } | null>(null);
-  const [deletingCode, setDeletingCode] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [confirmToggle, setConfirmToggle] = useState<{ codigoTasa: string; nextState: boolean; nombre?: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ codigoTasa: string; nombre?: string } | null>(null);
+  const [busyCodigo, setBusyCodigo] = useState<string | null>(null);
 
   const tasasFiltradas = useMemo(() => {
-    const source = data;
-    if (tab === "ACTIVAS") {
-      return source.filter((t: Tasa) => (t.estado === true) || (t.estado === undefined && t.activa !== false));
-    }
-    return source.filter((t: Tasa) => (t.estado === false) || (t.estado === undefined && t.activa !== false));
+    if (tab === "ACTIVAS") return data.filter((t) => t.activa !== false);
+    return data.filter((t) => t.activa === false);
   }, [data, tab]);
 
-  const counts = useMemo(
-    () => {
-      const source = data;
-      return {
-        activas: source.filter((t: Tasa) => (t.estado === true) || (t.estado === undefined && t.activa !== false)).length,
-        inactivas: source.filter((t: Tasa) => (t.estado === false) || (t.estado === undefined && t.activa !== false)).length,
-      };
-    },
-    [data]
-  );
+  const counts = useMemo(() => {
+    return {
+      activas: data.filter((t) => t.activa !== false).length,
+      inactivas: data.filter((t) => t.activa === false).length,
+    };
+  }, [data]);
+
+  const handleChange = useCallback((name: keyof FormState, value: string | boolean) => {
+    setForm((prev) => ({ ...prev, [name]: value }));
+  }, []);
 
   const handleOpenCreate = () => {
     setEditing(null);
     setForm(emptyForm);
+    setFormError(null);
     setDialogOpen(true);
   };
 
-  const handleOpenEdit = (t: Tasa) => {
-    setEditing(t);
+  const handleOpenEdit = (tasa: Tasa) => {
+    setEditing(tasa);
+    setFormError(null);
     setForm({
-      nombre: t.nombre || "",
-      tasaAnual: t.tasaAnual?.toString() || "",
-      tasaMora: t.tasaMora?.toString() || "",
-      minCapital: t.minCapital?.toString() || "",
-      maxCapital: t.maxCapital?.toString() || "",
-      solicitudRequerida: t.solicitudRequerida ?? true,
-      frecuenciaCobro: t.frecuenciaCobro || "MENSUAL",
-      vigenciaDesde: t.vigenciaDesde?.slice(0, 10) || "",
-      vigenciaHasta: t.vigenciaHasta?.slice(0, 10) || "",
-      activa: t.activa !== false,
-      notas: t.notas || "",
+      codigoTasa: tasa.codigoTasa ?? "",
+      nombre: tasa.nombre ?? "",
+      descripcion: tasa.descripcion ?? "",
+      porcentajeInteres: (tasa.porcentajeInteres ?? 0).toString(),
+      porcentajeMora: (tasa.porcentajeMora ?? 0).toString(),
+      capitalMin: (tasa.capitalMin ?? "").toString(),
+      capitalMax: (tasa.capitalMax ?? "").toString(),
+      requiereSolicitud: tasa.requiereSolicitud ?? false,
+      activa: tasa.activa !== false,
     });
     setDialogOpen(true);
   };
@@ -117,112 +113,7 @@ export default function TasasPage() {
   const handleCloseDialog = () => {
     setDialogOpen(false);
     setEditing(null);
-  };
-
-  const handleChange = (name: keyof FormState, value: string | boolean) => {
-    setForm((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
     setFormError(null);
-
-    if (!form.nombre.trim()) {
-      setFormError("El nombre es obligatorio.");
-      return;
-    }
-
-    const tasaAnual = Number(form.tasaAnual);
-    const tasaMora = form.tasaMora ? Number(form.tasaMora) : undefined;
-    const minCapital = form.minCapital ? Number(form.minCapital) : undefined;
-    const maxCapital = form.maxCapital ? Number(form.maxCapital) : undefined;
-
-    if (Number.isNaN(tasaAnual) || tasaAnual <= 0) {
-      setFormError("Ingresa una tasa anual válida.");
-      return;
-    }
-
-    // Validación: mínimo capital < máximo capital, cuando ambos existen
-    if (minCapital != null && maxCapital != null) {
-      if (Number.isNaN(minCapital) || Number.isNaN(maxCapital)) {
-        setFormError("Ingresa valores de capital válidos.");
-        return;
-      }
-      if (minCapital >= maxCapital) {
-        setFormError("El mínimo capital debe ser menor al máximo capital.");
-        return;
-      }
-    }
-
-    // Validación: vigenciaDesde < vigenciaHasta, cuando ambos existen
-    if (form.vigenciaDesde && form.vigenciaHasta) {
-      const desde = new Date(form.vigenciaDesde);
-      const hasta = new Date(form.vigenciaHasta);
-      if (!(desde < hasta)) {
-        setFormError("La fecha 'Vigencia desde' debe ser menor que 'Vigencia hasta'.");
-        return;
-      }
-    }
-
-    const payload = {
-      nombre: form.nombre.trim(),
-      tasaAnual,
-      tasaMora,
-      minCapital,
-      maxCapital,
-      solicitudRequerida: form.solicitudRequerida,
-      frecuenciaCobro: form.frecuenciaCobro || undefined,
-      vigenciaDesde: form.vigenciaDesde || undefined,
-      vigenciaHasta: form.vigenciaHasta || undefined,
-      activa: form.activa,
-      notas: form.notas.trim() || undefined,
-    };
-
-    try {
-      if (editing?._id) {
-        await updateTasa(editing._id, payload);
-        setFeedback({ type: "success", message: "Tasa actualizada." });
-      } else {
-        await createTasa(payload);
-        setFeedback({ type: "success", message: "Tasa creada." });
-      }
-      setDialogOpen(false);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "No se pudo guardar la tasa.";
-      setFormError(message);
-    }
-  };
-
-  const toggleActivaByCodigo = async (codigo: string, nextState: boolean) => {
-    if (!codigo) {
-      setFeedback({ type: "error", message: "No se puede actualizar: la tasa no tiene código." });
-      return;
-    }
-    try {
-      setUpdatingCode(codigo);
-      await setEstadoTasa(codigo, nextState);
-      setFeedback({ type: "success", message: nextState ? "Tasa activada." : "Tasa desactivada." });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "No se pudo actualizar el estado.";
-      setFeedback({ type: "error", message });
-    } finally {
-      setUpdatingCode(null);
-    }
-  };
-
-  const handleDelete = async (codigo: string) => {
-    try {
-      setDeletingCode(codigo);
-      setFeedback(null);
-      await deleteTasa(codigo);
-      setFeedback({ type: "success", message: "Tasa eliminada." });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "No se pudo eliminar.";
-      setFeedback({ type: "error", message });
-    } finally {
-      setDeletingCode(null);
-      setConfirmDelete(null);
-    }
   };
 
   const formatPercent = (val?: number) => {
@@ -232,18 +123,107 @@ export default function TasasPage() {
 
   const formatMoney = (val?: number) => {
     if (val == null || Number.isNaN(val)) return "-";
-    return `L. ${val.toLocaleString("es-HN", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
+    return `L. ${val.toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
-  // función de fecha eliminada por no usarse
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError(null);
+
+    const codigoTasa = form.codigoTasa.trim();
+    const nombre = form.nombre.trim();
+    const descripcion = form.descripcion.trim() || undefined;
+
+    if (!editing && !codigoTasa) {
+      setFormError("El código de tasa es obligatorio.");
+      return;
+    }
+    if (!nombre) {
+      setFormError("El nombre es obligatorio.");
+      return;
+    }
+
+    const porcentajeInteres = Number(form.porcentajeInteres);
+    if (Number.isNaN(porcentajeInteres) || porcentajeInteres <= 0) {
+      setFormError("Ingresa un porcentaje de interés válido.");
+      return;
+    }
+
+    const porcentajeMora = form.porcentajeMora ? Number(form.porcentajeMora) : undefined;
+    const capitalMin = form.capitalMin ? Number(form.capitalMin) : undefined;
+    const capitalMax = form.capitalMax ? Number(form.capitalMax) : undefined;
+
+    if (capitalMin != null && capitalMax != null && capitalMin >= capitalMax) {
+      setFormError("El capital mínimo debe ser menor al máximo.");
+      return;
+    }
+
+    const updatePayload = {
+      nombre,
+      descripcion,
+      porcentajeInteres,
+      porcentajeMora,
+      capitalMin,
+      capitalMax,
+      requiereSolicitud: form.requiereSolicitud,
+      activa: form.activa,
+    };
+
+    try {
+      if (editing) {
+        await updateTasaByCodigo(editing.codigoTasa, updatePayload);
+        setFeedback({ type: "success", message: "Tasa actualizada." });
+      } else {
+        await createTasa({
+          codigoTasa,
+          ...updatePayload,
+        });
+        setFeedback({ type: "success", message: "Tasa creada." });
+      }
+      setDialogOpen(false);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "No se pudo guardar la tasa.";
+      setFormError(message);
+    }
+  };
+
+  const doToggle = async (codigoTasa: string, nextState: boolean) => {
+    if (!codigoTasa) return;
+    try {
+      setBusyCodigo(codigoTasa);
+      await toggleActiveByCodigo(codigoTasa);
+      setFeedback({ type: "success", message: nextState ? "Tasa activada." : "Tasa desactivada." });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "No se pudo actualizar el estado.";
+      setFeedback({ type: "error", message });
+    } finally {
+      setBusyCodigo(null);
+    }
+  };
+
+  const doDelete = async (codigoTasa: string) => {
+    if (!codigoTasa) return;
+    try {
+      setBusyCodigo(codigoTasa);
+      await deleteTasa(codigoTasa);
+      setFeedback({ type: "success", message: "Tasa eliminada." });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "No se pudo eliminar.";
+      setFeedback({ type: "error", message });
+    } finally {
+      setBusyCodigo(null);
+    }
+  };
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
       <Paper sx={{ p: 2, backgroundColor: "rgba(15,23,42,0.6)", borderColor: "rgba(74, 222, 128, 0.25)" }}>
-        <Stack direction={{ xs: "column", md: "row" }} alignItems={{ xs: "flex-start", md: "center" }} justifyContent="space-between" spacing={1.5}>
+        <Stack
+          direction={{ xs: "column", md: "row" }}
+          alignItems={{ xs: "flex-start", md: "center" }}
+          justifyContent="space-between"
+          spacing={1.5}
+        >
           <Box>
             <Breadcrumbs separator="›" sx={{ color: "text.secondary", fontSize: 12, mb: 0.5 }}>
               <Typography color="text.secondary">Administración</Typography>
@@ -253,37 +233,21 @@ export default function TasasPage() {
               Tasas de interés
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              Gestiona tasas activas, montos y condiciones de solicitud.
+              Gestiona tasas, montos y condiciones de solicitud.
             </Typography>
           </Box>
+
           <Stack direction="row" spacing={1}>
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<Refresh />}
-              onClick={reload}
-              disabled={loading || saving}
-            >
+            <Button variant="outlined" size="small" startIcon={<Refresh />} onClick={reload} disabled={loading || saving}>
               Recargar
             </Button>
-            <Button
-              variant="contained"
-              size="small"
-              startIcon={<Add />}
-              onClick={handleOpenCreate}
-            >
+            <Button variant="contained" size="small" startIcon={<Add />} onClick={handleOpenCreate}>
               Nueva tasa
             </Button>
           </Stack>
         </Stack>
 
-        <Tabs
-          value={tab}
-          onChange={(_, val) => setTab(val)}
-          textColor="secondary"
-          indicatorColor="secondary"
-          sx={{ mt: 2, width: "100%" }}
-        >
+        <Tabs value={tab} onChange={(_, val) => setTab(val)} textColor="secondary" indicatorColor="secondary" sx={{ mt: 2, width: "100%" }}>
           <Tab
             value="ACTIVAS"
             label={
@@ -306,8 +270,6 @@ export default function TasasPage() {
           />
         </Tabs>
 
-        {/* Demo info alert removed */}
-
         {error && (
           <Alert severity="error" sx={{ mt: 2 }}>
             {error}
@@ -320,8 +282,10 @@ export default function TasasPage() {
           <Table size="small">
             <TableHead>
               <TableRow>
+                <TableCell>Código</TableCell>
                 <TableCell>Nombre</TableCell>
-                <TableCell>Tasa</TableCell>
+                <TableCell>Interés</TableCell>
+                <TableCell>Mora</TableCell>
                 <TableCell>Rango de capital</TableCell>
                 <TableCell>Solicitud</TableCell>
                 <TableCell>Estado</TableCell>
@@ -329,40 +293,44 @@ export default function TasasPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {tasasFiltradas.map((tasa: Tasa) => (
-                <TableRow key={tasa._id || tasa.nombre} hover>
+              {tasasFiltradas.map((tasa) => (
+                <TableRow key={tasa._id || tasa.codigoTasa || tasa.nombre} hover>
+                  <TableCell>
+                    <Typography variant="body2" fontWeight={700}>
+                      {tasa.codigoTasa || "-"}
+                    </Typography>
+                  </TableCell>
                   <TableCell>
                     <Box>
                       <Typography fontWeight={700}>{tasa.nombre}</Typography>
-                      {tasa.notas && (
+                      {tasa.descripcion ? (
                         <Typography variant="caption" color="text.secondary">
-                          {tasa.notas}
+                          {tasa.descripcion}
                         </Typography>
-                      )}
+                      ) : null}
                     </Box>
                   </TableCell>
-                  <TableCell sx={{ color: "#4ade80", fontWeight: 700 }}>
-                    {formatPercent(tasa.tasaAnual)}
-                  </TableCell>
+                  <TableCell sx={{ color: "#4ade80", fontWeight: 700 }}>{formatPercent(tasa.porcentajeInteres)}</TableCell>
+                  <TableCell>{formatPercent(tasa.porcentajeMora)}</TableCell>
                   <TableCell>
                     <Typography variant="body2">
-                      {formatMoney(tasa.minCapital)} - {formatMoney(tasa.maxCapital)}
+                      {formatMoney(tasa.capitalMin)} - {formatMoney(tasa.capitalMax)}
                     </Typography>
                   </TableCell>
                   <TableCell>
                     <Chip
                       size="small"
-                      label={tasa.solicitudRequerida === false ? "No requerida" : "Requerida"}
-                      color={tasa.solicitudRequerida === false ? "default" : "primary"}
+                      label={tasa.requiereSolicitud ? "Requerida" : "No requerida"}
+                      color={tasa.requiereSolicitud ? "primary" : "default"}
                       variant="outlined"
                     />
                   </TableCell>
                   <TableCell>
                     <Chip
                       size="small"
-                      label={tasa.estado === false ? "Inactiva" : "Activa"}
-                      color={tasa.estado === false ? "default" : "success"}
-                      variant={tasa.estado === false ? "outlined" : "filled"}
+                      label={tasa.activa === false ? "Inactiva" : "Activa"}
+                      color={tasa.activa === false ? "default" : "success"}
+                      variant={tasa.activa === false ? "outlined" : "filled"}
                     />
                   </TableCell>
                   <TableCell align="right">
@@ -376,8 +344,8 @@ export default function TasasPage() {
                         <IconButton
                           size="small"
                           color="error"
-                          onClick={() => setConfirmDelete({ codigo: tasa.codigo ?? "", nombre: tasa.nombre })}
-                          disabled={(tasa.codigo ? deletingCode === tasa.codigo : false) || saving}
+                          onClick={() => setConfirmDelete({ codigoTasa: tasa.codigoTasa, nombre: tasa.nombre })}
+                          disabled={Boolean(busyCodigo) || saving}
                         >
                           <Delete fontSize="small" />
                         </IconButton>
@@ -385,63 +353,56 @@ export default function TasasPage() {
                       <Button
                         size="small"
                         variant="outlined"
-                        color={tasa.estado === false ? "success" : "error"}
+                        color={tasa.activa === false ? "success" : "error"}
                         onClick={() => {
-                          const currentActive = tasa.estado === true;
-                          setConfirmTasa({ codigo: tasa.codigo ?? "", nextState: !currentActive, nombre: tasa.nombre });
+                          const nextState = tasa.activa === false;
+                          setConfirmToggle({ codigoTasa: tasa.codigoTasa, nextState, nombre: tasa.nombre });
                         }}
-                        disabled={(tasa.codigo ? updatingCode === tasa.codigo : false) || saving}
+                        disabled={Boolean(busyCodigo) || saving}
                       >
-                        {tasa.estado === false ? "Activar" : "Desactivar"}
+                        {tasa.activa === false ? "Activar" : "Desactivar"}
                       </Button>
                     </Stack>
                   </TableCell>
                 </TableRow>
               ))}
 
-              {!loading && tasasFiltradas.length === 0 && (
+              {!loading && tasasFiltradas.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} align="center">
+                  <TableCell colSpan={8} align="center">
                     <Typography variant="body2" color="text.secondary">
                       No hay tasas registradas en este estado.
                     </Typography>
                   </TableCell>
                 </TableRow>
-              )}
+              ) : null}
             </TableBody>
           </Table>
         </TableContainer>
       </Paper>
 
-      {/* Confirmación activar/desactivar tasa */}
-      <Dialog open={Boolean(confirmTasa)} onClose={() => setConfirmTasa(null)} maxWidth="xs" fullWidth>
+      <Dialog open={Boolean(confirmToggle)} onClose={() => setConfirmToggle(null)} maxWidth="xs" fullWidth>
         <DialogTitle>
-          {confirmTasa?.nextState === false
-            ? "¿Desea desactivar esta tasa?"
-            : "¿Desea activar esta tasa?"}
+          {confirmToggle?.nextState ? "¿Desea activar esta tasa?" : "¿Desea desactivar esta tasa?"}
         </DialogTitle>
         <DialogActions>
-          <Button onClick={() => setConfirmTasa(null)}>Cancelar</Button>
+          <Button onClick={() => setConfirmToggle(null)}>Cancelar</Button>
           <Button
             variant="contained"
-            color={confirmTasa?.nextState === false ? "error" : "success"}
+            color={confirmToggle?.nextState ? "success" : "error"}
             onClick={async () => {
-              if (confirmTasa) {
-                await toggleActivaByCodigo(confirmTasa.codigo, confirmTasa.nextState);
-              }
-              setConfirmTasa(null);
+              if (!confirmToggle) return;
+              await doToggle(confirmToggle.codigoTasa, confirmToggle.nextState);
+              setConfirmToggle(null);
             }}
           >
-            {confirmTasa?.nextState === false ? "Desactivar" : "Activar"}
+            {confirmToggle?.nextState ? "Activar" : "Desactivar"}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Confirmación eliminar tasa */}
       <Dialog open={Boolean(confirmDelete)} onClose={() => setConfirmDelete(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>
-          {"¿Desea eliminar esta tasa?"}
-        </DialogTitle>
+        <DialogTitle>¿Desea eliminar esta tasa?</DialogTitle>
         <DialogActions>
           <Button onClick={() => setConfirmDelete(null)}>Cancelar</Button>
           <Button
@@ -449,13 +410,8 @@ export default function TasasPage() {
             color="error"
             onClick={async () => {
               if (!confirmDelete) return;
-              const codigo = (confirmDelete.codigo || "").trim();
-              if (!codigo) {
-                setFeedback({ type: "error", message: "No se puede eliminar: la tasa no tiene código." });
-                setConfirmDelete(null);
-                return;
-              }
-              await handleDelete(codigo);
+              await doDelete(confirmDelete.codigoTasa);
+              setConfirmDelete(null);
             }}
           >
             Eliminar
@@ -470,21 +426,32 @@ export default function TasasPage() {
             <Grid container spacing={2} sx={{ mt: 0 }}>
               <Grid size={{ xs: 12 }}>
                 <TextField
-                  label="Nombre"
+                  label="Código de tasa"
                   fullWidth
-                  value={form.nombre}
-                  onChange={(e) => handleChange("nombre", e.target.value)}
-                  required
+                  value={form.codigoTasa}
+                  onChange={(e) => handleChange("codigoTasa", e.target.value)}
+                  required={!editing}
+                  disabled={Boolean(editing)}
+                  helperText={editing ? "El código es inmutable." : "Ej: TAS-001"}
                 />
               </Grid>
+
+              <Grid size={{ xs: 12 }}>
+                <TextField label="Nombre" fullWidth value={form.nombre} onChange={(e) => handleChange("nombre", e.target.value)} required />
+              </Grid>
+
+              <Grid size={{ xs: 12 }}>
+                <TextField label="Descripción" fullWidth value={form.descripcion} onChange={(e) => handleChange("descripcion", e.target.value)} />
+              </Grid>
+
               <Grid size={{ xs: 12, md: 6 }}>
                 <TextField
-                  label="Tasa (%)"
+                  label="Interés (%)"
                   fullWidth
                   type="number"
                   inputProps={{ min: 0, step: 0.01 }}
-                  value={form.tasaAnual}
-                  onChange={(e) => handleChange("tasaAnual", e.target.value)}
+                  value={form.porcentajeInteres}
+                  onChange={(e) => handleChange("porcentajeInteres", e.target.value)}
                   required
                 />
               </Grid>
@@ -494,104 +461,51 @@ export default function TasasPage() {
                   fullWidth
                   type="number"
                   inputProps={{ min: 0, step: 0.01 }}
-                  value={form.tasaMora}
-                  onChange={(e) => handleChange("tasaMora", e.target.value)}
+                  value={form.porcentajeMora}
+                  onChange={(e) => handleChange("porcentajeMora", e.target.value)}
                 />
               </Grid>
+
               <Grid size={{ xs: 12, md: 6 }}>
                 <TextField
-                  label="Mínimo capital"
+                  label="Capital mínimo"
                   fullWidth
                   type="number"
                   inputProps={{ min: 0, step: 1000 }}
-                  value={form.minCapital}
-                  onChange={(e) => handleChange("minCapital", e.target.value)}
+                  value={form.capitalMin}
+                  onChange={(e) => handleChange("capitalMin", e.target.value)}
                 />
               </Grid>
               <Grid size={{ xs: 12, md: 6 }}>
                 <TextField
-                  label="Máximo capital"
+                  label="Capital máximo"
                   fullWidth
                   type="number"
                   inputProps={{ min: 0, step: 1000 }}
-                  value={form.maxCapital}
-                  onChange={(e) => handleChange("maxCapital", e.target.value)}
+                  value={form.capitalMax}
+                  onChange={(e) => handleChange("capitalMax", e.target.value)}
                 />
               </Grid>
-              <Grid size={{ xs: 12, md: 6 }}>
-                <TextField
-                  label="Descripción"
-                  fullWidth
-                  multiline
-                  minRows={1}
-                  value={form.notas}
-                  onChange={(e) => handleChange("notas", e.target.value)}
-                />
-              </Grid>
-              <Grid size={{ xs: 12, md: 6 }}>
-                <TextField
-                  select
-                  label="Frecuencia de cobro"
-                  fullWidth
-                  value={form.frecuenciaCobro}
-                  onChange={(e) => handleChange("frecuenciaCobro", e.target.value)}
-                >
-                  {FRECUENCIAS.map((f) => (
-                    <MenuItem key={f.value} value={f.value}>
-                      {f.label}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              </Grid>
-              {/* Descripción movida al espacio del apartado eliminado */}
-              <Grid size={{ xs: 12, md: 6 }}>
-                <TextField
-                  label="Vigencia desde"
-                  type="date"
-                  fullWidth
-                  InputLabelProps={{ shrink: true }}
-                  value={form.vigenciaDesde}
-                  onChange={(e) => handleChange("vigenciaDesde", e.target.value)}
-                />
-              </Grid>
-              <Grid size={{ xs: 12, md: 6 }}>
-                <TextField
-                  label="Vigencia hasta"
-                  type="date"
-                  fullWidth
-                  InputLabelProps={{ shrink: true }}
-                  value={form.vigenciaHasta}
-                  onChange={(e) => handleChange("vigenciaHasta", e.target.value)}
+
+              <Grid size={{ xs: 12 }}>
+                <FormControlLabel
+                  control={<Switch checked={form.activa} onChange={(_, val) => handleChange("activa", val)} />}
+                  label="Activa"
                 />
               </Grid>
               <Grid size={{ xs: 12 }}>
                 <FormControlLabel
-                  control={
-                    <Switch
-                      checked={form.activa}
-                      onChange={(_, val) => handleChange("activa", val)}
-                    />
-                  }
-                  label="Tasa vigente"
-                />
-              </Grid>
-              <Grid size={{ xs: 12 }}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={form.solicitudRequerida}
-                      onChange={(_, val) => handleChange("solicitudRequerida", val)}
-                    />
-                  }
+                  control={<Switch checked={form.requiereSolicitud} onChange={(_, val) => handleChange("requiereSolicitud", val)} />}
                   label="Solicitud requerida"
                 />
               </Grid>
             </Grid>
-            {formError && (
+
+            {formError ? (
               <Alert severity="error" sx={{ mt: 2 }}>
                 {formError}
               </Alert>
-            )}
+            ) : null}
           </DialogContent>
           <DialogActions>
             <Button onClick={handleCloseDialog}>Cancelar</Button>
@@ -602,18 +516,16 @@ export default function TasasPage() {
         </form>
       </Dialog>
 
-      {feedback && feedback.type === "success" && (
+      {feedback?.type === "success" ? (
         <Alert severity="success" onClose={() => setFeedback(null)}>
           {feedback.message}
         </Alert>
-      )}
-
-      {feedback && feedback.type === "error" && (
+      ) : null}
+      {feedback?.type === "error" ? (
         <Alert severity="error" onClose={() => setFeedback(null)}>
           {feedback.message}
         </Alert>
-      )}
-
+      ) : null}
     </Box>
   );
 }

@@ -22,7 +22,43 @@ export interface SolicitudesFilters {
   estado: EstadoSolicitudFiltro;
 }
 
-export function useSolicitudes(filters: SolicitudesFilters) {
+type UnknownRecord = Record<string, unknown>;
+
+const isRecord = (v: unknown): v is UnknownRecord => typeof v === 'object' && v !== null;
+
+const getNested = (v: unknown, keys: string[]): unknown => {
+  let cur: unknown = v;
+  for (const k of keys) {
+    if (!isRecord(cur)) return undefined;
+    cur = cur[k];
+  }
+  return cur;
+};
+
+const asString = (v: unknown): string | undefined => {
+  if (typeof v === 'string') return v;
+  if (v == null) return undefined;
+  return String(v);
+};
+
+const asNumber = (v: unknown): number | undefined => {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+};
+
+export interface UseSolicitudesOptions {
+  /**
+   * Cualquier valor que cambie para forzar recarga.
+   * Útil cuando se ejecutan acciones (aprobar/en revisión/rechazar).
+   */
+  refreshKey?: unknown;
+}
+
+export function useSolicitudes(filters: SolicitudesFilters, options: UseSolicitudesOptions = {}) {
   const [data, setData] = useState<SolicitudResumen[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,37 +71,46 @@ export function useSolicitudes(filters: SolicitudesFilters) {
       setError(null);
 
       try {
-        const res = await apiFetch<any>(`/solicitudes/`);
+        const res = await apiFetch<unknown>(`/solicitudes/`);
 
         // Normalizar respuesta: puede ser array o { solicitudes: [...] }
-        const rawList: any[] = Array.isArray(res)
+        const resObj = isRecord(res) ? res : null;
+        const rawList: unknown[] = Array.isArray(res)
           ? res
-          : Array.isArray(res?.solicitudes)
-          ? res.solicitudes
-          : Array.isArray(res?.data)
-          ? res.data
+          : Array.isArray(resObj?.solicitudes)
+          ? (resObj?.solicitudes as unknown[])
+          : Array.isArray(resObj?.data)
+          ? (resObj?.data as unknown[])
           : [];
 
         // ✅ Helpers para obtener SIEMPRE el mismo id (evita mismatch y "Cliente")
-        const getClienteId = (a: any) =>
-          String(a?.clienteId?._id ?? a?.clienteId ?? a?.cliente?._id ?? a?.cliente?.id ?? '').trim();
+        const getClienteId = (a: unknown) => {
+          const v =
+            getNested(a, ['clienteId', '_id']) ??
+            getNested(a, ['clienteId']) ??
+            getNested(a, ['cliente', '_id']) ??
+            getNested(a, ['cliente', 'id']) ??
+            '';
+          return String(v ?? '').trim();
+        };
 
-        const getVendedorId = (a: any) =>
-          String(
-            a?.vendedorId?._id ??
-              a?.vendedorId ??
-              a?.cobradorId?._id ??
-              a?.cobradorId ??
-              a?.vendedor?._id ??
-              a?.cobrador?._id ??
-              ''
-          ).trim();
+        const getVendedorId = (a: unknown) => {
+          const v =
+            getNested(a, ['vendedorId', '_id']) ??
+            getNested(a, ['vendedorId']) ??
+            getNested(a, ['cobradorId', '_id']) ??
+            getNested(a, ['cobradorId']) ??
+            getNested(a, ['vendedor', '_id']) ??
+            getNested(a, ['cobrador', '_id']) ??
+            '';
+          return String(v ?? '').trim();
+        };
 
         // Recolectar IDs para enriquecer nombres
         const clienteIds = new Set<string>();
         const vendedorIds = new Set<string>();
 
-        rawList.forEach((a: any) => {
+        rawList.forEach((a: unknown) => {
           const cid = getClienteId(a);
           const vid = getVendedorId(a);
           if (cid) clienteIds.add(cid);
@@ -83,13 +128,17 @@ export function useSolicitudes(filters: SolicitudesFilters) {
         await Promise.all(
           Array.from(clienteIds).map(async (cid) => {
             try {
-              const c = await apiFetch<any>(`/clientes/id/${cid}`);
-              const nombre =
-                c?.nombreCompleto ||
-                [c?.nombre, c?.apellido].filter(Boolean).join(' ') ||
-                c?.razonSocial ||
+              const c = await apiFetch<unknown>(`/clientes/id/${cid}`);
+              const nombreCompleto = asString(getNested(c, ['nombreCompleto']));
+              const nombre = asString(getNested(c, ['nombre']));
+              const apellido = asString(getNested(c, ['apellido']));
+              const razonSocial = asString(getNested(c, ['razonSocial']));
+              const resolved =
+                nombreCompleto ||
+                [nombre, apellido].filter(Boolean).join(' ') ||
+                razonSocial ||
                 'Cliente';
-              clienteNames[cid] = String(nombre);
+              clienteNames[cid] = String(resolved);
             } catch (err) {
               // ✅ No ocultar errores (si falla, nunca se llenan los nombres)
               console.error('Fallo /clientes/id:', cid, err);
@@ -101,29 +150,39 @@ export function useSolicitudes(filters: SolicitudesFilters) {
         await Promise.all(
           Array.from(vendedorIds).map(async (vid) => {
             try {
-              const e = await apiFetch<any>(`/empleados/id/${vid}`);
-              const nombre =
-                e?.nombreCompleto ||
-                [e?.nombre, e?.apellido].filter(Boolean).join(' ') ||
-                e?.usuario ||
-                e?.codigoUsuario ||
+              const e = await apiFetch<unknown>(`/empleados/id/${vid}`);
+              const nombreCompleto = asString(getNested(e, ['nombreCompleto']));
+              const nombre = asString(getNested(e, ['nombre']));
+              const apellido = asString(getNested(e, ['apellido']));
+              const usuario = asString(getNested(e, ['usuario']));
+              const codigoUsuario = asString(getNested(e, ['codigoUsuario']));
+              const resolved =
+                nombreCompleto ||
+                [nombre, apellido].filter(Boolean).join(' ') ||
+                usuario ||
+                codigoUsuario ||
                 'Empleado';
-              empleadoNames[vid] = String(nombre);
+              empleadoNames[vid] = String(resolved);
             } catch (err) {
               console.error('Fallo /empleados/id:', vid, err);
             }
           })
         );
 
-        const mapped: SolicitudResumen[] = (rawList || []).map((a: any) => {
-          const id = String(a._id ?? a.id ?? '');
-          const codigoSolicitud = String(a.codigoSolicitud ?? a.codigo ?? '');
+        const mapped: SolicitudResumen[] = (rawList || []).map((a: unknown) => {
+          const id = String(getNested(a, ['_id']) ?? getNested(a, ['id']) ?? '');
+          const codigoSolicitud = String(
+            getNested(a, ['codigoSolicitud']) ?? getNested(a, ['codigo']) ?? ''
+          );
 
           const fechaSolicitud = (() => {
-            const f = a.fechaSolicitud ?? a.fecha ?? null;
+            const f = getNested(a, ['fechaSolicitud']) ?? getNested(a, ['fecha']) ?? null;
             if (!f) return undefined;
             try {
-              return typeof f === 'string' ? f : new Date(f).toISOString();
+              if (typeof f === 'string') return f;
+              if (typeof f === 'number') return new Date(f).toISOString();
+              if (f instanceof Date) return f.toISOString();
+              return undefined;
             } catch {
               return undefined;
             }
@@ -135,32 +194,40 @@ export function useSolicitudes(filters: SolicitudesFilters) {
 
           const clienteNombre =
             clienteNames[cid] ??
-            a.clienteNombre ??
-            (a.cliente?.nombreCompleto || [a.cliente?.nombre, a.cliente?.apellido].filter(Boolean).join(' ')) ??
+            asString(getNested(a, ['clienteNombre'])) ??
+            (asString(getNested(a, ['cliente', 'nombreCompleto'])) ||
+              [asString(getNested(a, ['cliente', 'nombre'])), asString(getNested(a, ['cliente', 'apellido']))]
+                .filter(Boolean)
+                .join(' ')) ??
             'Cliente';
 
           const clienteIdentidad =
-            a.clienteIdentidad ??
-            a.cliente?.identidadCliente ??
-            a.cliente?.identidad ??
+            asString(getNested(a, ['clienteIdentidad'])) ??
+            asString(getNested(a, ['cliente', 'identidadCliente'])) ??
+            asString(getNested(a, ['cliente', 'identidad'])) ??
             undefined;
 
-          const capitalSolicitado = Number(a.capitalSolicitado ?? a.capital ?? 0);
+          const capitalSolicitado =
+            asNumber(getNested(a, ['capitalSolicitado'])) ??
+            asNumber(getNested(a, ['capital'])) ??
+            0;
 
-          const estadoSolicitud = String(a.estadoSolicitud ?? a.estado ?? 'REGISTRADA');
+          const estadoSolicitud = String(
+            getNested(a, ['estadoSolicitud']) ?? getNested(a, ['estado']) ?? 'REGISTRADA'
+          );
 
           const cobradorNombre =
             empleadoNames[vid] ??
-            a.cobradorNombre ??
-            a.vendedor?.nombreCompleto ??
-            a.cobrador?.nombreCompleto ??
+            asString(getNested(a, ['cobradorNombre'])) ??
+            asString(getNested(a, ['vendedor', 'nombreCompleto'])) ??
+            asString(getNested(a, ['cobrador', 'nombreCompleto'])) ??
             undefined;
 
           const cuotaEstablecida =
-            a.cuotaEstablecida != null
-              ? Number(a.cuotaEstablecida)
-              : a.cuota != null
-              ? Number(a.cuota)
+            getNested(a, ['cuotaEstablecida']) != null
+              ? asNumber(getNested(a, ['cuotaEstablecida']))
+              : getNested(a, ['cuota']) != null
+              ? asNumber(getNested(a, ['cuota']))
               : undefined;
 
           return {
@@ -177,11 +244,12 @@ export function useSolicitudes(filters: SolicitudesFilters) {
         });
 
         if (!cancelled) setData(mapped);
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!cancelled) {
           console.error('Error cargando solicitudes:', err);
           setData([]);
-          setError(err?.message ?? 'Error cargando solicitudes');
+          const msg = err instanceof Error ? err.message : 'Error cargando solicitudes';
+          setError(msg);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -192,7 +260,7 @@ export function useSolicitudes(filters: SolicitudesFilters) {
     return () => {
       cancelled = true;
     };
-  }, [filters.busqueda, filters.estado]);
+  }, [filters.busqueda, filters.estado, options.refreshKey]);
 
   // Filtrado en memoria
   const filteredData = data.filter((s) => {

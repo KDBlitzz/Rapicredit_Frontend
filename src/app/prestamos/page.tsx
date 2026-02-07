@@ -51,8 +51,9 @@ const PrestamosPage: React.FC = () => {
     let color: "default" | "success" | "warning" | "error" | "info" = "info";
 
     if (val === "VIGENTE") color = "success";
-    else if (val === "EN_MORA") color = "error";
-    else if (val === "PAGADO") color = "default";
+    else if (val === "PENDIENTE") color = "warning";
+    else if (val === "CERRADO") color = "default";
+    else if (val === "RECHAZADO") color = "error";
 
     return <Chip size="small" label={val} color={color} variant="outlined" />;
   };
@@ -82,8 +83,9 @@ const PrestamosPage: React.FC = () => {
           >
             <MenuItem value="TODOS">Todos</MenuItem>
             <MenuItem value="VIGENTE">Vigentes</MenuItem>
-            <MenuItem value="EN_MORA">En mora</MenuItem>
-            <MenuItem value="PAGADO">Pagados</MenuItem>
+            <MenuItem value="PENDIENTE">Pendientes</MenuItem>
+            <MenuItem value="CERRADO">Cerrados</MenuItem>
+            <MenuItem value="RECHAZADO">Rechazados</MenuItem>
           </TextField>
         </Grid>
 
@@ -130,12 +132,13 @@ const PrestamosPage: React.FC = () => {
               <TableRow>
                 <TableCell>Código</TableCell>
                 <TableCell>Cliente</TableCell>
-                <TableCell>Monto</TableCell>
-                <TableCell>Saldo</TableCell>
                 <TableCell>Estado</TableCell>
+                <TableCell>Frecuencia</TableCell>
+                <TableCell>Cuotas</TableCell>
+                <TableCell>Capital</TableCell>
+                <TableCell>Cuota fija</TableCell>
                 <TableCell>Desembolso</TableCell>
                 <TableCell>Vencimiento</TableCell>
-                <TableCell>Cobrador</TableCell>
                 <TableCell></TableCell>
               </TableRow>
             </TableHead>
@@ -145,22 +148,21 @@ const PrestamosPage: React.FC = () => {
                 data.length > 0 &&
                 data.map((p) => (
                   <TableRow key={p.id}>
-                    <TableCell>{p.codigoFinanciamiento}</TableCell>
+                    <TableCell>{p.codigoPrestamo}</TableCell>
                     <TableCell>{p.clienteNombre}</TableCell>
-                    <TableCell>{formatMoney(p.capitalInicial ?? 0)}</TableCell>
-                    <TableCell>{formatMoney(p.saldoCapital ?? 0)}</TableCell>
-                    <TableCell>
-                      {renderEstadoChip(p.estadoFinanciamiento)}
-                    </TableCell>
+                    <TableCell>{renderEstadoChip(p.estadoPrestamo)}</TableCell>
+                    <TableCell>{p.frecuenciaPago || "—"}</TableCell>
+                    <TableCell>{p.plazoCuotas ?? 0}</TableCell>
+                    <TableCell>{formatMoney(p.capitalSolicitado ?? 0)}</TableCell>
+                    <TableCell>{formatMoney(p.cuotaFija ?? 0)}</TableCell>
                     <TableCell>{formatDate(p.fechaDesembolso)}</TableCell>
                     <TableCell>{formatDate(p.fechaVencimiento)}</TableCell>
-                    <TableCell>{p.cobradorNombre || "—"}</TableCell>
                     <TableCell>
                       <Button
                         size="small"
                         variant="text"
                         component={Link}
-                        href={`/prestamos/${p.id}`}
+                        href={`/prestamos/${encodeURIComponent(p.codigoPrestamo)}`}
                       >
                         Ver
                       </Button>
