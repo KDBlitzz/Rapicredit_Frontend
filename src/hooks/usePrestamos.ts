@@ -1,21 +1,57 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 
-export type EstadoPrestamoFiltro = "TODOS" | "VIGENTE" | "EN_MORA" | "PAGADO";
+type UnknownRecord = Record<string, unknown>;
+
+const isRecord = (v: unknown): v is UnknownRecord => typeof v === "object" && v !== null;
+
+const getNested = (v: unknown, keys: string[]): unknown => {
+  let cur: unknown = v;
+  for (const k of keys) {
+    if (!isRecord(cur)) return undefined;
+    cur = cur[k];
+  }
+  return cur;
+};
+
+const asString = (v: unknown): string | undefined => {
+  if (typeof v === "string") return v;
+  if (v == null) return undefined;
+  return String(v);
+};
+
+const asNumber = (v: unknown): number | undefined => {
+  if (typeof v === "number") return Number.isFinite(v) ? v : undefined;
+  if (typeof v === "string" && v.trim() !== "") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+};
+
+export type EstadoPrestamoFiltro =
+  | "TODOS"
+  | "VIGENTE"
+  | "PENDIENTE"
+  | "CERRADO"
+  | "RECHAZADO";
 
 export interface PrestamoResumen {
   id: string;
-  codigoFinanciamiento: string;
+  codigoPrestamo: string;
+  clienteId?: string;
+  clienteCodigo?: string;
   clienteNombre: string;
   clienteIdentidad?: string;
-  estadoFinanciamiento: string;
-  capitalInicial: number;
-  saldoCapital: number;
+  estadoPrestamo: string;
+  frecuenciaPago?: string;
+  capitalSolicitado: number;
+  cuotaFija: number;
+  plazoCuotas: number;
   fechaDesembolso?: string;
   fechaVencimiento?: string;
-  cobradorNombre?: string;
 }
 
 export interface PrestamosFilters {
@@ -28,6 +64,8 @@ export function usePrestamos(filters: PrestamosFilters) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const clienteNombrePorCodigoRef = useRef<Record<string, string>>({});
+
   useEffect(() => {
     let cancelled = false;
 
@@ -35,44 +73,148 @@ export function usePrestamos(filters: PrestamosFilters) {
       setLoading(true);
       setError(null);
       try {
-        // 👇 Ajusta el path si tu backend usa otro prefijo (/prestamos)
-        const res = await apiFetch<any[]>("/financiamientos");
+        const res = await apiFetch<unknown>("/prestamos");
 
         if (cancelled) return;
 
-        const mapped: PrestamoResumen[] = (res || []).map((f: any) => {
-          const cliente = f.clienteId || f.cliente || {};
-          const cobrador = f.cobradorId || f.cobrador || {};
+        const resObj = isRecord(res) ? res : null;
+        const rawList: unknown[] = Array.isArray(res)
+          ? res
+          : Array.isArray(resObj?.prestamos)
+          ? (resObj?.prestamos as unknown[])
+          : Array.isArray(resObj?.data)
+          ? (resObj?.data as unknown[])
+          : [];
 
-          const nombreCliente =
-            cliente.nombreCompleto ||
-            [cliente.nombres, cliente.apellidos].filter(Boolean).join(" ") ||
-            cliente.razonSocial ||
-            "Cliente";
+        const mapped: PrestamoResumen[] = rawList.map((p: unknown) => {
+          const id = String(getNested(p, ["_id"]) ?? getNested(p, ["id"]) ?? "");
+          const codigoPrestamo = String(getNested(p, ["codigoPrestamo"]) ?? "");
+
+          const clienteRaw = getNested(p, ["cliente"]) ?? getNested(p, ["clienteId"]);
+          const clienteIdFromField = (() => {
+            const direct = getNested(p, ["clienteId"]);
+            if (typeof direct === "string") return direct;
+            return undefined;
+          })();
+          const clienteIdFromObj = asString(getNested(clienteRaw, ["_id"])) || asString(getNested(clienteRaw, ["id"]));
+          const clienteId = clienteIdFromField || clienteIdFromObj || undefined;
+
+          // Preferir codigoCliente (identificador de negocio) para resolver nombre
+          // porque algunas rutas/backend trabajan por codigo y no por ObjectId.
+          const clienteCodigoRaw =
+            asString(getNested(p, ["clienteCodigo"])) ||
+            asString(getNested(p, ["codigoCliente"])) ||
+            asString(getNested(clienteRaw, ["codigoCliente"])) ||
+            undefined;
+
+          const clienteCodigo = (() => {
+            if (clienteCodigoRaw) return clienteCodigoRaw;
+            // Si `clienteId` viene como string, a veces es `codigoCliente` (no ObjectId).
+            // Heurística: ObjectId Mongo suele ser hex de 24 chars.
+            if (clienteIdFromField && !/^[a-f\d]{24}$/i.test(clienteIdFromField)) return clienteIdFromField;
+            return undefined;
+          })();
+
+          const cachedByCodigo = clienteCodigo ? clienteNombrePorCodigoRef.current[clienteCodigo] : undefined;
+
+          const clienteNombre =
+            cachedByCodigo ||
+            asString(getNested(p, ["clienteNombre"])) ||
+            (() => {
+              const nombreCompleto = asString(getNested(clienteRaw, ["nombreCompleto"]));
+              const nombre = asString(getNested(clienteRaw, ["nombre"]));
+              const apellido = asString(getNested(clienteRaw, ["apellido"]));
+              return (
+                nombreCompleto ||
+                [nombre, apellido].filter(Boolean).join(" ") ||
+                "—"
+              );
+            })();
+
+          const clienteIdentidad =
+            asString(getNested(p, ["clienteIdentidad"])) ||
+            asString(getNested(clienteRaw, ["identidadCliente"])) ||
+            asString(getNested(clienteRaw, ["identidad"])) ||
+            undefined;
+
+          const estadoPrestamo = String(getNested(p, ["estadoPrestamo"]) ?? "");
+
+          const capitalSolicitado = asNumber(getNested(p, ["capitalSolicitado"])) ?? 0;
+          const cuotaFija = asNumber(getNested(p, ["cuotaFija"])) ?? 0;
+          const plazoCuotas = asNumber(getNested(p, ["plazoCuotas"])) ?? 0;
+          const frecuenciaPago = asString(getNested(p, ["frecuenciaPago"])) ?? undefined;
+
+          const fechaDesembolso = asString(getNested(p, ["fechaDesembolso"])) ?? undefined;
+          const fechaVencimiento = asString(getNested(p, ["fechaVencimiento"])) ?? undefined;
 
           return {
-            id: String(f._id ?? f.id ?? ""),
-            codigoFinanciamiento: f.codigoFinanciamiento ?? "",
-            clienteNombre: nombreCliente,
-            clienteIdentidad:
-              cliente.identidadCliente ?? cliente.identidad ?? undefined,
-            estadoFinanciamiento: f.estadoFinanciamiento ?? "",
-            capitalInicial: f.capitalInicial ?? 0,
-            saldoCapital: f.saldoCapital ?? 0,
-            fechaDesembolso: f.fechaDesembolso,
-            fechaVencimiento: f.fechaVencimiento,
-            cobradorNombre:
-              cobrador.nombreCompleto ??
-              cobrador.nombre ??
-              cobrador.codigo ??
-              undefined,
+            id,
+            codigoPrestamo,
+            clienteId,
+            clienteCodigo,
+            clienteNombre,
+            clienteIdentidad,
+            estadoPrestamo,
+            frecuenciaPago,
+            capitalSolicitado,
+            cuotaFija,
+            plazoCuotas,
+            fechaDesembolso,
+            fechaVencimiento,
           };
         });
 
-        setData(mapped);
-      } catch (err: any) {
+        // Si faltan nombres, resolverlos con UNA consulta a /clientes usando codigoCliente.
+        const codigosNecesarios = Array.from(
+          new Set(
+            mapped
+              .filter((p) => !!p.clienteCodigo && (!p.clienteNombre || p.clienteNombre === "—"))
+              .map((p) => p.clienteCodigo as string)
+              .filter((c) => !clienteNombrePorCodigoRef.current[c])
+          )
+        );
+
+        if (codigosNecesarios.length > 0) {
+          try {
+            const clientes = await apiFetch<unknown>("/clientes");
+            const list: unknown[] = (() => {
+              if (Array.isArray(clientes)) return clientes;
+              if (!isRecord(clientes)) return [];
+              const data = getNested(clientes, ["data"]);
+              if (Array.isArray(data)) return data;
+              const clientesInner = getNested(clientes, ["clientes"]);
+              if (Array.isArray(clientesInner)) return clientesInner;
+              return [];
+            })();
+
+            for (const c of list) {
+              const codigo = asString(getNested(c, ["codigoCliente"]));
+              if (!codigo) continue;
+              const nombreCompleto = asString(getNested(c, ["nombreCompleto"]));
+              const nombre = asString(getNested(c, ["nombre"]));
+              const apellido = asString(getNested(c, ["apellido"]));
+              const resolved = nombreCompleto || [nombre, apellido].filter(Boolean).join(" ") || "";
+              if (resolved) clienteNombrePorCodigoRef.current[codigo] = resolved;
+            }
+          } catch {
+            // Si no tenemos permisos para /clientes, dejamos "—" sin romper la pantalla.
+          }
+        }
+
+        const filled = mapped.map((p) => {
+          if (p.clienteNombre && p.clienteNombre !== "—") return p;
+          if (!p.clienteCodigo) return p;
+          const resolved = clienteNombrePorCodigoRef.current[p.clienteCodigo];
+          return resolved ? { ...p, clienteNombre: resolved } : p;
+        });
+
+        setData(filled);
+      } catch (err: unknown) {
         console.error("Error cargando préstamos:", err);
-        if (!cancelled) setError(err.message || "Error al cargar préstamos");
+        if (!cancelled) {
+          const msg = err instanceof Error ? err.message : "Error al cargar préstamos";
+          setError(msg);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -90,7 +232,7 @@ export function usePrestamos(filters: PrestamosFilters) {
 
   if (filters.estado !== "TODOS") {
     filtrados = filtrados.filter(
-      (p) => p.estadoFinanciamiento.toUpperCase() === filters.estado
+      (p) => (p.estadoPrestamo || "").toUpperCase() === filters.estado
     );
   }
 
@@ -98,7 +240,7 @@ export function usePrestamos(filters: PrestamosFilters) {
     const q = filters.busqueda.trim().toLowerCase();
     filtrados = filtrados.filter((p) => {
       return (
-        p.codigoFinanciamiento.toLowerCase().includes(q) ||
+        p.codigoPrestamo.toLowerCase().includes(q) ||
         p.clienteNombre.toLowerCase().includes(q) ||
         (p.clienteIdentidad || "").toLowerCase().includes(q)
       );

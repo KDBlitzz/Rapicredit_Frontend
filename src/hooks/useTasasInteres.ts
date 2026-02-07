@@ -5,6 +5,7 @@ import { apiFetch } from "../lib/api";
 
 export interface TasaInteres {
   _id: string;
+  codigoTasa?: string;
   nombre: string;
   porcentajeInteres?: number;
 }
@@ -22,7 +23,7 @@ export function useTasasInteres() {
       setError(null);
       try {
         // Ajusta el endpoint según tu backend
-        const res = await apiFetch<TasaInteres[]>("/tasas/");
+          const res = await apiFetch<TasaInteres[]>("/tasas");
         if (!cancelled) setData(res || []);
       } catch (err: unknown) {
         console.error("Error cargando tasas de interés:", err);

@@ -1,13 +1,12 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import {
   Box,
   Grid,
   Paper,
   Typography,
   TextField,
-  MenuItem,
   Button,
   TableContainer,
   Table,
@@ -17,42 +16,44 @@ import {
   TableBody,
   Chip,
   CircularProgress,
+  IconButton,
+  Tooltip,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
+  Snackbar,
+  Alert,
 } from "@mui/material";
 import { useSolicitudes, EstadoSolicitudFiltro } from "../../../hooks/useSolicitudes";
 import { apiFetch } from "../../../lib/api";
 
 const estadosAccionFinales = ["APROBADA", "RECHAZADA"]; // no mostrar acciones si ya está finalizada
 
-type Accion = "PRE_APROBADA" | "RECHAZADA";
+type SolicitudAccion = "APROBAR" | "RECHAZAR";
 
 const PreAprobacionPage: React.FC = () => {
   const [busqueda, setBusqueda] = useState("");
-  const [estado, setEstado] = useState<EstadoSolicitudFiltro>("EN_REVISION");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [accion, setAccion] = useState<Accion | null>(null);
-  const [comentario, setComentario] = useState("");
-  const [targetId, setTargetId] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  const { data, loading, error: loadError } = useSolicitudes({ busqueda, estado });
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<SolicitudAccion | null>(null);
+  const [targetSolicitudId, setTargetSolicitudId] = useState<string | null>(null);
+  const [targetSolicitudCodigo, setTargetSolicitudCodigo] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
-  const isSupervisor = useMemo(() => {
-    try {
-      const rol = (typeof window !== "undefined" && localStorage.getItem("rol")) || "";
-      return (rol || "").toUpperCase() === "SUPERVISOR";
-    } catch {
-      return false;
-    }
-  }, []);
+  const [toastOpen, setToastOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string>("");
+  const [toastSeverity, setToastSeverity] = useState<"success" | "error" | "info" | "warning">("success");
+
+  const { data, loading, error: loadError } = useSolicitudes(
+    { busqueda, estado: "EN_REVISION" satisfies EstadoSolicitudFiltro },
+    { refreshKey }
+  );
 
   const canActOn = (estadoActual?: string) => {
     const v = (estadoActual || "").toUpperCase();
-    return isSupervisor && !estadosAccionFinales.includes(v);
+    return !estadosAccionFinales.includes(v);
   };
 
   const formatMoney = (v?: number) => (v != null ? `L. ${v.toLocaleString("es-HN", { minimumFractionDigits: 2 })}` : "L. 0.00");
@@ -67,42 +68,61 @@ const PreAprobacionPage: React.FC = () => {
     return <Chip size="small" label={val} color={color} variant="outlined" />;
   };
 
-  const openDialog = (id: string, a: Accion) => {
-    setTargetId(id);
-    setAccion(a);
-    setComentario("");
-    setError(null);
-    setDialogOpen(true);
+  const openConfirm = (a: SolicitudAccion, id: string, codigoSolicitud: string) => {
+    setConfirmAction(a);
+    setTargetSolicitudId(id);
+    setTargetSolicitudCodigo(codigoSolicitud);
+    setConfirmOpen(true);
   };
 
-  const submitAccion = async () => {
-    if (!targetId || !accion) return;
-    setSaving(true);
-    setError(null);
+  const closeConfirm = () => {
+    if (actionLoading) return;
+    setConfirmOpen(false);
+    setConfirmAction(null);
+    setTargetSolicitudId(null);
+    setTargetSolicitudCodigo(null);
+  };
+
+  const getConfirmMessage = (a: SolicitudAccion | null) => {
+    if (a === "APROBAR") return "¿Desea aprobar esta solicitud?";
+    if (a === "RECHAZAR") return "¿Desea rechazar esta solicitud?";
+    return "";
+  };
+
+  const runAction = async () => {
+    if (!confirmAction || !targetSolicitudId || !targetSolicitudCodigo) return;
+
+    setActionLoading(true);
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("token") || undefined : undefined;
-      await apiFetch(`/solicitudes/${targetId}/preaprobacion`, {
-        method: "POST",
-        body: JSON.stringify({ accion, comentario: comentario || undefined }),
-        authToken: token,
-      });
-      setDialogOpen(false);
-      setComentario("");
-      // simple refresh: toggle estado to refetch
-      setEstado((prev) => prev);
-    } catch (e: any) {
-      setError(e?.message || "No se pudo registrar la acción.");
+      if (confirmAction === "APROBAR") {
+        await apiFetch(`/solicitudes/${encodeURIComponent(targetSolicitudId)}/aprobar`, {
+          method: "POST",
+        });
+      } else if (confirmAction === "RECHAZAR") {
+        await apiFetch(`/solicitudes/rechazar/${encodeURIComponent(targetSolicitudCodigo)}`, {
+          method: "PUT",
+          body: JSON.stringify({}),
+        });
+      }
+
+      setToastSeverity("success");
+      setToastMessage("Acción realizada correctamente.");
+      setToastOpen(true);
+      closeConfirm();
+      setRefreshKey((k) => k + 1);
+    } catch (e: unknown) {
+      setToastSeverity("error");
+      const msg = e instanceof Error ? e.message : "No se pudo realizar la acción.";
+      setToastMessage(msg);
+      setToastOpen(true);
     } finally {
-      setSaving(false);
+      setActionLoading(false);
     }
   };
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
       <Typography variant="h6">Pre-aprobación de solicitudes</Typography>
-      {!isSupervisor && (
-        <Chip color="warning" label="Solo visible para SUPERVISOR" variant="outlined" />
-      )}
 
       <Grid container spacing={1}>
         <Grid size={{ xs: 12, sm: 4, md: 4 }}>
@@ -115,16 +135,7 @@ const PreAprobacionPage: React.FC = () => {
             onChange={(e) => setBusqueda(e.target.value)}
           />
         </Grid>
-        <Grid size={{ xs: 6, sm: 4, md: 3 }}>
-          <TextField fullWidth size="small" select label="Estado" value={estado} onChange={(e) => setEstado(e.target.value as EstadoSolicitudFiltro)}>
-            <MenuItem value="TODAS">Todas</MenuItem>
-            <MenuItem value="REGISTRADA">Registradas</MenuItem>
-            <MenuItem value="EN_REVISION">En revisión</MenuItem>
-            <MenuItem value="APROBADA">Aprobadas</MenuItem>
-            <MenuItem value="RECHAZADA">Rechazadas</MenuItem>
-          </TextField>
-        </Grid>
-        <Grid size={{ xs: 12, sm: 12, md: 5 }} sx={{ display: "flex", justifyContent: { md: "flex-end" } }}>
+        <Grid size={{ xs: 12, sm: 8, md: 8 }} sx={{ display: "flex", justifyContent: { md: "flex-end" } }}>
           <Button variant="outlined" href="/solicitudes">Volver a listado</Button>
         </Grid>
       </Grid>
@@ -164,14 +175,32 @@ const PreAprobacionPage: React.FC = () => {
                   <TableCell>{renderEstadoChip(s.estadoSolicitud)}</TableCell>
                   <TableCell align="right">
                     <Box sx={{ display: "flex", gap: 1, justifyContent: "flex-end" }}>
-                      {canActOn(s.estadoSolicitud) ? (
-                        <>
-                          <Button size="small" variant="outlined" color="success" onClick={() => openDialog(s.id, "PRE_APROBADA")}>Pre-aprobar</Button>
-                          <Button size="small" variant="outlined" color="error" onClick={() => openDialog(s.id, "RECHAZADA")}>Rechazar</Button>
-                        </>
-                      ) : (
-                        <Typography variant="caption" color="text.secondary">—</Typography>
-                      )}
+                      <Tooltip title={canActOn(s.estadoSolicitud) ? "Aprobar" : "No disponible"}>
+                        <span>
+                          <IconButton
+                            size="small"
+                            color="success"
+                            disabled={!canActOn(s.estadoSolicitud)}
+                            onClick={() => openConfirm("APROBAR", s.id, s.codigoSolicitud)}
+                          >
+                            <Box component="span" sx={{ fontSize: 16, lineHeight: 1 }}>✅</Box>
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+
+                      <Tooltip title={canActOn(s.estadoSolicitud) ? "Rechazar" : "No disponible"}>
+                        <span>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            disabled={!canActOn(s.estadoSolicitud)}
+                            onClick={() => openConfirm("RECHAZAR", s.id, s.codigoSolicitud)}
+                          >
+                            <Box component="span" sx={{ fontSize: 16, lineHeight: 1 }}>❌</Box>
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+
                       <Button size="small" variant="outlined" href={`/solicitudes/${s.id}`}>Ver detalle</Button>
                     </Box>
                   </TableCell>
@@ -192,28 +221,34 @@ const PreAprobacionPage: React.FC = () => {
         </TableContainer>
       </Paper>
 
-      <Dialog open={dialogOpen} onClose={() => !saving && setDialogOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>{accion === "RECHAZADA" ? "Rechazar solicitud" : "Pre-aprobar solicitud"}</DialogTitle>
+      <Dialog open={confirmOpen} onClose={closeConfirm} fullWidth maxWidth="xs">
+        <DialogTitle>Confirmación</DialogTitle>
         <DialogContent>
-          <TextField
-            autoFocus
-            fullWidth
-            multiline
-            minRows={3}
-            label="Comentario (opcional)"
-            value={comentario}
-            onChange={(e) => setComentario(e.target.value)}
-            helperText={error || "Agrega contexto para trazabilidad"}
-            error={!!error}
-          />
+          <Typography>{getConfirmMessage(confirmAction)}</Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDialogOpen(false)} disabled={saving}>Cancelar</Button>
-          <Button onClick={submitAccion} variant="contained" color={accion === "RECHAZADA" ? "error" : "success"} disabled={saving}>
-            {saving ? "Guardando…" : "Confirmar"}
+          <Button onClick={closeConfirm} disabled={actionLoading}>Cancelar</Button>
+          <Button
+            onClick={runAction}
+            variant="contained"
+            disabled={actionLoading}
+            color={confirmAction === "RECHAZAR" ? "error" : "success"}
+          >
+            {actionLoading ? "Procesando…" : "Confirmar"}
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Snackbar
+        open={toastOpen}
+        autoHideDuration={3500}
+        onClose={() => setToastOpen(false)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+      >
+        <Alert onClose={() => setToastOpen(false)} severity={toastSeverity} variant="filled" sx={{ width: "100%" }}>
+          {toastMessage}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

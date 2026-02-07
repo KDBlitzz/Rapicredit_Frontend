@@ -17,17 +17,37 @@ import {
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { useRouter } from 'next/navigation';
-// import { apiFetch } from '../../../lib/api';
+import { apiFetch } from '../../../lib/api';
 import { useClientes, ClienteResumen } from '../../../hooks/useClientes';
 import { useEmpleados, Empleado } from '../../../hooks/useEmpleados';
 import { useTasasInteres, TasaInteres } from '../../../hooks/useTasasInteres';
 import { useFrecuenciasPago, FrecuenciaPago } from '../../../hooks/useFrecuenciasPago';
+import { useClienteDetalle } from '../../../hooks/useClienteDetalle';
 
 type EstadoInicial = 'REGISTRADA';
 
+/**
+ * Calcula el siguiente código SOL-### usando GET ALL (sin endpoint extra).
+ * Toma el MAYOR número encontrado (no “el último”), porque la lista puede venir desordenada.
+ */
+function nextCodigoSolicitudFromList(rawList: any[]): string {
+  let maxNum = 0;
+
+  for (const s of rawList || []) {
+    const code = String(s?.codigoSolicitud ?? s?.codigo ?? '').trim();
+    const m = code.match(/SOL-(\d+)/i); // soporta SOL-001, SOL-1, etc
+    if (m?.[1]) {
+      const n = parseInt(m[1], 10);
+      if (Number.isFinite(n) && n > maxNum) maxNum = n;
+    }
+  }
+
+  const nextNum = maxNum + 1;
+  return `SOL-${String(nextNum).padStart(3, '0')}`;
+}
+
 const NuevoSolicitudPage: React.FC = () => {
   const router = useRouter();
-
   const hoy = new Date().toISOString().slice(0, 10);
 
   const [form, setForm] = useState({
@@ -58,29 +78,90 @@ const NuevoSolicitudPage: React.FC = () => {
   const [selectedTasa, setSelectedTasa] = useState<TasaInteres | null>(null);
   const [selectedFrecuencia, setSelectedFrecuencia] = useState<FrecuenciaPago | null>(null);
 
+  // Detalle del cliente seleccionado
+  const selectedClienteCodigo = selectedCliente?.codigoCliente || '';
+  const { data: clienteDetalle } = useClienteDetalle(selectedClienteCodigo);
+
+  // Resolver el ObjectId de Mongo del empleado (vendedor/usuario creador)
+  const isMongoObjectId = (v?: string | null) => typeof v === 'string' && /^[a-f\d]{24}$/i.test(v);
+
+  const resolveEmpleadoMongoId = async (emp: Empleado | null): Promise<string | null> => {
+    if (!emp) return null;
+    if (isMongoObjectId((emp as any)._id)) return (emp as any)._id;
+
+    const code = (emp as any).codigoUsuario || (emp as any).usuario || null;
+    if (!code) return null;
+
+    // Try to fetch full list of empleados and find matching record to get real _id
+    const listCandidates = [`/empleados/codigos`, `/empleados`];
+    for (const ep of listCandidates) {
+      try {
+        const res: any = await apiFetch<any>(ep);
+
+        let all: any[] = [];
+        if (Array.isArray(res)) {
+          all = res;
+        } else if (res && (Array.isArray(res.activos) || Array.isArray(res.inactivos))) {
+          all = [
+            ...(Array.isArray(res.activos) ? res.activos : []),
+            ...(Array.isArray(res.inactivos) ? res.inactivos : []),
+          ];
+        } else if (typeof res === 'object' && res !== null) {
+          all = (Object.values(res).flat().filter(Boolean) as any[]) ?? [];
+        }
+
+        const match =
+          all.find((a: any) => {
+            const c = a.codigoUsuario ?? a.usuario ?? a._id ?? a.id ?? '';
+            return String(c) === String(code);
+          }) || all.find((a: any) => String(a._id ?? a.id ?? '') === String((emp as any)._id));
+
+        const mongoId = String(match?._id ?? match?.id ?? '');
+        if (isMongoObjectId(mongoId)) return mongoId;
+      } catch {
+        // continue
+      }
+    }
+
+    // As a last attempt, try common detail endpoints by code
+    const detailCandidates = [
+      `/empleados/codigo/${code}`,
+      `/empleados/by-codigo/${code}`,
+      `/empleados/${code}`,
+    ];
+    for (const ep of detailCandidates) {
+      try {
+        const res: any = await apiFetch<any>(ep);
+        const mongoId = String(res?._id ?? res?.id ?? '');
+        if (isMongoObjectId(mongoId)) return mongoId;
+      } catch {
+        // ignore
+      }
+    }
+
+    return null;
+  };
+
   // Etiquetas de opción
   const getClienteLabel = (c: ClienteResumen | null) => {
     if (!c) return '';
-    // nombreCompleto ya viene armado del hook
-    return [c.codigoCliente, c.nombreCompleto, c.identidadCliente]
-      .filter(Boolean)
-      .join(' • ');
+    return [c.codigoCliente, (c as any).nombreCompleto, c.identidadCliente].filter(Boolean).join(' • ');
   };
 
   const getCobradorLabel = (v: Empleado | null) => {
     if (!v) return '';
-    return [v.codigoUsuario, v.nombreCompleto].filter(Boolean).join(' • ');
+    return [(v as any).codigoUsuario, (v as any).nombreCompleto].filter(Boolean).join(' • ');
   };
 
   const getTasaLabel = (t: TasaInteres | null) => {
     if (!t) return '';
-    const pct = t.porcentajeInteres != null ? `${t.porcentajeInteres}%` : undefined;
-    return pct ? `${t.nombre} - ${pct}` : t.nombre;
+    const pct = (t as any).porcentajeInteres != null ? `${(t as any).porcentajeInteres}%` : undefined;
+    return pct ? `${(t as any).nombre} - ${pct}` : (t as any).nombre;
   };
 
   const getFrecuenciaLabel = (f: FrecuenciaPago | null) => {
     if (!f) return '';
-    return [f.nombre, f.dias != null ? `${f.dias} días` : undefined]
+    return [(f as any).nombre, (f as any).dias != null ? `${(f as any).dias} días` : undefined]
       .filter(Boolean)
       .join(' • ');
   };
@@ -88,25 +169,22 @@ const NuevoSolicitudPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMsg, setSnackbarMsg] = useState('');
-  const [snackbarSeverity, setSnackbarSeverity] =
-    useState<'success' | 'error'>('success');
+  const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error'>('success');
 
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
-  ) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
   const validate = () => {
-    if (!selectedCliente?.id) {
+    if (!(selectedCliente as any)?.id) {
       setSnackbarSeverity('error');
       setSnackbarMsg('Debes seleccionar un cliente.');
       setSnackbarOpen(true);
       return false;
     }
 
-    if (!selectedCobrador?._id) {
+    if (!(selectedCobrador as any)?._id) {
       setSnackbarSeverity('error');
       setSnackbarMsg('Debes seleccionar un cobrador.');
       setSnackbarOpen(true);
@@ -120,14 +198,14 @@ const NuevoSolicitudPage: React.FC = () => {
       return false;
     }
 
-    if (!selectedTasa?._id) {
+    if (!(selectedTasa as any)?._id) {
       setSnackbarSeverity('error');
       setSnackbarMsg('Debes seleccionar una tasa de interés.');
       setSnackbarOpen(true);
       return false;
     }
 
-    if (!selectedFrecuencia?._id) {
+    if (!(selectedFrecuencia as any)?._id) {
       setSnackbarSeverity('error');
       setSnackbarMsg('Debes seleccionar una frecuencia de pago.');
       setSnackbarOpen(true);
@@ -144,32 +222,104 @@ const NuevoSolicitudPage: React.FC = () => {
     setSaving(true);
 
     try {
+      // Mapear la frecuencia (Días/Semanas/Quincenas/Meses) al enum del backend
+      const frecuenciaEnum = (() => {
+        const nombre = (selectedFrecuencia as any)?.nombre;
+        switch (nombre) {
+          case 'Días':
+            return 'DIARIO';
+          case 'Semanas':
+            return 'SEMANAL';
+          case 'Quincenas':
+            return 'QUINCENAL';
+          case 'Meses':
+            return 'MENSUAL';
+          default:
+            return null;
+        }
+      })();
+
+      // Completar datos extra desde el cliente
+      const datosNegocio = clienteDetalle
+        ? {
+            nombre: (clienteDetalle as any).negocioNombre || undefined,
+            tipo: (clienteDetalle as any).negocioTipo || undefined,
+            telefono: (clienteDetalle as any).negocioTelefono || undefined,
+            direccion: (clienteDetalle as any).negocioDireccion || undefined,
+            departamento: (clienteDetalle as any).negocioDepartamento || undefined,
+            municipio: (clienteDetalle as any).negocioMunicipio || undefined,
+            zonaResidencial: (clienteDetalle as any).negocioZonaResidencial || undefined,
+            fotos: (clienteDetalle as any).negocioFotos || undefined,
+          }
+        : {};
+
+      const datosConyuge = clienteDetalle
+        ? {
+            nombre: (clienteDetalle as any).conyugeNombre || undefined,
+            telefono: (clienteDetalle as any).conyugeTelefono || undefined,
+          }
+        : {};
+
+      const referenciasPersonales = (clienteDetalle as any)?.referencias
+        ? (clienteDetalle as any).referencias.map((r: any) => ({ referencia: r }))
+        : [];
+
+      // ✅ NUEVO: GET ALL solicitudes y calcular el siguiente código SOL-###
+      const all = await apiFetch<any>(`/solicitudes/`);
+      const rawList: any[] = Array.isArray(all)
+        ? all
+        : Array.isArray(all?.solicitudes)
+        ? all.solicitudes
+        : Array.isArray(all?.data)
+        ? all.data
+        : [];
+
+      const codigoSolicitud = nextCodigoSolicitudFromList(rawList);
+
+      // Resolver IDs de vendedor/usuario creador como ObjectId
+      const vendedorMongoId = await resolveEmpleadoMongoId(selectedCobrador);
+      if (!vendedorMongoId) {
+        throw new Error('No se pudo resolver el ID de vendedor (ObjectId).');
+      }
+
       const payload = {
-        // Enviar IDs directos según el esquema
-        // OJO: useClientes ya mapea id = _id del backend si existe
-        clienteId: selectedCliente?.id,
-        cobradorId: selectedCobrador?._id,
+        codigoSolicitud,
+        clienteId: (selectedCliente as any)?.id,
+        vendedorId: vendedorMongoId,
+
         capitalSolicitado: Number(form.capitalSolicitado),
-        plazoCuotas: form.plazoCuotas ? Number(form.plazoCuotas) : null,
-        finalidadCredito: form.finalidadCredito || null,
+        tasInteresId: (selectedTasa as any)?._id || null,
+        tasaInteres: (selectedTasa as any)?.porcentajeInteres ?? undefined,
+        frecuenciaPago: frecuenciaEnum,
+        plazoCuotas: form.plazoCuotas ? Number(form.plazoCuotas) : 1,
+
         fechaSolicitud: form.fechaSolicitud,
-        observaciones: form.observaciones || '',
-        tasInteresId: selectedTasa?._id || null,
-        frecuenciaPagoId: selectedFrecuencia?._id || null,
+        finalidadCredito: form.finalidadCredito || 'Sin especificar',
+
+        datosNegocio,
+        datosConyuge,
+        referenciasPersonales,
+        garantias: [],
+
         estadoSolicitud: 'REGISTRADA' as EstadoInicial,
+        observaciones: form.observaciones || '',
+        usuarioCreacionId: vendedorMongoId,
       };
 
-      // Backend deshabilitado: simular guardado
-      console.log('Solicitud (simulada) enviada:', payload);
+      await apiFetch<any>('/solicitudes', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
 
       setSnackbarSeverity('success');
-      setSnackbarMsg('Solicitud registrada correctamente.');
+      setSnackbarMsg(`Solicitud registrada: ${codigoSolicitud}`);
       setSnackbarOpen(true);
       router.push('/solicitudes');
     } catch (err: unknown) {
       console.error(err);
       setSnackbarSeverity('error');
-      setSnackbarMsg('Error al registrar la solicitud.');
+      const msg = err instanceof Error ? err.message : 'Error al registrar la solicitud.';
+      setSnackbarMsg(msg);
       setSnackbarOpen(true);
     } finally {
       setSaving(false);
@@ -180,10 +330,7 @@ const NuevoSolicitudPage: React.FC = () => {
     router.push('/solicitudes');
   };
 
-  const handleCloseSnackbar = (
-    _: React.SyntheticEvent | Event,
-    reason?: string,
-  ) => {
+  const handleCloseSnackbar = (_: React.SyntheticEvent | Event, reason?: string) => {
     if (reason === 'clickaway') return;
     setSnackbarOpen(false);
   };
@@ -223,24 +370,13 @@ const NuevoSolicitudPage: React.FC = () => {
                   options={clientes}
                   loading={loadingClientes}
                   value={selectedCliente}
-                  onChange={(_, val) =>
-                    setSelectedCliente(val as ClienteResumen | null)
-                  }
+                  onChange={(_, val) => setSelectedCliente(val as ClienteResumen | null)}
                   getOptionLabel={(option) =>
-                    typeof option === 'string'
-                      ? option
-                      : getClienteLabel(option as ClienteResumen)
+                    typeof option === 'string' ? option : getClienteLabel(option as ClienteResumen)
                   }
-                  isOptionEqualToValue={(opt, val) =>
-                    (opt as ClienteResumen).id === (val as ClienteResumen).id
-                  }
+                  isOptionEqualToValue={(opt, val) => (opt as any).id === (val as any).id}
                   renderInput={(params) => (
-                    <TextField
-                      {...params}
-                      label="Cliente"
-                      placeholder="Buscar cliente…"
-                      required
-                    />
+                    <TextField {...params} label="Cliente" placeholder="Buscar cliente…" required />
                   )}
                 />
               </Grid>
@@ -251,29 +387,18 @@ const NuevoSolicitudPage: React.FC = () => {
                   options={cobradores}
                   loading={loadingCobradores}
                   value={selectedCobrador as unknown}
-                  onChange={(_, val) =>
-                    setSelectedCobrador(val as Empleado | null)
-                  }
+                  onChange={(_, val) => setSelectedCobrador(val as Empleado | null)}
                   getOptionLabel={(option) =>
-                    typeof option === 'string'
-                      ? option
-                      : getCobradorLabel(option as Empleado)
+                    typeof option === 'string' ? option : getCobradorLabel(option as Empleado)
                   }
-                  isOptionEqualToValue={(opt, val) =>
-                    (opt as Empleado)._id === (val as Empleado)._id
-                  }
+                  isOptionEqualToValue={(opt, val) => (opt as any)._id === (val as any)._id}
                   renderInput={(params) => (
-                    <TextField
-                      {...params}
-                      label="Cobrador"
-                      placeholder="Buscar cobrador…"
-                      required
-                    />
+                    <TextField {...params} label="Cobrador" placeholder="Buscar cobrador…" required />
                   )}
                 />
               </Grid>
 
-              {/* Capital y plazo */}
+              {/* Capital */}
               <Grid size={{ xs: 12, sm: 4 }}>
                 <TextField
                   label="Capital solicitado"
@@ -286,29 +411,6 @@ const NuevoSolicitudPage: React.FC = () => {
                   required
                 />
               </Grid>
-              {/*<Grid size={{ xs: 12, sm: 4 }}>
-                <TextField
-                  label="Plazo en cuotas"
-                  name="plazoCuotas"
-                  value={form.plazoCuotas}
-                  onChange={handleChange}
-                  fullWidth
-                  size="small"
-                  inputProps={{ inputMode: 'numeric' }}
-                  placeholder="Opcional"
-                />
-              </Grid>
-              <Grid size={{ xs: 12, sm: 4 }}>
-                <TextField
-                  label="Finalidad del crédito"
-                  name="finalidadCredito"
-                  value={form.finalidadCredito}
-                  onChange={handleChange}
-                  fullWidth
-                  size="small"
-                  placeholder="Crédito personal, capital de trabajo…"
-                />
-              </Grid>*/}
 
               {/* Fecha y comentario */}
               <Grid size={{ xs: 12, sm: 4 }}>
@@ -339,12 +441,10 @@ const NuevoSolicitudPage: React.FC = () => {
               </Grid>
             </Grid>
 
-            {/* Parámetros financieros (combobox) */}
+            {/* Parámetros financieros */}
             <Accordion>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography variant="subtitle2">
-                  Parámetros financieros
-                </Typography>
+                <Typography variant="subtitle2">Parámetros financieros</Typography>
               </AccordionSummary>
               <AccordionDetails>
                 <Grid container spacing={2}>
@@ -354,52 +454,29 @@ const NuevoSolicitudPage: React.FC = () => {
                       options={tasas}
                       loading={loadingTasas}
                       value={selectedTasa as any}
-                      onChange={(_, val) =>
-                        setSelectedTasa(val as TasaInteres | null)
-                      }
+                      onChange={(_, val) => setSelectedTasa(val as TasaInteres | null)}
                       getOptionLabel={(option) =>
-                        typeof option === 'string'
-                          ? option
-                          : getTasaLabel(option as TasaInteres)
+                        typeof option === 'string' ? option : getTasaLabel(option as TasaInteres)
                       }
-                      isOptionEqualToValue={(opt, val) =>
-                        (opt as TasaInteres)._id ===
-                        (val as TasaInteres)._id
-                      }
+                      isOptionEqualToValue={(opt, val) => (opt as any)._id === (val as any)._id}
                       renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          label="Tasa de interés"
-                          placeholder="Selecciona tasa…"
-                          required
-                        />
+                        <TextField {...params} label="Tasa de interés" placeholder="Selecciona tasa…" required />
                       )}
                     />
                   </Grid>
+
                   <Grid size={{ xs: 12, sm: 6 }}>
                     <Autocomplete
                       size="small"
                       options={frecuencias}
                       value={selectedFrecuencia as any}
-                      onChange={(_, val) =>
-                        setSelectedFrecuencia(val as FrecuenciaPago | null)
-                      }
+                      onChange={(_, val) => setSelectedFrecuencia(val as FrecuenciaPago | null)}
                       getOptionLabel={(option) =>
-                        typeof option === 'string'
-                          ? option
-                          : getFrecuenciaLabel(option as FrecuenciaPago)
+                        typeof option === 'string' ? option : getFrecuenciaLabel(option as FrecuenciaPago)
                       }
-                      isOptionEqualToValue={(opt, val) =>
-                        (opt as FrecuenciaPago)._id ===
-                        (val as FrecuenciaPago)._id
-                      }
+                      isOptionEqualToValue={(opt, val) => (opt as any)._id === (val as any)._id}
                       renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          label="Frecuencia de pago"
-                          placeholder="Selecciona frecuencia…"
-                          required
-                        />
+                        <TextField {...params} label="Frecuencia de pago" placeholder="Selecciona frecuencia…" required />
                       )}
                     />
                   </Grid>
@@ -408,14 +485,7 @@ const NuevoSolicitudPage: React.FC = () => {
             </Accordion>
 
             {/* Botones */}
-            <Box
-              sx={{
-                display: 'flex',
-                justifyContent: 'flex-end',
-                gap: 1.5,
-                mt: 1,
-              }}
-            >
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1.5, mt: 1 }}>
               <Button onClick={handleCancel} disabled={saving}>
                 Cancelar
               </Button>
