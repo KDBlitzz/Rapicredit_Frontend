@@ -29,7 +29,7 @@ import Link from 'next/link';
 import { useSolicitudes, EstadoSolicitudFiltro } from '../../hooks/useSolicitudes';
 import { apiFetch } from '../../lib/api';
 
-type SolicitudAccion = 'APROBAR' | 'REVISION' | 'RECHAZAR';
+type SolicitudAccion = 'REVISION';
 
 const SolicitudesPage: React.FC = () => {
   const [busqueda, setBusqueda] = useState('');
@@ -95,9 +95,7 @@ const SolicitudesPage: React.FC = () => {
   };
 
   const getConfirmMessage = (a: SolicitudAccion | null) => {
-    if (a === 'APROBAR') return '¿Desea aprobar esta solicitud?';
     if (a === 'REVISION') return '¿Mandar esta solicitud a revisión?';
-    if (a === 'RECHAZAR') return '¿Desea rechazar esta solicitud?';
     return '';
   };
 
@@ -106,19 +104,10 @@ const SolicitudesPage: React.FC = () => {
 
     setActionLoading(true);
     try {
-      if (confirmAction === 'APROBAR') {
-        await apiFetch(`/solicitudes/${encodeURIComponent(targetSolicitudId)}/aprobar`, {
-          method: 'POST',
-        });
-      } else if (confirmAction === 'REVISION') {
+      if (confirmAction === 'REVISION') {
         await apiFetch(`/solicitudes/${encodeURIComponent(targetSolicitudCodigo)}/status`, {
           method: 'PATCH',
           body: JSON.stringify({ estadoSolicitud: 'EN_REVISION' }),
-        });
-      } else if (confirmAction === 'RECHAZAR') {
-        await apiFetch(`/solicitudes/rechazar/${encodeURIComponent(targetSolicitudCodigo)}`, {
-          method: 'PUT',
-          body: JSON.stringify({}),
         });
       }
 
@@ -237,18 +226,6 @@ const SolicitudesPage: React.FC = () => {
                     </TableCell>
                     <TableCell align="center">
                       <Box sx={{ display: 'flex', justifyContent: 'center', gap: 0.5 }}>
-                        <Tooltip title="Aprobar">
-                          <span>
-                            <IconButton
-                              size="small"
-                              color="success"
-                              onClick={() => openConfirm('APROBAR', s.id, s.codigoSolicitud)}
-                            >
-                              <Box component="span" sx={{ fontSize: 16, lineHeight: 1 }}>✅</Box>
-                            </IconButton>
-                          </span>
-                        </Tooltip>
-
                         <Tooltip title="Mandar a revisión">
                           <span>
                             <IconButton
@@ -257,18 +234,6 @@ const SolicitudesPage: React.FC = () => {
                               onClick={() => openConfirm('REVISION', s.id, s.codigoSolicitud)}
                             >
                               <Box component="span" sx={{ fontSize: 16, lineHeight: 1 }}>📌</Box>
-                            </IconButton>
-                          </span>
-                        </Tooltip>
-
-                        <Tooltip title="Rechazar">
-                          <span>
-                            <IconButton
-                              size="small"
-                              color="error"
-                              onClick={() => openConfirm('RECHAZAR', s.id, s.codigoSolicitud)}
-                            >
-                              <Box component="span" sx={{ fontSize: 16, lineHeight: 1 }}>❌</Box>
                             </IconButton>
                           </span>
                         </Tooltip>
@@ -308,7 +273,7 @@ const SolicitudesPage: React.FC = () => {
             onClick={runAction}
             variant="contained"
             disabled={actionLoading}
-            color={confirmAction === 'RECHAZAR' ? 'error' : confirmAction === 'REVISION' ? 'warning' : 'success'}
+            color="warning"
           >
             {actionLoading ? 'Procesando…' : 'Confirmar'}
           </Button>

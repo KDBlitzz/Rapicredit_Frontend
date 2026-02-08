@@ -28,6 +28,22 @@ import {
 import { useSolicitudes, EstadoSolicitudFiltro } from "../../../hooks/useSolicitudes";
 import { apiFetch } from "../../../lib/api";
 
+type SolicitudDetalle = {
+  codigoSolicitud?: string;
+  fechaSolicitud?: string;
+  clienteNombre?: string;
+  clienteId?: unknown;
+  cobradorNombre?: string;
+  vendedorId?: unknown;
+  capitalSolicitado?: number;
+  frecuenciaPago?: string;
+  plazoCuotas?: number;
+  tasaInteres?: unknown;
+  tasInteresId?: unknown;
+  finalidadCredito?: string;
+  observaciones?: string;
+  estadoSolicitud?: string;
+};
 const estadosAccionFinales = ["APROBADA", "RECHAZADA"]; // no mostrar acciones si ya está finalizada
 
 type SolicitudAccion = "APROBAR" | "RECHAZAR";
@@ -45,6 +61,12 @@ const PreAprobacionPage: React.FC = () => {
   const [toastOpen, setToastOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string>("");
   const [toastSeverity, setToastSeverity] = useState<"success" | "error" | "info" | "warning">("success");
+
+  // Detalle de solicitud
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [detailData, setDetailData] = useState<SolicitudDetalle | null>(null);
 
   const { data, loading, error: loadError } = useSolicitudes(
     { busqueda, estado: "EN_REVISION" satisfies EstadoSolicitudFiltro },
@@ -68,11 +90,86 @@ const PreAprobacionPage: React.FC = () => {
     return <Chip size="small" label={val} color={color} variant="outlined" />;
   };
 
+  // Helpers to safely display possible nested objects returned by backend
+  const describeEntity = (value: unknown, fallback?: string) => {
+    if (typeof fallback === "string" && fallback.trim()) return fallback;
+    if (value == null) return "-";
+    if (typeof value === "object") {
+      const o = value as Record<string, unknown>;
+      const nombreCompleto = o["nombreCompleto"];
+      const nombre = o["nombre"];
+      const apellido = o["apellido"];
+      const codigoCliente = o["codigoCliente"];
+      const identidadCliente = o["identidadCliente"];
+      const codigoUsuario = o["codigoUsuario"];
+      const id = o["id"] || o["_id"];
+
+      const fullName = [nombre as string | undefined, apellido as string | undefined]
+        .filter(Boolean)
+        .join(" ");
+
+      return (
+        (typeof nombreCompleto === "string" && nombreCompleto) ||
+        (fullName.trim() ? fullName : undefined) ||
+        (typeof codigoCliente === "string" && codigoCliente) ||
+        (typeof identidadCliente === "string" && identidadCliente) ||
+        (typeof codigoUsuario === "string" && codigoUsuario) ||
+        (typeof id === "string" && id) ||
+        "[detalle]"
+      );
+    }
+    return String(value);
+  };
+
+  const describeTasa = (value: unknown, tasaRef: unknown) => {
+    // value can be: number | string | { porcentajeInteres } | null
+    const tryNumber = (v: unknown): number | null => {
+      if (typeof v === "number" && Number.isFinite(v)) return v;
+      if (typeof v === "string") {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+      }
+      if (typeof v === "object" && v) {
+        const o = v as Record<string, unknown>;
+        const candidate = o["porcentajeInteres"] ?? o["tasaInteres"] ?? o["porcentaje"];
+        return tryNumber(candidate);
+      }
+      return null;
+    };
+
+    const pct = tryNumber(value) ?? tryNumber(tasaRef);
+    return pct != null ? `${pct}%` : "-";
+  };
+
   const openConfirm = (a: SolicitudAccion, id: string, codigoSolicitud: string) => {
     setConfirmAction(a);
     setTargetSolicitudId(id);
     setTargetSolicitudCodigo(codigoSolicitud);
     setConfirmOpen(true);
+  };
+
+  const openDetail = async (codigoSolicitud: string) => {
+    setDetailOpen(true);
+    setDetailLoading(true);
+    setDetailError(null);
+    setDetailData(null);
+
+    try {
+      const res = await apiFetch(`/solicitudes/${encodeURIComponent(codigoSolicitud)}`);
+      setDetailData(res as SolicitudDetalle);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "No se pudo cargar el detalle.";
+      setDetailError(msg);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const closeDetail = () => {
+    if (detailLoading) return;
+    setDetailOpen(false);
+    setDetailData(null);
+    setDetailError(null);
   };
 
   const closeConfirm = () => {
@@ -201,7 +298,7 @@ const PreAprobacionPage: React.FC = () => {
                         </span>
                       </Tooltip>
 
-                      <Button size="small" variant="outlined" href={`/solicitudes/${s.id}`}>Ver detalle</Button>
+                      <Button size="small" variant="outlined" onClick={() => openDetail(s.codigoSolicitud)}>Ver detalle</Button>
                     </Box>
                   </TableCell>
                 </TableRow>
@@ -220,6 +317,83 @@ const PreAprobacionPage: React.FC = () => {
           </Table>
         </TableContainer>
       </Paper>
+
+      {/* Detalle de solicitud */}
+      <Dialog open={detailOpen} onClose={closeDetail} fullWidth maxWidth="sm">
+        <DialogTitle>Detalle de solicitud</DialogTitle>
+        <DialogContent dividers>
+          {detailLoading && (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <CircularProgress size={18} />
+              <Typography variant="caption" color="text.secondary">Cargando detalle…</Typography>
+            </Box>
+          )}
+
+          {!detailLoading && detailError && (
+            <Typography variant="body2" color="error">{detailError}</Typography>
+          )}
+
+          {!detailLoading && detailData && (
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              <Grid container spacing={1}>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <Typography variant="caption" color="text.secondary">Código</Typography>
+                  <Typography variant="body2">{detailData.codigoSolicitud ?? "-"}</Typography>
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <Typography variant="caption" color="text.secondary">Fecha</Typography>
+                  <Typography variant="body2">{formatDate(detailData.fechaSolicitud)}</Typography>
+                </Grid>
+
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <Typography variant="caption" color="text.secondary">Cliente</Typography>
+                  <Typography variant="body2">{describeEntity(detailData.clienteId, detailData.clienteNombre)}</Typography>
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <Typography variant="caption" color="text.secondary">Cobrador/Vendedor</Typography>
+                  <Typography variant="body2">{describeEntity(detailData.vendedorId, detailData.cobradorNombre)}</Typography>
+                </Grid>
+
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <Typography variant="caption" color="text.secondary">Capital solicitado</Typography>
+                  <Typography variant="body2">{formatMoney(detailData.capitalSolicitado)}</Typography>
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <Typography variant="caption" color="text.secondary">Frecuencia de pago</Typography>
+                  <Typography variant="body2">{detailData.frecuenciaPago ?? "-"}</Typography>
+                </Grid>
+
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <Typography variant="caption" color="text.secondary">Plazo (cuotas)</Typography>
+                  <Typography variant="body2">{detailData.plazoCuotas ?? "-"}</Typography>
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <Typography variant="caption" color="text.secondary">Tasa de interés</Typography>
+                  <Typography variant="body2">{describeTasa(detailData.tasaInteres, detailData.tasInteresId)}</Typography>
+                </Grid>
+
+                <Grid size={{ xs: 12 }}>
+                  <Typography variant="caption" color="text.secondary">Finalidad del crédito</Typography>
+                  <Typography variant="body2">{detailData.finalidadCredito ?? "-"}</Typography>
+                </Grid>
+
+                <Grid size={{ xs: 12 }}>
+                  <Typography variant="caption" color="text.secondary">Observaciones</Typography>
+                  <Typography variant="body2">{detailData.observaciones ?? "-"}</Typography>
+                </Grid>
+
+                <Grid size={{ xs: 12 }}>
+                  <Typography variant="caption" color="text.secondary">Estado</Typography>
+                  <Box sx={{ mt: 0.5 }}>{renderEstadoChip(detailData.estadoSolicitud ?? "-")}</Box>
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeDetail} disabled={detailLoading}>Cerrar</Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={confirmOpen} onClose={closeConfirm} fullWidth maxWidth="xs">
         <DialogTitle>Confirmación</DialogTitle>
