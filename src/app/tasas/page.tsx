@@ -134,10 +134,6 @@ export default function TasasPage() {
     const nombre = form.nombre.trim();
     const descripcion = form.descripcion.trim() || undefined;
 
-    if (!editing && !codigoTasa) {
-      setFormError("El código de tasa es obligatorio.");
-      return;
-    }
     if (!nombre) {
       setFormError("El nombre es obligatorio.");
       return;
@@ -174,8 +170,8 @@ export default function TasasPage() {
         await updateTasaByCodigo(editing.codigoTasa, updatePayload);
         setFeedback({ type: "success", message: "Tasa actualizada." });
       } else {
+        // No enviar codigoTasa al crear; el backend lo genera automáticamente
         await createTasa({
-          codigoTasa,
           ...updatePayload,
         });
         setFeedback({ type: "success", message: "Tasa creada." });
@@ -424,17 +420,17 @@ export default function TasasPage() {
           <DialogTitle>{editing ? "Editar tasa" : "Nueva tasa"}</DialogTitle>
           <DialogContent sx={{ pt: 1 }}>
             <Grid container spacing={2} sx={{ mt: 0 }}>
-              <Grid size={{ xs: 12 }}>
-                <TextField
-                  label="Código de tasa"
-                  fullWidth
-                  value={form.codigoTasa}
-                  onChange={(e) => handleChange("codigoTasa", e.target.value)}
-                  required={!editing}
-                  disabled={Boolean(editing)}
-                  helperText={editing ? "El código es inmutable." : "Ej: TAS-001"}
-                />
-              </Grid>
+              {editing ? (
+                <Grid size={{ xs: 12 }}>
+                  <TextField
+                    label="Código de tasa"
+                    fullWidth
+                    value={form.codigoTasa}
+                    disabled
+                    helperText="El código se genera automáticamente y es inmutable."
+                  />
+                </Grid>
+              ) : null}
 
               <Grid size={{ xs: 12 }}>
                 <TextField label="Nombre" fullWidth value={form.nombre} onChange={(e) => handleChange("nombre", e.target.value)} required />

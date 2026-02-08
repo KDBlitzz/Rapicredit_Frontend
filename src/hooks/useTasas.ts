@@ -5,7 +5,7 @@ import { apiFetch } from "../lib/api";
 
 export interface Tasa {
   _id?: string;
-  codigoTasa: string;
+  codigoTasa?: string;
   nombre: string;
   descripcion?: string;
   porcentajeInteres: number;
@@ -62,7 +62,8 @@ const compactUndefined = (obj: Record<string, unknown>) => {
 
 const toBackendCreate = (payload: CreateTasaPayload): Record<string, unknown> =>
   compactUndefined({
-    codigoTasa: payload.codigoTasa,
+    // No enviar codigoTasa si no se proporciona; el backend lo genera automáticamente
+    codigoTasa: payload.codigoTasa || undefined,
     nombre: payload.nombre,
     descripcion: payload.descripcion,
     porcentajeInteres: payload.porcentajeInteres,

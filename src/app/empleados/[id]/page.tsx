@@ -86,19 +86,38 @@ const EmpleadoDetallePage: React.FC = () => {
     permisos: [] as string[],
   });
 
-  // Cargar permisos del backend (lista)
+  // Cargar permisos del backend (lista) — usar apiFetch para incluir token
   useEffect(() => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-    fetch(`${apiUrl}/permisos/`)
-      .then((res) => res.json())
-      .then((data) => {
-        const permisos = (data || []).map((p: { codigoPermiso: string; permiso: string }) => ({
-          codigoPermiso: p.codigoPermiso,
-          permiso: p.permiso,
-        }));
-        setPermisosBD(permisos);
-      })
-      .catch(() => setPermisosBD([]));
+    let cancelled = false;
+
+    const loadPermisos = async () => {
+      try {
+        const data = await apiFetch<unknown>(`/permisos/`);
+
+        const permisos: Permiso[] = Array.isArray(data)
+          ? data
+              .map((p) => {
+                if (!p || typeof p !== 'object') return null;
+                const obj = p as Record<string, unknown>;
+                const codigoPermiso = typeof obj.codigoPermiso === 'string' ? obj.codigoPermiso : '';
+                const permiso = typeof obj.permiso === 'string' ? obj.permiso : '';
+                if (!codigoPermiso || !permiso) return null;
+                return { codigoPermiso, permiso } as const;
+              })
+              .filter((p): p is Permiso => p !== null)
+          : [];
+
+        if (!cancelled) setPermisosBD(permisos);
+      } catch (err) {
+        console.error('Error cargando permisos:', err);
+        if (!cancelled) setPermisosBD([]);
+      }
+    };
+
+    loadPermisos();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
