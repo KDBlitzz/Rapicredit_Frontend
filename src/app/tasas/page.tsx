@@ -33,6 +33,8 @@ import {
 import { Add, Delete, Edit, Refresh } from "@mui/icons-material";
 import { useTasas, Tasa } from "../../hooks/useTasas";
 
+const CAPITAL_MAX_LIMIT = 1_000_000;
+
 const emptyForm = {
   codigoTasa: "",
   nombre: "",
@@ -145,9 +147,43 @@ export default function TasasPage() {
       return;
     }
 
-    const porcentajeMora = form.porcentajeMora ? Number(form.porcentajeMora) : undefined;
-    const capitalMin = form.capitalMin ? Number(form.capitalMin) : undefined;
-    const capitalMax = form.capitalMax ? Number(form.capitalMax) : undefined;
+    const moraRaw = form.porcentajeMora.trim();
+    if (moraRaw === "") {
+      setFormError("La mora (%) es obligatoria.");
+      return;
+    }
+    const porcentajeMora = Number(moraRaw);
+    if (Number.isNaN(porcentajeMora) || porcentajeMora <= 0) {
+      setFormError("La mora (%) debe ser mayor que 0.");
+      return;
+    }
+
+    const capitalMinRaw = form.capitalMin.trim();
+    if (capitalMinRaw === "") {
+      setFormError("El capital mínimo es obligatorio.");
+      return;
+    }
+    const capitalMin = Number(capitalMinRaw);
+    if (Number.isNaN(capitalMin) || capitalMin < 0) {
+      setFormError("Ingresa un capital mínimo válido.");
+      return;
+    }
+
+    const capitalMaxRaw = form.capitalMax.trim();
+    if (capitalMaxRaw === "") {
+      setFormError("El capital máximo es obligatorio.");
+      return;
+    }
+    const capitalMax = Number(capitalMaxRaw);
+    if (Number.isNaN(capitalMax) || capitalMax < 0) {
+      setFormError("Ingresa un capital máximo válido.");
+      return;
+    }
+
+    if (capitalMax > CAPITAL_MAX_LIMIT) {
+      setFormError(`El capital máximo no puede exceder L. ${CAPITAL_MAX_LIMIT.toLocaleString("es-HN")}.`);
+      return;
+    }
 
     if (capitalMin != null && capitalMax != null && capitalMin >= capitalMax) {
       setFormError("El capital mínimo debe ser menor al máximo.");
@@ -456,9 +492,10 @@ export default function TasasPage() {
                   label="Mora (%)"
                   fullWidth
                   type="number"
-                  inputProps={{ min: 0, step: 0.01 }}
+                  inputProps={{ min: 0.01, step: 0.01 }}
                   value={form.porcentajeMora}
                   onChange={(e) => handleChange("porcentajeMora", e.target.value)}
+                  required
                 />
               </Grid>
 
@@ -470,6 +507,7 @@ export default function TasasPage() {
                   inputProps={{ min: 0, step: 1000 }}
                   value={form.capitalMin}
                   onChange={(e) => handleChange("capitalMin", e.target.value)}
+                  required
                 />
               </Grid>
               <Grid size={{ xs: 12, md: 6 }}>
@@ -477,9 +515,18 @@ export default function TasasPage() {
                   label="Capital máximo"
                   fullWidth
                   type="number"
-                  inputProps={{ min: 0, step: 1000 }}
+                  inputProps={{ min: 0, max: CAPITAL_MAX_LIMIT, step: 1000 }}
                   value={form.capitalMax}
-                  onChange={(e) => handleChange("capitalMax", e.target.value)}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    const parsed = next.trim() === "" ? NaN : Number(next);
+                    if (!Number.isNaN(parsed) && parsed > CAPITAL_MAX_LIMIT) {
+                      handleChange("capitalMax", String(CAPITAL_MAX_LIMIT));
+                      return;
+                    }
+                    handleChange("capitalMax", next);
+                  }}
+                  required
                 />
               </Grid>
 

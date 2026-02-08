@@ -43,8 +43,36 @@ const EmpleadoDetallePage: React.FC = () => {
     setEditing(isEditMode);
   }, []);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+
+  const friendlyBackendMessage = (message: string) => {
+    const original = String(message || "");
+    const m = original.toLowerCase();
+
+    const looksLikeDuplicate =
+      m.includes("duplic") ||
+      m.includes("unique") ||
+      m.includes("ya existe") ||
+      m.includes("ya está") ||
+      m.includes("ya esta") ||
+      m.includes("registrad") ||
+      m.includes("exist");
+
+    if (
+      looksLikeDuplicate &&
+      (m.includes("tel") || m.includes("telefono") || m.includes("teléfono") || m.includes("phone"))
+    ) {
+      return "Este teléfono ya está registrado.";
+    }
+    if (looksLikeDuplicate && (m.includes("email") || m.includes("correo"))) {
+      return "Este correo ya está registrado.";
+    }
+
+    // Evitar mostrar URLs crudas (ej. localhost) en errores
+    return original.replace(/https?:\/\/localhost:\d+\/?/gi, "").trim() || original;
+  };
 
   const countryCodes = [
     { code: '+1', name: '🇺🇸 Estados Unidos' },
@@ -226,16 +254,45 @@ const EmpleadoDetallePage: React.FC = () => {
   };
 
   const handleSave = async () => {
+    setSaveError(null);
     setSaving(true);
     try {
+      const nombreCompleto = formData.nombreCompleto.trim();
+      if (!nombreCompleto) {
+        setSaveError("El nombre es obligatorio.");
+        return;
+      }
+
+      const rol = formData.rol.trim();
+      if (!rol) {
+        setSaveError("El rol es obligatorio.");
+        return;
+      }
+
+      const usuario = formData.usuario.trim();
+      if (!usuario) {
+        setSaveError("El usuario es obligatorio.");
+        return;
+      }
+
+      const phoneDigits = formData.telefono.replace(/\D/g, "");
+      if (phoneDigits.length !== 8) {
+        setSaveError("Ingrese un teléfono válido de 8 dígitos.");
+        return;
+      }
+
+      if (formData.password && !validatePassword(formData.password)) {
+        return;
+      }
+
       // Construir payload como en crear
       const payload = {
         // No modificar codigoUsuario vía payload en update
-        usuario: formData.usuario,
-        nombreCompleto: formData.nombreCompleto,
-        rol: formData.rol,
+        usuario,
+        nombreCompleto,
+        rol,
         email: formData.email,
-        telefono: `${formData.telefonoPais} ${formData.telefono}`,
+        telefono: `${formData.telefonoPais} ${phoneDigits}`,
         // password opcional al editar: solo si se cambió
         ...(formData.password ? { password: formData.password } : {}),
         permisos: formData.permisos,
@@ -267,7 +324,8 @@ const EmpleadoDetallePage: React.FC = () => {
       // setEditing(false);
     } catch (err: unknown) {
       console.error("Error actualizando empleado:", err);
-      alert(err instanceof Error ? err.message : "Error actualizando empleado");
+      const rawMsg = err instanceof Error ? err.message : "Error actualizando empleado";
+      setSaveError(friendlyBackendMessage(rawMsg));
     } finally {
       setSaving(false);
     }
@@ -348,6 +406,12 @@ const EmpleadoDetallePage: React.FC = () => {
             )}
           </Box>
         </Box>
+
+        {saveError ? (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {saveError}
+          </Alert>
+        ) : null}
 
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, md: 6 }}>
