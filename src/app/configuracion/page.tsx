@@ -186,23 +186,6 @@ export default function ConfiguracionPage() {
 
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, md: 4 }}>
-            <FormControl fullWidth size="small">
-              <InputLabel id="periodicidad-tasa-label">Periodicidad de tasa</InputLabel>
-              <Select
-                labelId="periodicidad-tasa-label"
-                label="Periodicidad de tasa"
-                value={form.periodicidadTasa}
-                onChange={(e) =>
-                  handleChange('periodicidadTasa', e.target.value as PeriodicidadTasa)
-                }
-              >
-                <MenuItem value="anual">Anual</MenuItem>
-                <MenuItem value="mensual">Mensual</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-
-          <Grid size={{ xs: 12, md: 4 }}>
             <TextField
               fullWidth
               size="small"
@@ -213,24 +196,6 @@ export default function ConfiguracionPage() {
               inputProps={{ step: 1, min: 0 }}
               helperText="Porcentaje (%)"
             />
-          </Grid>
-
-          <Grid size={{ xs: 12, md: 4 }}>
-            <FormControl fullWidth size="small">
-              <InputLabel id="cobro-en-mora-label">Cobro en mora</InputLabel>
-              <Select
-                labelId="cobro-en-mora-label"
-                label="Cobro en mora"
-                value={form.cobroEnMora}
-                onChange={(e) =>
-                  handleChange('cobroEnMora', e.target.value as CobroEnMora)
-                }
-              >
-                <MenuItem value="corriente">Corriente</MenuItem>
-                <MenuItem value="corriente_y_mora">Corriente y mora</MenuItem>
-                <MenuItem value="solo_mora">Solo mora</MenuItem>
-              </Select>
-            </FormControl>
           </Grid>
 
           <Grid size={{ xs: 12, md: 4 }}>
