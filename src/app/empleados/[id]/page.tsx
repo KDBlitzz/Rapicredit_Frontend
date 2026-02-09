@@ -286,6 +286,7 @@ const EmpleadoDetallePage: React.FC = () => {
       }
 
       // Construir payload como en crear
+      const password = formData.password.trim();
       const payload = {
         // No modificar codigoUsuario vía payload en update
         usuario,
@@ -293,8 +294,9 @@ const EmpleadoDetallePage: React.FC = () => {
         rol,
         email: formData.email,
         telefono: `${formData.telefonoPais} ${phoneDigits}`,
-        // password opcional al editar: solo si se cambió
-        ...(formData.password ? { password: formData.password } : {}),
+        // El backend actualmente falla si el campo no viene (undefined).
+        // Enviar string vacío significa "no cambiar contraseña".
+        password,
         permisos: formData.permisos,
         // Actualización usa 'actividad' boolean
         estado: formData.estado === "ACTIVO",

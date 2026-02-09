@@ -336,7 +336,8 @@ function ClientViewer({ id, step, onStepChange }: { id: string; step: number; on
       if (mName) {
         return { nombre: mName[1].trim(), parentesco: mName[2].trim(), telefono: parts[1].trim() };
       }
-      return { nombre: parts[0].trim(), parentesco: '', telefono: parts[1].trim() };
+      // Nuevo formato: "Parentesco - +504 99999999"
+      return { nombre: '', parentesco: parts[0].trim(), telefono: parts[1].trim() };
     }
     return { nombre: '', parentesco: '', telefono: r.trim() };
   };
@@ -363,6 +364,16 @@ function ClientViewer({ id, step, onStepChange }: { id: string; step: number; on
     ? (data as any).conyugeDireccionFotos
     : [];
 
+  const formatDateOnly = (value: unknown) => {
+    if (!value) return '—';
+    const str = String(value);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+    if (str.includes('T')) return str.split('T')[0];
+    const d = new Date(str);
+    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    return str;
+  };
+
   return (
     <Box>
       <Stepper activeStep={step} alternativeLabel>
@@ -381,7 +392,7 @@ function ClientViewer({ id, step, onStepChange }: { id: string; step: number; on
             <TextField label="RTN" value={(data as any).RTN || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
             <TextField label="Email" value={data.email || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
             <TextField label="Sexo" value={data.sexo || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
-            <TextField label="Fecha de nacimiento" value={data.fechaNacimiento || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
+            <TextField label="Fecha de nacimiento" value={formatDateOnly(data.fechaNacimiento)} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
 
             {/* Teléfonos dinámicos */}
             {phoneList.length > 0 ? (
@@ -415,8 +426,9 @@ function ClientViewer({ id, step, onStepChange }: { id: string; step: number; on
         {step === 2 && (
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
             <TextField label="Límite de crédito" value={String(data.limiteCredito ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
-            <TextField label="Tasa (%)" value={String(data.tasaCliente ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
-            <TextField label="Frecuencia" value={data.frecuenciaPago || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
+            <TextField label="Venta diaria" value={String((data as any).ventaDiaria ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
+            <TextField label="Capacidad de pago" value={String((data as any).capacidadPago ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
+            <TextField label="Parentesco del propietario" value={String((data as any).parentescoPropietario ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
             <TextField label="Estado de deuda" value={data.riesgoMora || (data.estadoDeuda?.[0] ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
             <TextField label="Cliente activo" value={data.actividad === false ? 'INACTIVO' : 'ACTIVO'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
           </Box>
@@ -424,17 +436,15 @@ function ClientViewer({ id, step, onStepChange }: { id: string; step: number; on
 
         {step === 3 && (
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr' }, gap: 2 }}>
-            {/* Referencias: mostrar nombre + teléfono por referencia */}
+            {/* Referencias: mostrar parentesco + teléfono por referencia */}
             <Box>
               <Typography variant="subtitle2">Referencias</Typography>
               {(Array.isArray(data.referencias) ? data.referencias : []).map((r: string, i: number) => {
                 const s = splitReferencia(r);
                 return (
                   <Box key={`ref-${i}`} sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                    <TextField label={`Nombre referencia ${i + 1}`} value={s.nombre || '—'} InputProps={{ readOnly: true }} size="small" sx={{ minWidth: 180, ...viewerTextFieldSx }} />
-                    <TextField label={`Parentesco ${i + 1}`} value={s.parentesco || '—'} InputProps={{ readOnly: true }} size="small" sx={{ minWidth: 160, ...viewerTextFieldSx }} />
+                    <TextField label={`Parentesco ${i + 1}`} value={s.parentesco || '—'} InputProps={{ readOnly: true }} size="small" sx={{ minWidth: 200, ...viewerTextFieldSx }} />
                     <TextField label={`Teléfono referencia ${i + 1}`} value={s.telefono || '—'} InputProps={{ readOnly: true }} size="small" sx={{ flex: 1, ...viewerTextFieldSx }} />
-                    <TextField label={`Teléfono pariente ${i + 1}`} value={Array.isArray((data as any).refsParentescoTelefonos) ? ((data as any).refsParentescoTelefonos[i] || '—') : '—'} InputProps={{ readOnly: true }} size="small" sx={{ flex: 1, ...viewerTextFieldSx }} />
                   </Box>
                 );
               })}
@@ -448,7 +458,7 @@ function ClientViewer({ id, step, onStepChange }: { id: string; step: number; on
               <TextField label="Departamento" value={data.negocioDepartamento || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
               <TextField label="Municipio" value={data.negocioMunicipio || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
               <TextField label="Zona" value={data.negocioZonaResidencial || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
-              <TextField label="Parentesco del propietario" value={(data as any).negocioParentesco || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
+              <TextField label="Parentesco del propietario" value={String((data as any).parentescoPropietario ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
               <TextField label="Teléfono del pariente (negocio)" value={(data as any).negocioParentescoTelefono || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
               <TextField label="Venta diaria" value={String((data as any).ventaDiaria ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
               <TextField label="Capacidad de pago" value={String((data as any).capacidadPago ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
