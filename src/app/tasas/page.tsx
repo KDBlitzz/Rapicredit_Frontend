@@ -202,7 +202,7 @@ export default function TasasPage() {
     };
 
     try {
-      if (editing) {
+      if (editing && editing.codigoTasa) {
         await updateTasaByCodigo(editing.codigoTasa, updatePayload);
         setFeedback({ type: "success", message: "Tasa actualizada." });
       } else {
