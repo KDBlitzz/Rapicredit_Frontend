@@ -30,22 +30,6 @@ type EstadoInicial = 'REGISTRADA';
  * Calcula el siguiente código SOL-### usando GET ALL (sin endpoint extra).
  * Toma el MAYOR número encontrado (no “el último”), porque la lista puede venir desordenada.
  */
-function nextCodigoSolicitudFromList(rawList: any[]): string {
-  let maxNum = 0;
-
-  for (const s of rawList || []) {
-    const code = String(s?.codigoSolicitud ?? s?.codigo ?? '').trim();
-    const m = code.match(/SOL-(\d+)/i); // soporta SOL-001, SOL-1, etc
-    if (m?.[1]) {
-      const n = parseInt(m[1], 10);
-      if (Number.isFinite(n) && n > maxNum) maxNum = n;
-    }
-  }
-
-  const nextNum = maxNum + 1;
-  return `SOL-${String(nextNum).padStart(3, '0')}`;
-}
-
 const NuevoSolicitudPage: React.FC = () => {
   const router = useRouter();
   const hoy = new Date().toISOString().slice(0, 10);
@@ -264,18 +248,6 @@ const NuevoSolicitudPage: React.FC = () => {
         ? (clienteDetalle as any).referencias.map((r: any) => ({ referencia: r }))
         : [];
 
-      // ✅ NUEVO: GET ALL solicitudes y calcular el siguiente código SOL-###
-      const all = await apiFetch<any>(`/solicitudes/`);
-      const rawList: any[] = Array.isArray(all)
-        ? all
-        : Array.isArray(all?.solicitudes)
-        ? all.solicitudes
-        : Array.isArray(all?.data)
-        ? all.data
-        : [];
-
-      const codigoSolicitud = nextCodigoSolicitudFromList(rawList);
-
       // Resolver IDs de vendedor/usuario creador como ObjectId
       const vendedorMongoId = await resolveEmpleadoMongoId(selectedCobrador);
       if (!vendedorMongoId) {
@@ -283,7 +255,6 @@ const NuevoSolicitudPage: React.FC = () => {
       }
 
       const payload = {
-        codigoSolicitud,
         clienteId: (selectedCliente as any)?.id,
         vendedorId: vendedorMongoId,
 
@@ -312,7 +283,7 @@ const NuevoSolicitudPage: React.FC = () => {
       });
 
       setSnackbarSeverity('success');
-      setSnackbarMsg(`Solicitud registrada: ${codigoSolicitud}`);
+      setSnackbarMsg('Solicitud registrada correctamente.');
       setSnackbarOpen(true);
       router.push('/solicitudes');
     } catch (err: unknown) {
@@ -407,7 +378,18 @@ const NuevoSolicitudPage: React.FC = () => {
                   onChange={handleChange}
                   fullWidth
                   size="small"
-                  inputProps={{ inputMode: 'decimal' }}
+                  type="number"
+                  inputProps={{ inputMode: 'decimal', step: '0.01' }}
+                  onKeyDown={(evt) => {
+                    const allowed = ['Backspace','Tab','Enter','ArrowLeft','ArrowRight','Delete'];
+                    if (evt.ctrlKey || evt.metaKey) return;
+                    const key = evt.key;
+                    const isNumber = /^[0-9]$/.test(key);
+                    const isDecimal = key === '.' || key === ',';
+                    if (!isNumber && !allowed.includes(key) && !isDecimal) {
+                      evt.preventDefault();
+                    }
+                  }}
                   required
                 />
               </Grid>

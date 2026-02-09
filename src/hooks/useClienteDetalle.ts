@@ -38,9 +38,6 @@ export interface ClienteDetalle {
 
   // Financieros
   limiteCredito: number;
-  tasaCliente: number;
-  frecuenciaPago: string;
-  estadoDeuda: string[];
   referencias: string[];
   refsParentescoTelefonos?: string[];
   actividad: boolean;
@@ -57,8 +54,8 @@ export interface ClienteDetalle {
   negocioDepartamento?: string;
   negocioMunicipio?: string;
   negocioZonaResidencial?: string;
-  negocioParentesco?: string;
-  negocioParentescoTelefono?: string;
+  // NUEVO: parentesco con el propietario del negocio
+  parentescoPropietario?: string;
   ventaDiaria?: number;
   capacidadPago?: number;
 
@@ -126,14 +123,6 @@ export function useClienteDetalle(id: string) {
           conyugeTelefono: res.conyugeTelefono || undefined,
 
           limiteCredito: res.limiteCredito ?? 0,
-          tasaCliente: res.tasaCliente ?? 0,
-          frecuenciaPago: res.frecuenciaPago ?? 'Mensual',
-          // Prefer `riesgoMora` (single value) falling back to legacy `estadoDeuda` array
-          estadoDeuda: res.riesgoMora
-            ? [res.riesgoMora]
-            : Array.isArray(res.estadoDeuda)
-            ? res.estadoDeuda
-            : [],
           referencias: Array.isArray(res.referencias) ? res.referencias : [],
           refsParentescoTelefonos: Array.isArray(res.refsParentescoTelefonos) ? res.refsParentescoTelefonos : undefined,
           // Support both `actividad` and `activo` (backend uses `activo` in the model)
@@ -148,8 +137,7 @@ export function useClienteDetalle(id: string) {
           negocioDepartamento: res.negocioDepartamento || undefined,
           negocioMunicipio: res.negocioMunicipio || undefined,
           negocioZonaResidencial: res.negocioZonaResidencial || undefined,
-          negocioParentesco: res.negocioParentesco || undefined,
-          negocioParentescoTelefono: res.negocioParentescoTelefono || undefined,
+          parentescoPropietario: res.parentescoPropietario || undefined,
           ventaDiaria: typeof res.ventaDiaria === 'number' ? res.ventaDiaria : undefined,
           capacidadPago: typeof res.capacidadPago === 'number' ? res.capacidadPago : undefined,
 

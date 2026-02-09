@@ -283,10 +283,42 @@ const NuevoEmpleadoPage: React.FC = () => {
     setLoading(true);
     setError(null);
 
+    const friendlyBackendMessage = (message: string) => {
+      const m = String(message || "").toLowerCase();
+
+      const looksLikeDuplicate =
+        m.includes("duplic") ||
+        m.includes("unique") ||
+        m.includes("ya existe") ||
+        m.includes("ya está") ||
+        m.includes("ya esta") ||
+        m.includes("registrad") ||
+        m.includes("exist");
+
+      if (looksLikeDuplicate && (m.includes("email") || m.includes("correo"))) {
+        return "Este correo ya está registrado.";
+      }
+      if (
+        looksLikeDuplicate &&
+        (m.includes("tel") || m.includes("telefono") || m.includes("teléfono") || m.includes("phone"))
+      ) {
+        return "Este teléfono ya está registrado.";
+      }
+
+      return message;
+    };
+
     // Si por alguna razón no está el código, no bloquear: se recalcula más abajo
 
     if (!formData.permisos || formData.permisos.length === 0) {
       setError("Seleccione al menos un permiso");
+      setLoading(false);
+      return;
+    }
+
+    const email = formData.email.trim();
+    if (!email) {
+      setError("El correo es obligatorio");
       setLoading(false);
       return;
     }
@@ -312,8 +344,8 @@ const NuevoEmpleadoPage: React.FC = () => {
         usuario: formData.usuario,
         nombreCompleto: formData.nombreCompleto,
         rol: formData.rol,
-        email: formData.email,
-        telefono: `${formData.telefonoPais} ${formData.telefono}`, // ✅
+        email,
+        telefono: `${formData.telefonoPais} ${phoneDigits}`, // ✅ normalizado
         password: formData.password,                   // ✅ (ASÍ SE LLAMA EN TU SCHEMA)
         permisos: formData.permisos,
         estado: formData.estado === "ACTIVO",      // ✅ boolean
@@ -327,7 +359,8 @@ const NuevoEmpleadoPage: React.FC = () => {
       router.push("/empleados");
     } catch (err: any) {
       console.error("Error creando empleado:", err);
-      setError(err.message || "Error al crear empleado");
+      const rawMsg = err?.message || "Error al crear empleado";
+      setError(friendlyBackendMessage(rawMsg));
     } finally {
       setLoading(false);
     }
@@ -438,6 +471,7 @@ const NuevoEmpleadoPage: React.FC = () => {
                 value={formData.email}
                 onChange={handleChange}
                 InputLabelProps={{ shrink: true }}
+                required
               />
             </Grid>
             <Grid size={{ xs: 12, md: 6 }}>

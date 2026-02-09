@@ -34,12 +34,6 @@ import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 
 type EstadoDeuda = 'Al día' | 'Mora leve' | 'Mora moderada' | 'Mora grave';
 
-interface Tasa {
-  codigo: string;
-  nombre: string;
-  porcentajeInteres: number;
-}
-
 interface PhoneEntry {
   code: string;
   number: string;
@@ -75,8 +69,6 @@ interface ClienteForm {
   conyugeDireccionFotos: File[];
 
   limiteCredito: string;
-  tasaCliente: string;
-  frecuenciaPago: string;
   estadoDeuda: EstadoDeuda;
   referencias: string[];
   refsParentescos: string[];
@@ -121,8 +113,6 @@ const nivelesEducativos = [
   'Universitario',
   'Postgrado',
 ];
-
-const frecuenciasPago = ['Semanal', 'Quincenal', 'Mensual'];
 
 const sexos = ['Masculino', 'Femenino', 'Otro'];
 
@@ -248,8 +238,6 @@ const EditarClientePage: React.FC = () => {
     conyugeDireccionFotos: [],
 
     limiteCredito: '0',
-    tasaCliente: '0',
-    frecuenciaPago: 'Mensual',
     estadoDeuda: 'Al día',
     referencias: [''],
     refsParentescos: [''],
@@ -272,14 +260,19 @@ const EditarClientePage: React.FC = () => {
   const [phoneEntries, setPhoneEntries] = useState<PhoneEntry[]>([
     { code: '+504', number: '' },
   ]);
-
-  const [tasasBD, setTasasBD] = useState<Tasa[]>([]);
   const [activeStep, setActiveStep] = useState(0);
 
   const [emailError, setEmailError] = useState('');
   const [nombreError, setNombreError] = useState('');
   const [apellidoError, setApellidoError] = useState('');
   const [identidadError, setIdentidadError] = useState('');
+  const [fechaNacimientoError, setFechaNacimientoError] = useState('');
+  const [municipioError, setMunicipioError] = useState('');
+  const [zonaResidencialError, setZonaResidencialError] = useState('');
+  const [tipoViviendaError, setTipoViviendaError] = useState('');
+  const [direccionError, setDireccionError] = useState('');
+  const [direccionFotosError, setDireccionFotosError] = useState('');
+  const [phoneValidationActive, setPhoneValidationActive] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
@@ -294,10 +287,6 @@ const EditarClientePage: React.FC = () => {
   const [refsPhoneEntries, setRefsPhoneEntries] = useState<PhoneEntry[]>([
     { code: '+504', number: '' },
   ]);
-  const [refsParientePhoneEntries, setRefsParientePhoneEntries] = useState<PhoneEntry[]>([
-    { code: '+504', number: '' },
-  ]);
-  const [refsNames, setRefsNames] = useState<string[]>(['']);
   const [refsParentescosState, setRefsParentescosState] = useState<string[]>(['']);
 
   
@@ -314,28 +303,21 @@ const EditarClientePage: React.FC = () => {
     number: '',
   });
 
-
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await apiFetch<any[]>('/tasas');
-        const tasas = (data || []).map((t: any) => ({
-          codigo: t.codigoTasa,
-          nombre: t.nombre,
-          porcentajeInteres: t.porcentajeInteres,
-        }));
-        setTasasBD(tasas);
-      } catch (err) {
-        console.error('Error cargando tasas:', err);
-        setTasasBD([]);
-      }
-    })();
-  }, []);
-
   // Prefill the form when client data loads
   useEffect(() => {
     if (!clienteData) return;
+
+    const normalizeDateOnly = (value: unknown) => {
+      if (!value) return '';
+      const str = String(value);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+      if (str.includes('T')) return str.split('T')[0];
+      const d = new Date(str);
+      if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+      return '';
+    };
+
+    const fechaNacimientoOnly = normalizeDateOnly(clienteData.fechaNacimiento);
 
     // Fill scalar fields
     setForm((prev) => ({
@@ -350,9 +332,9 @@ const EditarClientePage: React.FC = () => {
 
       nombre: clienteData.nombre || prev.nombre,
       apellido: clienteData.apellido || prev.apellido,
-      email: clienteData.email || prev.email,
+      email: clienteData.email ?? '',
       sexo: clienteData.sexo || prev.sexo,
-      fechaNacimiento: clienteData.fechaNacimiento || prev.fechaNacimiento,
+      fechaNacimiento: fechaNacimientoOnly || prev.fechaNacimiento,
 
       departamentoResidencia: clienteData.departamentoResidencia || prev.departamentoResidencia,
       municipioResidencia: clienteData.municipioResidencia || prev.municipioResidencia,
@@ -367,8 +349,6 @@ const EditarClientePage: React.FC = () => {
       conyugeTelefono: clienteData.conyugeTelefono || prev.conyugeTelefono,
 
       limiteCredito: String(clienteData.limiteCredito ?? prev.limiteCredito),
-      tasaCliente: String(clienteData.tasaCliente ?? prev.tasaCliente),
-      frecuenciaPago: clienteData.frecuenciaPago || prev.frecuenciaPago,
       estadoDeuda: (clienteData.riesgoMora as any) || prev.estadoDeuda,
       referencias: Array.isArray(clienteData.referencias) ? clienteData.referencias : prev.referencias,
       actividad: clienteData.actividad ?? clienteData.actividad ?? prev.actividad,
@@ -376,9 +356,13 @@ const EditarClientePage: React.FC = () => {
       negocioNombre: clienteData.negocioNombre || prev.negocioNombre,
       negocioTipo: clienteData.negocioTipo || prev.negocioTipo,
       negocioDireccion: clienteData.negocioDireccion || prev.negocioDireccion,
+      negocioTelefono: clienteData.negocioTelefono || prev.negocioTelefono,
       negocioDepartamento: clienteData.negocioDepartamento || prev.negocioDepartamento,
       negocioMunicipio: clienteData.negocioMunicipio || prev.negocioMunicipio,
       negocioZonaResidencial: clienteData.negocioZonaResidencial || prev.negocioZonaResidencial,
+      negocioParentesco: clienteData.parentescoPropietario ?? prev.negocioParentesco,
+      ventaDiaria: String(clienteData.ventaDiaria ?? prev.ventaDiaria ?? '0'),
+      capacidadPago: String(clienteData.capacidadPago ?? prev.capacidadPago ?? '0'),
     }));
 
     // Phones
@@ -413,37 +397,30 @@ const EditarClientePage: React.FC = () => {
     // referencias -> names & phones
     const refs = clienteData.referencias || [];
     if (refs.length > 0) {
-      const names: string[] = [];
       const parentescos: string[] = [];
       const phonesR: PhoneEntry[] = [];
-      const parientePhonesR: PhoneEntry[] = [];
       refs.forEach((r) => {
         const parts = r.split(' - ').map((s) => s.trim());
         if (parts.length === 2) {
           // extraer parentesco si el nombre contiene "(Parentesco)"
           const mName = parts[0].match(/^(.+?)\s*\(([^)]+)\)\s*$/);
           if (mName) {
-            names.push(mName[1].trim());
             parentescos.push(mName[2].trim());
           } else {
-            names.push(parts[0]);
-            parentescos.push('');
+            // si viene "Parentesco" sin nombre, lo tratamos como parentesco
+            parentescos.push(parts[0]);
           }
           const m = parts[1].match(/^(\+\d{1,4})\s*(.*)$/);
           phonesR.push({ code: m?.[1] || '+504', number: (m?.[2] || '').replace(/[^\d]/g, '').slice(0, 8) });
         } else {
-          names.push('');
           parentescos.push('');
           const m = r.match(/^(\+\d{1,4})\s*(.*)$/);
           phonesR.push({ code: m?.[1] || '+504', number: (m?.[2] || '').replace(/[^\d]/g, '').slice(0, 8) });
         }
-        // Prefill pariente phone as empty (unless backend provides separate array)
-        parientePhonesR.push({ code: '+504', number: '' });
       });
-      setRefsNames(names.length ? names : ['']);
       setRefsParentescosState(parentescos.length ? parentescos : ['']);
       setRefsPhoneEntries(phonesR.length ? phonesR : [{ code: '+504', number: '' }]);
-      setRefsParientePhoneEntries(parientePhonesR.length ? parientePhonesR : [{ code: '+504', number: '' }]);
+      setForm((prev) => ({ ...prev, refsParentescoTelefonos: [] }));
     }
 
     // existing fotos
@@ -472,38 +449,17 @@ const EditarClientePage: React.FC = () => {
   useEffect(() => {
     const refs = refsPhoneEntries.map((r, idx) => {
       const phone = `${r.code} ${r.number}`.trim();
-      const name = (refsNames[idx] || '').trim();
       const parentesco = (refsParentescosState[idx] || '').trim();
-      const nameWithParen = parentesco ? `${name} (${parentesco})` : name;
-      return nameWithParen ? `${nameWithParen} - ${phone}` : phone;
+      const label = parentesco;
+      return label ? `${label} - ${phone}` : phone;
     });
-    const parientePhones = refsParientePhoneEntries.map((p) => `${p.code} ${p.number}`.trim());
-    setForm((prev) => ({ ...prev, referencias: refs, refsParentescoTelefonos: parientePhones }));
-  }, [refsPhoneEntries]);
-
-  useEffect(() => {
-    const refs = refsPhoneEntries.map((r, idx) => {
-      const phone = `${r.code} ${r.number}`.trim();
-      const name = (refsNames[idx] || '').trim();
-      const parentesco = (refsParentescosState[idx] || '').trim();
-      const nameWithParen = parentesco ? `${name} (${parentesco})` : name;
-      return nameWithParen ? `${nameWithParen} - ${phone}` : phone;
-    });
-    const parientePhones = refsParientePhoneEntries.map((p) => `${p.code} ${p.number}`.trim());
-    setForm((prev) => ({ ...prev, referencias: refs, refsParentescoTelefonos: parientePhones }));
-  }, [refsNames]);
-
-  useEffect(() => {
-    const refs = refsPhoneEntries.map((r, idx) => {
-      const phone = `${r.code} ${r.number}`.trim();
-      const name = (refsNames[idx] || '').trim();
-      const parentesco = (refsParentescosState[idx] || '').trim();
-      const nameWithParen = parentesco ? `${name} (${parentesco})` : name;
-      return nameWithParen ? `${nameWithParen} - ${phone}` : phone;
-    });
-    const parientePhones = refsParientePhoneEntries.map((p) => `${p.code} ${p.number}`.trim());
-    setForm((prev) => ({ ...prev, referencias: refs, refsParentescos: [...refsParentescosState], refsParentescoTelefonos: parientePhones }));
-  }, [refsParentescosState]);
+    setForm((prev) => ({
+      ...prev,
+      referencias: refs,
+      refsParentescos: [...refsParentescosState],
+      refsParentescoTelefonos: [],
+    }));
+  }, [refsPhoneEntries, refsParentescosState]);
 
   const handleChange = <K extends keyof ClienteForm>(
     key: K,
@@ -587,6 +543,70 @@ const EditarClientePage: React.FC = () => {
     return today >= eighteen;
   };
 
+  const validateFechaNacimiento = (value: string) => {
+    if (!value) {
+      setFechaNacimientoError('La fecha de nacimiento es requerida');
+      return false;
+    }
+
+    if (!isAdult18(value)) {
+      setFechaNacimientoError('El cliente debe ser mayor de 18 años');
+      return false;
+    }
+
+    setFechaNacimientoError('');
+    return true;
+  };
+
+  const validateDireccionStep = () => {
+    let ok = true;
+
+    if (!form.municipioResidencia.trim()) {
+      setMunicipioError('El municipio es requerido');
+      ok = false;
+    } else {
+      setMunicipioError('');
+    }
+
+    if (!form.zonaResidencialCliente.trim()) {
+      setZonaResidencialError('La zona residencial es requerida');
+      ok = false;
+    } else {
+      setZonaResidencialError('');
+    }
+
+    if (!form.tipoVivienda.trim()) {
+      setTipoViviendaError('El tipo de vivienda es requerido');
+      ok = false;
+    } else {
+      setTipoViviendaError('');
+    }
+
+    if (!form.direccion.trim()) {
+      setDireccionError('La dirección es requerida');
+      ok = false;
+    } else {
+      setDireccionError('');
+    }
+
+    if (!form.direccionFotos || form.direccionFotos.length === 0) {
+      setDireccionFotosError('Debe adjuntar al menos una foto de la dirección');
+      ok = false;
+    } else {
+      setDireccionFotosError('');
+    }
+
+    return ok;
+  };
+
+  const validatePhones = () => {
+    setPhoneValidationActive(true);
+    return (
+      phoneEntries.length > 0 &&
+      phoneEntries.every((p) => p.number.replace(/[^\d]/g, '').length === 8)
+    );
+  };
+
   const handlePhoneEntryChange = (
     index: number,
     field: 'code' | 'number',
@@ -641,25 +661,12 @@ const EditarClientePage: React.FC = () => {
     });
   };
 
-  const handleReferenciaParientePhoneChange = (
-    index: number,
-    field: 'code' | 'number',
-    value: string,
-  ) => {
-    setRefsParientePhoneEntries((prev) => {
-      const next = [...prev];
-      next[index] =
-        field === 'code'
-          ? { ...next[index], code: value }
-          : { ...next[index], number: value.replace(/[^\d]/g, '').slice(0, 8) };
-      return next;
-    });
-  };
-
 
 
   const addPhoneEntry = () => {
-    setPhoneEntries((prev) => [...prev, { code: '+504', number: '' }]);
+    setPhoneEntries((prev) =>
+      prev.length >= 3 ? prev : [...prev, { code: '+504', number: '' }],
+    );
   };
 
   const removePhoneEntry = (index: number) => {
@@ -702,54 +709,23 @@ const EditarClientePage: React.FC = () => {
     if (activeStep === 0) {
       if (!validateNombre(form.nombre)) isValid = false;
       if (!validateApellido(form.apellido)) isValid = false;
-      if (!validateEmail(form.email)) isValid = false;
+      if (!(form.email ? validateEmail(form.email) : true)) isValid = false;
       if (!validateIdentidad(form.identidadCliente)) isValid = false;
       if (!form.nacionalidad.trim()) {
         alert('La nacionalidad es requerida');
         isValid = false;
       }
-      if (!form.fechaNacimiento) {
-        alert('La fecha de nacimiento es requerida');
-        isValid = false;
-      } else if (!isAdult18(form.fechaNacimiento)) {
-        alert('El cliente debe ser mayor de 18 años');
-        isValid = false;
-      }
-      // Teléfono personal obligatorio: al menos uno con 8 dígitos
-      const anyValidPersonal = phoneEntries.some(
-        (p) => p.number.replace(/[^\d]/g, '').length === 8,
-      );
-      if (!anyValidPersonal) {
-        alert('Debe ingresar al menos un teléfono personal de 8 dígitos');
-        isValid = false;
-      }
+      if (!validateFechaNacimiento(form.fechaNacimiento)) isValid = false;
+      // Teléfono personal obligatorio: cada teléfono agregado debe ser válido (8 dígitos)
+      if (!validatePhones()) isValid = false;
     } else if (activeStep === 1) {
-      if (!form.tipoVivienda.trim()) {
-        alert('El tipo de vivienda es requerido');
-        isValid = false;
-      }
+      if (!validateDireccionStep()) isValid = false;
       if (Number(form.antiguedadVivenda) <= 0) {
         alert('La antigüedad de vivienda debe ser mayor a 0 años');
         isValid = false;
       }
       if (!form.departamentoResidencia.trim()) {
         alert('El departamento de residencia es requerido');
-        isValid = false;
-      }
-      if (!form.municipioResidencia.trim()) {
-        alert('El municipio es requerido');
-        isValid = false;
-      }
-      if (!form.zonaResidencialCliente.trim()) {
-        alert('La zona residencial es requerida');
-        isValid = false;
-      }
-      if (!form.direccion.trim()) {
-        alert('La dirección es requerida');
-        isValid = false;
-      }
-      if (!form.direccionFotos || form.direccionFotos.length === 0) {
-        alert('Debe adjuntar al menos una foto de la dirección');
         isValid = false;
       }
       // Teléfono del cónyuge opcional: si se ingresa, debe ser de 8 dígitos
@@ -763,10 +739,6 @@ const EditarClientePage: React.FC = () => {
         alert('El límite de crédito debe ser mayor o igual a 0');
         isValid = false;
       }
-      if (Number(form.tasaCliente) < 0) {
-        alert('La tasa debe ser mayor o igual a 0');
-        isValid = false;
-      }
     }
 
     if (isValid) {
@@ -777,53 +749,65 @@ const EditarClientePage: React.FC = () => {
   const handleBack = () => setActiveStep((s) => s - 1);
 
   const handleSubmit = async () => {
+    const fail = (msg: string) => {
+      setSnackbarSeverity('error');
+      setSnackbarMsg(msg);
+      setSnackbarOpen(true);
+    };
+
     // Validaciones finales básicas
     if (
       !validateNombre(form.nombre) ||
       !validateApellido(form.apellido) ||
-      !validateEmail(form.email) ||
+      !(form.email ? validateEmail(form.email) : true) ||
       !validateIdentidad(form.identidadCliente)
     ) {
-      alert('Por favor corrija los errores en los campos');
+      fail('Por favor corrija los errores en los campos');
+      return;
+    }
+
+    if (!validateFechaNacimiento(form.fechaNacimiento)) {
+      setActiveStep(0);
+      return;
+    }
+
+    if (!validatePhones()) {
+      setActiveStep(0);
+      return;
+    }
+
+    // Dirección: validar en el frontend (inline) para evitar error backend/localhost
+    if (!validateDireccionStep()) {
+      setActiveStep(1);
       return;
     }
 
     if (Number(form.antiguedadVivenda) <= 0) {
-      alert('La antigüedad de vivienda debe ser mayor a 0 años');
+      fail('La antigüedad de vivienda debe ser mayor a 0 años');
       return;
     }
 
-    if (!form.direccionFotos || form.direccionFotos.length === 0) {
-      alert('Debe adjuntar al menos una foto de la dirección');
-      return;
-    }
+    // `direccionFotos` se valida en validateDireccionStep()
 
     if (
       form.RTN &&
       (!/^\d+$/.test(form.RTN) || String(form.RTN).length > 14)
     ) {
-      alert('RTN debe ser numérico y no exceder 14 dígitos');
+      fail('RTN debe ser numérico y no exceder 14 dígitos');
       return;
     }
 
-    if (Number(form.limiteCredito) < 0 || Number(form.tasaCliente) < 0) {
-      alert('Los valores financieros deben ser mayores o iguales a 0');
+    if (Number(form.limiteCredito) < 0) {
+      fail('Los valores financieros deben ser mayores o iguales a 0');
       return;
     }
 
-    // Teléfono personal obligatorio
-    const anyValidPersonal = phoneEntries.some(
-      (p) => p.number.replace(/[^\d]/g, '').length === 8
-    );
-    if (!anyValidPersonal) {
-      alert('Debe ingresar al menos un teléfono personal de 8 dígitos');
-      return;
-    }
+    // Teléfonos personales ya validados en validatePhones()
 
     // Cónyuge opcional: si existe, debe ser válido
     const spouseDigits = conyugePhoneEntry.number.replace(/[^\d]/g, '');
     if (spouseDigits.length > 0 && spouseDigits.length !== 8) {
-      alert('El teléfono del cónyuge debe tener exactamente 8 dígitos');
+      fail('El teléfono del cónyuge debe tener exactamente 8 dígitos');
       return;
     }
 
@@ -862,8 +846,8 @@ const EditarClientePage: React.FC = () => {
 
       // Financieros
       limiteCredito: Number(form.limiteCredito),
-      tasaCliente: Number(form.tasaCliente),
-      frecuenciaPago: form.frecuenciaPago,
+      ventaDiaria: Number(form.ventaDiaria || 0),
+      capacidadPago: Number(form.capacidadPago || 0),
 
       // 🔑 Backend field (antes estadoDeuda en el UI)
       riesgoMora: form.estadoDeuda,
@@ -882,10 +866,7 @@ const EditarClientePage: React.FC = () => {
       negocioDepartamento: form.negocioDepartamento || undefined,
       negocioMunicipio: form.negocioMunicipio || undefined,
       negocioZonaResidencial: form.negocioZonaResidencial || undefined,
-      negocioParentesco: form.negocioParentesco || undefined,
-      negocioParentescoTelefono: form.negocioParentescoTelefono || undefined,
-      ventaDiaria: form.ventaDiaria ? Number(form.ventaDiaria) : undefined,
-      capacidadPago: form.capacidadPago ? Number(form.capacidadPago) : undefined,
+      parentescoPropietario: form.negocioParentesco || undefined,
 
       // Fotos (enviamos nombres de archivo por ahora)
       fotosDocs: form.documentosFotos.map((f) => f.name),
@@ -944,24 +925,12 @@ const EditarClientePage: React.FC = () => {
 
   const addReferencia = () => {
     setRefsPhoneEntries((prev) => [...prev, { code: '+504', number: '' }]);
-    setRefsParientePhoneEntries((prev) => [...prev, { code: '+504', number: '' }]);
-    setRefsNames((prev) => [...prev, '']);
     setRefsParentescosState((prev) => [...prev, '']);
   };
 
   const removeReferencia = (index: number) => {
     setRefsPhoneEntries((prev) => prev.filter((_, i) => i !== index));
-    setRefsParientePhoneEntries((prev) => prev.filter((_, i) => i !== index));
-    setRefsNames((prev) => prev.filter((_, i) => i !== index));
     setRefsParentescosState((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const handleReferenciaNameChange = (index: number, value: string) => {
-    setRefsNames((prev) => {
-      const next = [...prev];
-      next[index] = value.replace(/[\d]/g, '');
-      return next;
-    });
   };
 
   return (
@@ -1140,17 +1109,20 @@ const EditarClientePage: React.FC = () => {
                   label="Fecha de Nacimiento"
                   type="date"
                   value={form.fechaNacimiento}
-                  onChange={(e) =>
-                    handleChange('fechaNacimiento', e.target.value)
-                  }
+                  onChange={(e) => {
+                    handleChange('fechaNacimiento', e.target.value);
+                    if (fechaNacimientoError) setFechaNacimientoError('');
+                  }}
                   required
                   margin="normal"
                   InputLabelProps={{ shrink: true }}
+                  error={!!fechaNacimientoError}
+                  helperText={fechaNacimientoError}
                 />
 
                 <Box sx={{ gridColumn: { xs: '1', sm: '1 / span 2' }, mt: 1 }}>
                   <Typography variant="caption" sx={{ mb: 0.5, display: 'block' }}>
-                    Teléfonos
+                    Teléfonos (máximo 3) *
                   </Typography>
                   {phoneEntries.map((entry, idx) => (
                     <Box
@@ -1176,6 +1148,7 @@ const EditarClientePage: React.FC = () => {
                         </Select>
                       </FormControl>
                       <TextField
+                        label={`Teléfono ${idx + 1}`}
                         value={entry.number}
                         onChange={(e) =>
                           handlePhoneEntryChange(idx, 'number', e.target.value)
@@ -1183,7 +1156,17 @@ const EditarClientePage: React.FC = () => {
                         placeholder="XXXX-XXXX"
                         size="small"
                         sx={{ flex: 1 }}
-                        helperText="Ingrese solo números"
+                        required
+                        error={
+                          phoneValidationActive &&
+                          entry.number.replace(/[^\d]/g, '').length !== 8
+                        }
+                        helperText={
+                          phoneValidationActive &&
+                          entry.number.replace(/[^\d]/g, '').length !== 8
+                            ? 'El teléfono es requerido (8 dígitos)'
+                            : 'Ingrese solo números'
+                        }
                       />
                       <IconButton
                         aria-label="remove"
@@ -1197,9 +1180,10 @@ const EditarClientePage: React.FC = () => {
                   <Button
                     startIcon={<AddCircleOutlineIcon />}
                     onClick={addPhoneEntry}
+                    disabled={phoneEntries.length >= 3}
                     size="small"
                   >
-                    Agregar teléfono
+                    Agregar Teléfono
                   </Button>
                 </Box>
               </>
@@ -1229,29 +1213,40 @@ const EditarClientePage: React.FC = () => {
                 <TextField
                   label="Municipio"
                   value={form.municipioResidencia}
-                  onChange={(e) =>
-                    handleChange('municipioResidencia', e.target.value)
-                  }
+                  onChange={(e) => {
+                    handleChange('municipioResidencia', e.target.value);
+                    if (municipioError) setMunicipioError('');
+                  }}
                   required
                   margin="normal"
+                  error={!!municipioError}
+                  helperText={municipioError}
                 />
 
                 <TextField
                   label="Zona residencial"
                   value={form.zonaResidencialCliente}
-                  onChange={(e) =>
-                    handleChange('zonaResidencialCliente', e.target.value)
-                  }
+                  onChange={(e) => {
+                    handleChange('zonaResidencialCliente', e.target.value);
+                    if (zonaResidencialError) setZonaResidencialError('');
+                  }}
                   required
                   margin="normal"
+                  error={!!zonaResidencialError}
+                  helperText={zonaResidencialError}
                 />
 
                 <TextField
                   label="Tipo de vivienda"
                   value={form.tipoVivienda}
-                  onChange={(e) => handleChange('tipoVivienda', e.target.value)}
+                  onChange={(e) => {
+                    handleChange('tipoVivienda', e.target.value);
+                    if (tipoViviendaError) setTipoViviendaError('');
+                  }}
                   required
                   margin="normal"
+                  error={!!tipoViviendaError}
+                  helperText={tipoViviendaError}
                 />
 
                 <TextField
@@ -1272,15 +1267,20 @@ const EditarClientePage: React.FC = () => {
                 <TextField
                   label="Dirección (colonia, barrio, aldea)"
                   value={form.direccion}
-                  onChange={(e) => handleChange('direccion', e.target.value)}
+                  onChange={(e) => {
+                    handleChange('direccion', e.target.value);
+                    if (direccionError) setDireccionError('');
+                  }}
                   required
                   margin="normal"
                   fullWidth
                   sx={{ gridColumn: { xs: '1', sm: '1 / span 2' } }}
+                  error={!!direccionError}
+                  helperText={direccionError}
                 />
                 {/* Foto(s) de dirección */}
                 <Box sx={{ gridColumn: { xs: '1', sm: '1 / span 2' }, mt: 1 }}>
-                  <Typography variant="subtitle2">Foto(s) de dirección</Typography>
+                  <Typography variant="subtitle2">Foto(s) de dirección *</Typography>
                   <Button
                     variant="outlined"
                     component="label"
@@ -1298,9 +1298,15 @@ const EditarClientePage: React.FC = () => {
                           ...prev,
                           direccionFotos: [...(prev.direccionFotos || []), ...(files as File[])],
                         }));
+                        if (files.length > 0 && direccionFotosError) setDireccionFotosError('');
                       }}
                     />
                   </Button>
+                  {direccionFotosError ? (
+                    <Typography variant="caption" color="error" sx={{ display: 'block', mt: 0.5 }}>
+                      {direccionFotosError}
+                    </Typography>
+                  ) : null}
                   {(form.direccionFotos || []).length > 0 && (
                     <List dense>
                       {(form.direccionFotos || []).map((f, idx) => (
@@ -1313,10 +1319,16 @@ const EditarClientePage: React.FC = () => {
                               aria-label="eliminar"
                               size="small"
                               onClick={() =>
-                                setForm((prev) => ({
-                                  ...prev,
-                                  direccionFotos: (prev.direccionFotos || []).filter((_, i) => i !== idx),
-                                }))
+                                setForm((prev) => {
+                                  const nextFotos = (prev.direccionFotos || []).filter((_, i) => i !== idx);
+                                  if (nextFotos.length === 0) {
+                                    setDireccionFotosError('Debe adjuntar al menos una foto de la dirección');
+                                  }
+                                  return {
+                                    ...prev,
+                                    direccionFotos: nextFotos,
+                                  };
+                                })
                               }
                             >
                               <RemoveCircleOutlineIcon fontSize="small" />
@@ -1452,57 +1464,8 @@ const EditarClientePage: React.FC = () => {
                   inputProps={{ min: 0 }}
                 />
 
-                <FormControl margin="normal" fullWidth>
-                  <InputLabel id="tasa-label">Tasa (%)</InputLabel>
-                  <Select
-                    labelId="tasa-label"
-                    value={
-                      tasasBD.find(
-                        (t) => String(t.porcentajeInteres) === form.tasaCliente,
-                      )?.codigo || ''
-                    }
-                    label="Tasa (%)"
-                    onChange={(e) => {
-                      const selectedCodigo = e.target.value;
-                      const tasaSeleccionada = tasasBD.find(
-                        (t) => t.codigo === selectedCodigo,
-                      );
-                      handleChange(
-                        'tasaCliente',
-                        String(tasaSeleccionada?.porcentajeInteres ?? '0'),
-                      );
-                    }}
-                  >
-                    {tasasBD.map((t) => (
-                      <MenuItem key={t.codigo} value={t.codigo}>
-                        {t.nombre} - {t.porcentajeInteres}%
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-
-                <FormControl margin="normal">
-                  <InputLabel id="frecuencia-pago-label">
-                    Frecuencia de pago
-                  </InputLabel>
-                  <Select
-                    labelId="frecuencia-pago-label"
-                    value={form.frecuenciaPago}
-                    label="Frecuencia de pago"
-                    onChange={(e) =>
-                      handleChange('frecuenciaPago', e.target.value as string)
-                    }
-                  >
-                    {frecuenciasPago.map((f) => (
-                      <MenuItem key={f} value={f}>
-                        {f}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-
                 <Box sx={{ gridColumn: { xs: '1', sm: '1 / span 2' }, mt: 2 }}>
-                  <Typography variant="subtitle2">Estado de deuda</Typography>
+                  <Typography variant="subtitle2">Riesgo de Mora</Typography>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 0.5 }}>
                     {estadosDeuda.map((estado) => (
                       <FormControlLabel
@@ -1532,15 +1495,6 @@ const EditarClientePage: React.FC = () => {
                       sx={{ display: 'center', gap: 1, alignItems: 'center', mt: 1 }}
                     >
                       <TextField
-                        label={`Nombre referencia ${index + 1}`}
-                        value={refsNames[index] || ''}
-                        onChange={(e) =>
-                          handleReferenciaNameChange(index, e.target.value)
-                        }
-                        size="small"
-                        sx={{ minWidth: 220 }}
-                      />
-                      <TextField
                         label={`Parentesco referencia ${index + 1}`}
                         value={refsParentescosState[index] || ''}
                         onChange={(e) =>
@@ -1552,34 +1506,6 @@ const EditarClientePage: React.FC = () => {
                         }
                         size="small"
                         sx={{ flex: 1 }}
-                      />
-                      <FormControl sx={{ minWidth: 140 }} size="small">
-                        <InputLabel id={`ref-pariente-country-${index}`}>País</InputLabel>
-                        <Select
-                          labelId={`ref-pariente-country-${index}`}
-                          value={refsParientePhoneEntries[index]?.code || '+504'}
-                          label="País"
-                          onChange={(e) =>
-                            handleReferenciaParientePhoneChange(index, 'code', e.target.value as string)
-                          }
-                        >
-                          {countryCodes.map((c) => (
-                            <MenuItem key={c.code} value={c.code}>
-                              {c.name} ({c.code})
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                      <TextField
-                        value={refsParientePhoneEntries[index]?.number || ''}
-                        onChange={(e) =>
-                          handleReferenciaParientePhoneChange(index, 'number', e.target.value)
-                        }
-                        placeholder="XXXX-XXXX"
-                        size="small"
-                        sx={{ flex: 1 }}
-                        helperText="Teléfono del pariente (8 dígitos)"
-                        error={(refsParientePhoneEntries[index]?.number || '').replace(/[^\d]/g, '').length > 0 && (refsParientePhoneEntries[index]?.number || '').replace(/[^\d]/g, '').length !== 8}
                       />
                       <FormControl sx={{ minWidth: 140 }} size="small">
                         <InputLabel id={`ref-country-${index}`}>País</InputLabel>
