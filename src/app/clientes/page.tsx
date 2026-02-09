@@ -429,7 +429,7 @@ function ClientViewer({ id, step, onStepChange }: { id: string; step: number; on
             <TextField label="Venta diaria" value={String((data as any).ventaDiaria ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
             <TextField label="Capacidad de pago" value={String((data as any).capacidadPago ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
             <TextField label="Parentesco del propietario" value={String((data as any).parentescoPropietario ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
-            <TextField label="Estado de deuda" value={data.riesgoMora || (data.estadoDeuda?.[0] ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
+            <TextField label="Estado de deuda" value={data.riesgoMora || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
             <TextField label="Cliente activo" value={data.actividad === false ? 'INACTIVO' : 'ACTIVO'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
           </Box>
         )}

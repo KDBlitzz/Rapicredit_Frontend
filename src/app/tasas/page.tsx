@@ -202,7 +202,7 @@ export default function TasasPage() {
     };
 
     try {
-      if (editing) {
+      if (editing && editing.codigoTasa) {
         await updateTasaByCodigo(editing.codigoTasa, updatePayload);
         setFeedback({ type: "success", message: "Tasa actualizada." });
       } else {
@@ -376,7 +376,7 @@ export default function TasasPage() {
                         <IconButton
                           size="small"
                           color="error"
-                          onClick={() => setConfirmDelete({ codigoTasa: tasa.codigoTasa, nombre: tasa.nombre })}
+                          onClick={() => setConfirmDelete({ codigoTasa: tasa.codigoTasa ?? "", nombre: tasa.nombre })}
                           disabled={Boolean(busyCodigo) || saving}
                         >
                           <Delete fontSize="small" />
@@ -388,7 +388,7 @@ export default function TasasPage() {
                         color={tasa.activa === false ? "success" : "error"}
                         onClick={() => {
                           const nextState = tasa.activa === false;
-                          setConfirmToggle({ codigoTasa: tasa.codigoTasa, nextState, nombre: tasa.nombre });
+                          setConfirmToggle({ codigoTasa: tasa.codigoTasa ?? "", nextState, nombre: tasa.nombre });
                         }}
                         disabled={Boolean(busyCodigo) || saving}
                       >
