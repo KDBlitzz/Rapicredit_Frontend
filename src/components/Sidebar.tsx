@@ -49,6 +49,7 @@ const navItems: NavSection[] = [
           { label: "Central de Riesgos", href: "/reportes/central-riesgos" },
           { label: "Seguro de Vida", href: "/reportes/seguro-vida" },
           { label: "Pago al SAR", href: "/reportes/pago-sar" },
+          { label: "Trazabilidad de decisiones", href: "/reportes/trazabilidad-decisiones" },
         ]
       },
       { label: "Estadísticas Asesor", href: "/empleados/estadisticas" }
