@@ -32,6 +32,7 @@ import {
 } from "@mui/material";
 import { Add, Delete, Edit, Refresh } from "@mui/icons-material";
 import { useTasas, Tasa } from "../../hooks/useTasas";
+import { apiFetch } from "../../lib/api";
 
 const CAPITAL_MAX_LIMIT = 1_000_000;
 
@@ -69,7 +70,7 @@ export default function TasasPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [confirmToggle, setConfirmToggle] = useState<{ codigoTasa: string; nextState: boolean; nombre?: string } | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<{ codigoTasa: string; nombre?: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ codigoTasa: string; id?: string; nombre?: string } | null>(null);
   const [busyCodigo, setBusyCodigo] = useState<string | null>(null);
 
   const tasasFiltradas = useMemo(() => {
@@ -131,8 +132,6 @@ export default function TasasPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
-
-    const codigoTasa = form.codigoTasa.trim();
     const nombre = form.nombre.trim();
     const descripcion = form.descripcion.trim() || undefined;
 
@@ -233,10 +232,89 @@ export default function TasasPage() {
     }
   };
 
-  const doDelete = async (codigoTasa: string) => {
+  const doDelete = async (codigoTasa: string, tasaId?: string) => {
     if (!codigoTasa) return;
     try {
       setBusyCodigo(codigoTasa);
+
+      // Verificar si la tasa está en uso por algún préstamo antes de borrar.
+      type UnknownRecord = Record<string, unknown>;
+      const isRecord = (v: unknown): v is UnknownRecord => typeof v === "object" && v !== null;
+      const getNested = (v: unknown, keys: string[]): unknown => {
+        let cur: unknown = v;
+        for (const k of keys) {
+          if (!isRecord(cur)) return undefined;
+          cur = cur[k];
+        }
+        return cur;
+      };
+
+      const asString = (v: unknown): string | undefined => {
+        if (typeof v === "string") return v;
+        if (v == null) return undefined;
+        return String(v);
+      };
+
+      const matchesTasaRef = (p: unknown) => {
+        const candidates: unknown[] = [
+          getNested(p, ["tasInteresId"]),
+          getNested(p, ["tasaInteresId"]),
+          getNested(p, ["tasaId"]),
+          getNested(p, ["tasa"]),
+          getNested(p, ["tasaInteres"]),
+          getNested(p, ["codigoTasa"]),
+          getNested(p, ["codigo", "tasa"]),
+          getNested(p, ["solicitudId", "tasInteresId"]),
+          getNested(p, ["solicitud", "tasInteresId"]),
+        ];
+
+        for (const c of candidates) {
+          if (c == null) continue;
+
+          // Direct string id/codigo
+          const s = asString(c);
+          if (s && (s === codigoTasa || (tasaId && s === tasaId))) return true;
+
+          // Nested object
+          if (isRecord(c)) {
+            const objId = asString(c._id ?? c.id);
+            const objCodigo = asString(c.codigoTasa ?? c.codigo);
+            if (objCodigo && objCodigo === codigoTasa) return true;
+            if (tasaId && objId && objId === tasaId) return true;
+
+            const deepId = asString(getNested(c, ["_id"]) ?? getNested(c, ["id"]));
+            const deepCodigo = asString(getNested(c, ["codigoTasa"]) ?? getNested(c, ["codigo"]));
+            if (deepCodigo && deepCodigo === codigoTasa) return true;
+            if (tasaId && deepId && deepId === tasaId) return true;
+          }
+        }
+
+        return false;
+      };
+
+      try {
+        const res = await apiFetch<unknown>("/prestamos");
+        const list: unknown[] = (() => {
+          if (Array.isArray(res)) return res;
+          if (!isRecord(res)) return [];
+          const prestamos = getNested(res, ["prestamos"]);
+          if (Array.isArray(prestamos)) return prestamos;
+          const data = getNested(res, ["data"]);
+          if (Array.isArray(data)) return data;
+          return [];
+        })();
+
+        const isUsed = list.some(matchesTasaRef);
+        if (isUsed) {
+          setFeedback({ type: "error", message: "No puede borrar la tasa, esta siendo utilizada por un prestamo" });
+          return;
+        }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "No se pudo verificar préstamos.";
+        setFeedback({ type: "error", message });
+        return;
+      }
+
       await deleteTasa(codigoTasa);
       setFeedback({ type: "success", message: "Tasa eliminada." });
     } catch (err: unknown) {
@@ -376,7 +454,7 @@ export default function TasasPage() {
                         <IconButton
                           size="small"
                           color="error"
-                          onClick={() => setConfirmDelete({ codigoTasa: tasa.codigoTasa ?? "", nombre: tasa.nombre })}
+                          onClick={() => setConfirmDelete({ codigoTasa: tasa.codigoTasa ?? "", id: tasa._id, nombre: tasa.nombre })}
                           disabled={Boolean(busyCodigo) || saving}
                         >
                           <Delete fontSize="small" />
@@ -442,7 +520,7 @@ export default function TasasPage() {
             color="error"
             onClick={async () => {
               if (!confirmDelete) return;
-              await doDelete(confirmDelete.codigoTasa);
+              await doDelete(confirmDelete.codigoTasa, confirmDelete.id);
               setConfirmDelete(null);
             }}
           >

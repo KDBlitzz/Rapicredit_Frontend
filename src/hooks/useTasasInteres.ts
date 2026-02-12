@@ -8,6 +8,9 @@ export interface TasaInteres {
   codigoTasa?: string;
   nombre: string;
   porcentajeInteres?: number;
+  capitalMin?: number;
+  capitalMax?: number;
+  activa?: boolean;
 }
 
 export function useTasasInteres() {
@@ -42,6 +45,10 @@ export function useTasasInteres() {
     };
   }, []);
 
-  const sorted = [...data].sort((a, b) => (a.nombre || "").localeCompare(b.nombre || "", "es"));
+  const sorted = [...data]
+    // No mostrar tasas inactivas en combobox
+    .filter((t) => t.activa !== false)
+    .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || "", "es"));
+
   return { data: sorted, loading, error };
 }

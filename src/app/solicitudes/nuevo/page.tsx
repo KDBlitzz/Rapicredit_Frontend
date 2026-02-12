@@ -189,6 +189,31 @@ const NuevoSolicitudPage: React.FC = () => {
       return false;
     }
 
+    // Validar rango de capital según tasa seleccionada
+    const capital = Number(form.capitalSolicitado);
+    const min = Number((selectedTasa as any)?.capitalMin);
+    const max = Number((selectedTasa as any)?.capitalMax);
+    const hasMin = Number.isFinite(min) && min > 0;
+    const hasMax = Number.isFinite(max) && max > 0;
+
+    if (hasMin && capital < min) {
+      setSnackbarSeverity('error');
+      setSnackbarMsg(
+        `El capital solicitado no puede ser menor a L. ${min.toLocaleString('es-HN', { minimumFractionDigits: 2 })} según la tasa seleccionada.`
+      );
+      setSnackbarOpen(true);
+      return false;
+    }
+
+    if (hasMax && capital > max) {
+      setSnackbarSeverity('error');
+      setSnackbarMsg(
+        `El capital solicitado no puede ser mayor a L. ${max.toLocaleString('es-HN', { minimumFractionDigits: 2 })} según la tasa seleccionada.`
+      );
+      setSnackbarOpen(true);
+      return false;
+    }
+
     if (!(selectedFrecuencia as any)?._id) {
       setSnackbarSeverity('error');
       setSnackbarMsg('Debes seleccionar una frecuencia de pago.');
