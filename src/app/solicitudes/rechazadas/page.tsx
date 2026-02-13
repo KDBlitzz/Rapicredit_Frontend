@@ -24,11 +24,13 @@ import {
   Chip,
   CircularProgress,
 } from '@mui/material';
-import { Delete } from '@mui/icons-material';
+import { Delete, Edit } from '@mui/icons-material';
+import { useRouter } from 'next/navigation';
 import { useSolicitudes, EstadoSolicitudFiltro } from '../../../hooks/useSolicitudes';
 import { apiFetch } from '../../../lib/api';
 
 const SolicitudesRechazadasPage: React.FC = () => {
+  const router = useRouter();
   const [busqueda, setBusqueda] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -167,6 +169,19 @@ const SolicitudesRechazadasPage: React.FC = () => {
                     </TableCell>
                     <TableCell>{renderEstadoChip(s.estadoSolicitud)}</TableCell>
                     <TableCell align="right">
+                      <Tooltip title="Editar">
+                        <span>
+                          <IconButton
+                            size="small"
+                            color="primary"
+                            onClick={() => router.push(`/solicitudes/${encodeURIComponent(s.codigoSolicitud)}?edit=1`)}
+                            disabled={deleteLoading}
+                          >
+                            <Edit fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+
                       <Tooltip title="Eliminar">
                         <span>
                           <IconButton

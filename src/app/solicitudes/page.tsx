@@ -26,12 +26,15 @@ import {
   Alert,
 } from '@mui/material';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { Edit } from '@mui/icons-material';
 import { useSolicitudes, EstadoSolicitudFiltro } from '../../hooks/useSolicitudes';
 import { apiFetch } from '../../lib/api';
 
 type SolicitudAccion = 'REVISION';
 
 const SolicitudesPage: React.FC = () => {
+  const router = useRouter();
   const [busqueda, setBusqueda] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -226,12 +229,26 @@ const SolicitudesPage: React.FC = () => {
                     </TableCell>
                     <TableCell align="center">
                       <Box sx={{ display: 'flex', justifyContent: 'center', gap: 0.5 }}>
+                        <Tooltip title="Editar">
+                          <span>
+                            <IconButton
+                              size="small"
+                              color="primary"
+                              onClick={() => router.push(`/solicitudes/${encodeURIComponent(s.codigoSolicitud)}?edit=1`)}
+                              disabled={actionLoading}
+                            >
+                              <Edit fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+
                         <Tooltip title="Mandar a revisión">
                           <span>
                             <IconButton
                               size="small"
                               color="warning"
                               onClick={() => openConfirm('REVISION', s.id, s.codigoSolicitud)}
+                              disabled={actionLoading}
                             >
                               <Box component="span" sx={{ fontSize: 16, lineHeight: 1 }}>📌</Box>
                             </IconButton>

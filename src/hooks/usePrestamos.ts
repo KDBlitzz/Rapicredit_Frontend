@@ -59,7 +59,15 @@ export interface PrestamosFilters {
   estado: EstadoPrestamoFiltro;
 }
 
-export function usePrestamos(filters: PrestamosFilters) {
+export interface UsePrestamosOptions {
+  /**
+   * Cualquier valor que cambie para forzar recarga.
+   * Útil cuando se ejecutan acciones (eliminar, registrar pago, etc.).
+   */
+  refreshKey?: unknown;
+}
+
+export function usePrestamos(filters: PrestamosFilters, options: UsePrestamosOptions = {}) {
   const [data, setData] = useState<PrestamoResumen[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -225,7 +233,7 @@ export function usePrestamos(filters: PrestamosFilters) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [filters.busqueda, filters.estado, options.refreshKey]);
 
   // 🔹 Filtros en memoria
   let filtrados = [...data];
