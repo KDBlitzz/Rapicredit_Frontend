@@ -85,34 +85,93 @@ export function useEstadisticasEmpleado(
         const res = await apiFetch<any>(path);
 
         // Intentar mapear con tolerancia diferentes formas de respuesta
+        // incluyendo la estructura de estadistica.service.js del backend.
+
+        const resumenGlobalizado = res.resumenGlobalizado || {};
+
         const mapped: EstadisticasEmpleadoData = {
           asesor: res.asesor || res.empleado || null,
           periodo: res.periodo || { inicio: String(fechaInicio || ""), fin: String(fechaFin || "") },
           bonificaciones: Array.isArray(res.bonificaciones) ? res.bonificaciones : [],
           totalBonificaciones: Number(res.totalBonificaciones ?? 0),
-          renovaciones: Number(res.renovaciones ?? res.totalRenovaciones ?? 0),
-          nuevosMes: Number(res.nuevosMes ?? res.clientesNuevosMes ?? 0),
+          renovaciones: Number(
+            res.renovaciones ??
+            res.totalRenovaciones ??
+            resumenGlobalizado.renovacionesTotales ??
+            0,
+          ),
+          nuevosMes: Number(
+            res.nuevosMes ??
+            res.clientesNuevosMes ??
+            resumenGlobalizado.nuevos ??
+            0,
+          ),
           nuevosInactivos: Number(res.nuevosInactivos ?? res.clientesNuevosInactivos ?? 0),
           moraPorcentaje: Number(res.moraPorcentaje ?? res.porcentajeMora ?? 0),
           clientesEnMora: Number(res.clientesEnMora ?? res.totalClientesEnMora ?? 0),
-          moraPorRangos: Array.isArray(res.moraPorRangos) ? res.moraPorRangos : (Array.isArray(res.moraRangos) ? res.moraRangos : []),
+          moraPorRangos: Array.isArray(res.moraPorRangos)
+            ? res.moraPorRangos
+            : Array.isArray(res.moraRangos)
+            ? res.moraRangos
+            : [],
           carteraActiva: {
-            cantidadClientes: Number(res.carteraActiva?.cantidadClientes ?? res.cantidadClientesActivos ?? 0),
-            cantidadPrestamos: Number(res.carteraActiva?.cantidadPrestamos ?? res.cantidadPrestamosActivos ?? 0),
-            montoOtorgadoTotal: Number(res.carteraActiva?.montoOtorgadoTotal ?? res.montoOtorgadoTotal ?? 0),
-            saldoActualTotal: Number(res.carteraActiva?.saldoActualTotal ?? res.saldoActualTotal ?? 0),
-            interesesCobradosTotal: Number(res.carteraActiva?.interesesCobradosTotal ?? res.interesesCobradosTotal ?? 0),
+            cantidadClientes: Number(
+              res.carteraActiva?.cantidadClientes ??
+              res.cantidadClientesActivos ??
+              res.clientesTotales ??
+              resumenGlobalizado.clientesTotales ??
+              0,
+            ),
+            cantidadPrestamos: Number(
+              res.carteraActiva?.cantidadPrestamos ??
+              res.cantidadPrestamosActivos ??
+              res.prestamosTotales ??
+              0,
+            ),
+            montoOtorgadoTotal: Number(
+              res.carteraActiva?.montoOtorgadoTotal ??
+              res.montoOtorgadoTotal ??
+              0,
+            ),
+            saldoActualTotal: Number(
+              res.carteraActiva?.saldoActualTotal ??
+              res.saldoActualTotal ??
+              0,
+            ),
+            interesesCobradosTotal: Number(
+              res.carteraActiva?.interesesCobradosTotal ??
+              res.interesesCobradosTotal ??
+              resumenGlobalizado.interesesCobrados ??
+              0,
+            ),
           },
-          prestamos: Array.isArray(res.prestamos) ? res.prestamos.map((p: any) => ({
-            id: p.id ?? p._id,
-            codigoFinanciamiento: p.codigoFinanciamiento ?? p.codigo,
-            cliente: p.cliente ?? null,
-            montoOtorgado: Number(p.montoOtorgado ?? p.monto ?? 0),
-            saldoActual: Number(p.saldoActual ?? p.saldo ?? 0),
-            enMora: Boolean(p.enMora ?? (String(p.estado || "").toUpperCase() === "EN_MORA")),
-            interesesCobradosTotal: Number(p.interesesCobradosTotal ?? p.interesesCobrados ?? 0),
-            interesesDevengadosTotal: Number(p.interesesDevengadosTotal ?? p.interesesDevengados ?? 0),
-          })) : [],
+          prestamos: Array.isArray(res.prestamos || res.detallesPrestamo)
+            ? (res.prestamos || res.detallesPrestamo).map((p: any) => ({
+                id: p.id ?? p._id,
+                codigoFinanciamiento: p.codigoFinanciamiento ?? p.codigo,
+                cliente:
+                  p.cliente ??
+                  (p.Cliente
+                    ? { nombre: p.Cliente }
+                    : null),
+                montoOtorgado: Number(p.montoOtorgado ?? p.monto ?? 0),
+                saldoActual: Number(p.saldoActual ?? p.saldo ?? 0),
+                enMora: Boolean(
+                  p.enMora ??
+                    (typeof p.riesgoMora === "string" && p.riesgoMora !== "Al dia") ??
+                    (String(p.estado || "").toUpperCase() === "EN_MORA"),
+                ),
+                interesesCobradosTotal: Number(
+                  p.interesesCobradosTotal ??
+                    p.interesesCobrados ??
+                    p.intereses ??
+                    0,
+                ),
+                interesesDevengadosTotal: Number(
+                  p.interesesDevengadosTotal ?? p.interesesDevengados ?? 0,
+                ),
+              }))
+            : [],
         };
 
         if (!cancelled) setData(mapped);
