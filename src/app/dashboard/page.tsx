@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import {
   Box,
   Grid,
@@ -17,9 +17,30 @@ import {
 } from "@mui/material";
 import Link from "next/link";
 import { useDashboard } from "../../hooks/useDashboard";
+import { usePrestamos } from "../../hooks/usePrestamos";
 
 const DashboardPage: React.FC = () => {
   const { data, loading, error } = useDashboard();
+  const prestamosAll = usePrestamos({ busqueda: "", estado: "TODOS" });
+
+  const { prestamosNuevosDelMes, prestamosCuota20 } = useMemo(() => {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    const list = prestamosAll.data ?? [];
+    const nuevos = list.filter((p) => {
+      if (!p.fechaDesembolso) return false;
+      const t = Date.parse(String(p.fechaDesembolso));
+      if (!Number.isFinite(t)) return false;
+      return t >= monthStart.getTime() && t < nextMonthStart.getTime();
+    }).length;
+
+    // Interpretación simple: préstamos cuyo plazo es 20 cuotas.
+    const cuota20 = list.filter((p) => Number(p.plazoCuotas) === 20).length;
+
+    return { prestamosNuevosDelMes: nuevos, prestamosCuota20: cuota20 };
+  }, [prestamosAll.data]);
 
   const formatMoney = (v?: number) =>
     v != null
@@ -132,6 +153,34 @@ const DashboardPage: React.FC = () => {
             </Typography>
             <Typography variant="caption" color="text.secondary">
               Suma de capital inicial en cartera
+            </Typography>
+          </Paper>
+        </Grid>
+
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              Préstamos nuevos del mes
+            </Typography>
+            <Typography variant="h6" sx={{ mt: 0.5 }}>
+              {prestamosAll.loading ? "—" : prestamosNuevosDelMes}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Con fecha de desembolso en el mes actual
+            </Typography>
+          </Paper>
+        </Grid>
+
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              Préstamos en su cuota 20
+            </Typography>
+            <Typography variant="h6" sx={{ mt: 0.5 }}>
+              {prestamosAll.loading ? "—" : prestamosCuota20}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Plazo configurado de 20 cuotas
             </Typography>
           </Paper>
         </Grid>
