@@ -234,6 +234,9 @@ const PreAprobacionPage: React.FC = () => {
         </Grid>
         <Grid size={{ xs: 12, sm: 8, md: 8 }} sx={{ display: "flex", justifyContent: { md: "flex-end" } }}>
           <Button variant="outlined" href="/solicitudes">Volver a listado</Button>
+          <Button variant="outlined" href="/solicitudes/rechazadas" sx={{ ml: 1 }}>
+            Solicitudes rechazadas
+          </Button>
         </Grid>
       </Grid>
 

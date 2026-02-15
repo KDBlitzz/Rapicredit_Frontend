@@ -7,6 +7,9 @@ export interface PrestamoDetalle {
   id: string;
   codigoPrestamo: string;
   solicitudId?: string;
+  clienteId?: string;
+  tasaInteresId?: string;
+  tasaInteresNombre?: string;
   frecuenciaPago?: string;
   capitalSolicitado: number;
   cuotaFija: number;
@@ -87,10 +90,25 @@ export function usePrestamoDetalle(id: string, reloadKey: number = 0) {
               }
             : null;
 
+        const clienteId = cliente
+          ? cliente.id
+          : asString(getNested(res, ["clienteId", "_id"]) ?? getNested(res, ["clienteId"])) ?? undefined;
+
         const detalle: PrestamoDetalle = {
           id: String(getNested(res, ["_id"]) ?? getNested(res, ["id"]) ?? id),
           codigoPrestamo: String(getNested(res, ["codigoPrestamo"]) ?? ""),
           solicitudId: asString(getNested(res, ["solicitudId", "_id"]) ?? getNested(res, ["solicitudId"])) ?? undefined,
+          clienteId,
+          tasaInteresId: (() => {
+            const raw = getNested(res, ["tasaInteresId"]);
+            if (isRecord(raw)) return asString(raw["_id"] ?? raw["id"]) ?? undefined;
+            return asString(raw) ?? undefined;
+          })(),
+          tasaInteresNombre: (() => {
+            const raw = getNested(res, ["tasaInteresId"]);
+            if (!isRecord(raw)) return undefined;
+            return asString(raw["nombre"]) ?? undefined;
+          })(),
           frecuenciaPago: asString(getNested(res, ["frecuenciaPago"])) ?? undefined,
           capitalSolicitado: asNumber(getNested(res, ["capitalSolicitado"])) ?? 0,
           cuotaFija: asNumber(getNested(res, ["cuotaFija"])) ?? 0,

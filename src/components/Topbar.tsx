@@ -7,12 +7,19 @@ import {
   Typography,
   TextField,
   Button,
+  IconButton,
+  Tooltip,
 } from "@mui/material";
+import { alpha, useTheme } from "@mui/material/styles";
+import { DarkMode, LightMode } from "@mui/icons-material";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useColorMode } from "../app/ThemeRegistry";
 
 export default function Topbar() {
   const pathname = usePathname();
+  const theme = useTheme();
+  const { mode, toggleColorMode } = useColorMode();
 
   const title = (() => {
     if (pathname.startsWith("/prestamos")) return "Préstamos";
@@ -29,8 +36,8 @@ export default function Topbar() {
       position="static"
       elevation={0}
       sx={{
-        borderBottom: "1px solid rgba(148,163,184,0.2)",
-        bgcolor: "rgba(15,23,42,0.9)",
+        borderBottom: `1px solid ${theme.palette.divider}`,
+        bgcolor: alpha(theme.palette.background.paper, 0.9),
         backdropFilter: "blur(16px)",
       }}
     >
@@ -45,6 +52,12 @@ export default function Topbar() {
         </Box>
 
         <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+          <Tooltip title={mode === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}>
+            <IconButton size="small" onClick={toggleColorMode} color="inherit">
+              {mode === "dark" ? <LightMode fontSize="small" /> : <DarkMode fontSize="small" />}
+            </IconButton>
+          </Tooltip>
+
           <TextField
             size="small"
             placeholder="Buscar cliente, préstamo, DNI…"
@@ -53,7 +66,7 @@ export default function Topbar() {
               minWidth: 260,
               "& .MuiOutlinedInput-root": {
                 borderRadius: 999,
-                bgcolor: "rgba(15,23,42,0.9)",
+                bgcolor: alpha(theme.palette.background.paper, 0.7),
               },
             }}
           />
@@ -65,7 +78,7 @@ export default function Topbar() {
               borderRadius: 999,
               textTransform: "none",
               px: 2,
-              bgcolor: "linear-gradient(to right, #38bdf8, #22c55e)",
+              background: `linear-gradient(to right, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
             }}
             variant="contained"
           >
