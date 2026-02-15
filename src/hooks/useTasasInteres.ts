@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 
 export interface TasaInteres {
@@ -45,10 +45,12 @@ export function useTasasInteres() {
     };
   }, []);
 
-  const sorted = [...data]
-    // No mostrar tasas inactivas en combobox
-    .filter((t) => t.activa !== false)
-    .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || "", "es"));
+  const sorted = useMemo(() => {
+    return [...data]
+      // No mostrar tasas inactivas en combobox
+      .filter((t) => t.activa !== false)
+      .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || "", "es"));
+  }, [data]);
 
   return { data: sorted, loading, error };
 }

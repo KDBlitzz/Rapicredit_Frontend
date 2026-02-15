@@ -9,26 +9,34 @@ import {
   Typography,
   Chip,
   CircularProgress,
-  TableContainer,
-  Table,
-  TableHead,
-  TableRow,
-  TableCell,
-  TableBody,
   Button,
   TextField,
+  MenuItem,
   Snackbar,
   Alert,
 } from '@mui/material';
 import Link from 'next/link';
 import { apiFetch } from '../../../lib/api';
+import { useTasasInteres, TasaInteres } from '../../../hooks/useTasasInteres';
+import { useFrecuenciasPago, FrecuenciaPago } from '../../../hooks/useFrecuenciasPago';
 
-interface SolicitudClienteRef {
-  id: string;
-  codigoCliente: string;
-  nombreCompleto: string;
-  identidadCliente?: string;
-}
+type UnknownRecord = Record<string, unknown>;
+const isRecord = (v: unknown): v is UnknownRecord => typeof v === 'object' && v !== null;
+
+const asString = (v: unknown): string | undefined => {
+  if (typeof v === 'string') return v;
+  if (v == null) return undefined;
+  return String(v);
+};
+
+const asNumber = (v: unknown): number | undefined => {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+};
 
 interface SolicitudHistorialItem {
   id: string;
@@ -47,8 +55,11 @@ interface SolicitudDetalle {
   finalidadCredito?: string | null; // mapeamos también producto
   estadoSolicitud: string;
   observaciones?: string | null; // mapeamos también comentario
-  cliente?: SolicitudClienteRef | null;
   historial?: SolicitudHistorialItem[];
+  vendedorId?: string | null;
+  frecuenciaPago?: string | null;
+  tasaInteresId?: string | null;
+  tasaInteresNombre?: string | null;
 }
 
 const SolicitudDetallePage: React.FC = () => {
@@ -77,6 +88,18 @@ const SolicitudDetallePage: React.FC = () => {
     observaciones: '',
     fechaSolicitud: '',
   });
+
+  const { data: tasas } = useTasasInteres();
+  const { data: frecuencias } = useFrecuenciasPago();
+
+  const [selectedTasa, setSelectedTasa] = useState<TasaInteres | null>(null);
+  const [selectedFrecuencia, setSelectedFrecuencia] = useState<FrecuenciaPago | null>(null);
+
+  const tasaOptions = useMemo(() => {
+    if (!selectedTasa?._id) return tasas;
+    const exists = tasas.some((t) => String(t._id) === String(selectedTasa._id));
+    return exists ? tasas : [selectedTasa, ...tasas];
+  }, [tasas, selectedTasa]);
 
   const [toastOpen, setToastOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
@@ -111,58 +134,60 @@ const SolicitudDetallePage: React.FC = () => {
       setLoading(true);
       setError(null);
       try {
-        const res: any = await apiFetch(`/solicitudes/${id}`);
+        const res = await apiFetch<unknown>(`/solicitudes/${id}`);
 
         if (cancelled || !res) return;
+        if (!isRecord(res)) throw new Error('Respuesta inválida del servidor');
 
-        const cliente: SolicitudClienteRef | null = res.cliente
-          ? {
-              id: String(res.cliente.id ?? res.cliente._id ?? ''),
-              codigoCliente: res.cliente.codigoCliente ?? '',
-              nombreCompleto:
-                res.cliente.nombreCompleto ??
-                [res.cliente.nombre, res.cliente.apellido]
-                  .filter(Boolean)
-                  .join(' ') ??
-                'Cliente',
-              identidadCliente: res.cliente.identidadCliente ?? undefined,
-            }
-          : null;
-
-        const historial: SolicitudHistorialItem[] = Array.isArray(res.historial)
-          ? res.historial.map((h: any, idx: number) => ({
-              id: String(h.id ?? h._id ?? idx),
-              fecha: h.fecha,
-              accion: h.accion ?? '',
-              usuario: h.usuario ?? undefined,
-              comentario: h.comentario ?? undefined,
-            }))
+        const rawHist = res['historial'];
+        const historial: SolicitudHistorialItem[] = Array.isArray(rawHist)
+          ? rawHist.map((h: unknown, idx: number) => {
+              const ho = isRecord(h) ? h : ({} as UnknownRecord);
+              return {
+                id: String(ho['id'] ?? ho['_id'] ?? idx),
+                fecha: asString(ho['fecha']),
+                accion: String(ho['accion'] ?? ''),
+                usuario: asString(ho['usuario']),
+                comentario: asString(ho['comentario']),
+              };
+            })
           : [];
 
         const detalle: SolicitudDetalle = {
-          id: String(res._id ?? res.id ?? id),
-          codigoSolicitud: res.codigoSolicitud ?? '',
-          fechaSolicitud: res.fechaSolicitud,
+          id: String(res['_id'] ?? res['id'] ?? id),
+          codigoSolicitud: String(res['codigoSolicitud'] ?? ''),
+          fechaSolicitud: asString(res['fechaSolicitud']),
 
           // Soporta tanto los nombres viejos como los nuevos
           capitalSolicitado:
-            res.capitalSolicitado ?? res.montoSolicitado ?? 0,
-          plazoCuotas: res.plazoCuotas ?? res.plazoMeses ?? null,
-          finalidadCredito: res.finalidadCredito ?? res.producto ?? null,
-          estadoSolicitud: res.estadoSolicitud ?? res.estado ?? 'REGISTRADA',
-          observaciones: res.observaciones ?? res.comentario ?? null,
-
-          cliente,
+            asNumber(res['capitalSolicitado']) ?? asNumber(res['montoSolicitado']) ?? 0,
+          plazoCuotas: (asNumber(res['plazoCuotas']) ?? asNumber(res['plazoMeses']) ?? null) as number | null,
+          finalidadCredito: asString(res['finalidadCredito']) ?? asString(res['producto']) ?? null,
+          estadoSolicitud: String(res['estadoSolicitud'] ?? res['estado'] ?? 'REGISTRADA'),
+          observaciones: asString(res['observaciones']) ?? asString(res['comentario']) ?? null,
           historial,
+          vendedorId: String(res['vendedorId'] ?? res['cobradorId'] ?? '') || null,
+          frecuenciaPago: asString(res['frecuenciaPago']) ?? null,
+          tasaInteresId: (() => {
+            const raw = res['tasaInteresId'] ?? res['tasInteresId'];
+            if (isRecord(raw)) return asString(raw['_id'] ?? raw['id'] ?? raw['codigoTasa']) ?? null;
+            return asString(raw) ?? null;
+          })(),
+          tasaInteresNombre: (() => {
+            const raw = res['tasaInteresId'] ?? res['tasInteresId'];
+            if (!isRecord(raw)) return null;
+            return asString(raw['nombre']) ?? null;
+          })(),
         };
 
         if (!cancelled) {
           setData(detalle);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Error cargando solicitud:', err);
         if (!cancelled) {
-          setError(err.message || 'Error al cargar la solicitud.');
+          const msg = err instanceof Error ? err.message : 'Error al cargar la solicitud.';
+          setError(msg);
           setData(null);
         }
       } finally {
@@ -199,7 +224,38 @@ const SolicitudDetallePage: React.FC = () => {
       observaciones: data.observaciones ? String(data.observaciones) : '',
       fechaSolicitud: dateValue,
     });
-  }, [data]);
+
+    if (data.tasaInteresId) {
+      const match = tasas.find(
+        (t) => String(t._id) === String(data.tasaInteresId) || String(t.codigoTasa ?? '') === String(data.tasaInteresId)
+      );
+
+      const next: TasaInteres =
+        match ??
+        ({
+          _id: data.tasaInteresId,
+          nombre: data.tasaInteresNombre ?? 'Tasa actual',
+        } as TasaInteres);
+
+      setSelectedTasa((prev) => {
+        if (prev && String(prev._id) === String(next._id)) return prev;
+        return next;
+      });
+    }
+    if (data.frecuenciaPago) {
+      const fromEnum = (() => {
+        const v = String(data.frecuenciaPago).toUpperCase();
+        if (v === 'DIARIO') return 'Días';
+        if (v === 'SEMANAL') return 'Semanas';
+        if (v === 'QUINCENAL') return 'Quincenas';
+        if (v === 'MENSUAL') return 'Meses';
+        return data.frecuenciaPago;
+      })();
+
+      const match = frecuencias.find((f) => String(f.nombre) === String(fromEnum));
+      setSelectedFrecuencia(match ?? null);
+    }
+  }, [data, tasas, frecuencias]);
 
   const onChangeForm = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -244,20 +300,76 @@ const SolicitudDetallePage: React.FC = () => {
       payload.capitalSolicitado = n;
     }
 
-    if (form.plazoCuotas.trim() !== '') {
-      const n = toFiniteNumber(form.plazoCuotas);
-      if (n == null || n <= 0) {
+    payload.observaciones = form.observaciones ?? '';
+    if (form.fechaSolicitud) payload.fechaSolicitud = form.fechaSolicitud;
+
+    // Tasa y frecuencia
+    if (!selectedTasa || !selectedTasa._id) {
+      setToastSeverity('error');
+      setToastMessage('Debes seleccionar una tasa de interés.');
+      setToastOpen(true);
+      return;
+    }
+
+    // Validación capital dentro del rango min/max de la tasa
+    const capital = toFiniteNumber(form.capitalSolicitado);
+    if (capital != null) {
+      const min = Number(selectedTasa.capitalMin);
+      const max = Number(selectedTasa.capitalMax);
+      const hasMin = Number.isFinite(min) && min > 0;
+      const hasMax = Number.isFinite(max) && max > 0;
+
+      if (hasMin && capital < min) {
         setToastSeverity('error');
-        setToastMessage('El plazo de cuotas debe ser mayor a cero.');
+        setToastMessage(
+          `El capital solicitado no puede ser menor a L. ${min.toLocaleString('es-HN', { minimumFractionDigits: 2 })} según la tasa seleccionada.`
+        );
         setToastOpen(true);
         return;
       }
-      payload.plazoCuotas = n;
+      if (hasMax && capital > max) {
+        setToastSeverity('error');
+        setToastMessage(
+          `El capital solicitado no puede ser mayor a L. ${max.toLocaleString('es-HN', { minimumFractionDigits: 2 })} según la tasa seleccionada.`
+        );
+        setToastOpen(true);
+        return;
+      }
     }
 
-    if (form.finalidadCredito.trim() !== '') payload.finalidadCredito = form.finalidadCredito.trim();
-    payload.observaciones = form.observaciones ?? '';
-    if (form.fechaSolicitud) payload.fechaSolicitud = form.fechaSolicitud;
+    payload.tasaInteresId = selectedTasa._id;
+    payload.tasInteresId = selectedTasa._id;
+    const pct = selectedTasa.porcentajeInteres;
+    if (pct != null) payload.tasaInteres = pct;
+
+    if (!selectedFrecuencia || !selectedFrecuencia.nombre) {
+      setToastSeverity('error');
+      setToastMessage('Debes seleccionar una frecuencia de pago.');
+      setToastOpen(true);
+      return;
+    }
+    const nombre = selectedFrecuencia.nombre;
+    const frecuenciaEnum = (() => {
+      switch (nombre) {
+        case 'Días':
+          return 'DIARIO';
+        case 'Semanas':
+          return 'SEMANAL';
+        case 'Quincenas':
+          return 'QUINCENAL';
+        case 'Meses':
+          return 'MENSUAL';
+        default:
+          return null;
+      }
+    })();
+    if (!frecuenciaEnum) {
+      setToastSeverity('error');
+      setToastMessage('Frecuencia de pago inválida.');
+      setToastOpen(true);
+      return;
+    }
+    payload.frecuenciaPago = frecuenciaEnum;
 
     setSaving(true);
     try {
@@ -320,12 +432,8 @@ const SolicitudDetallePage: React.FC = () => {
     codigoSolicitud,
     fechaSolicitud,
     capitalSolicitado,
-    plazoCuotas,
-    finalidadCredito,
     estadoSolicitud,
     observaciones,
-    cliente,
-    historial,
   } = data;
 
   return (
@@ -354,17 +462,6 @@ const SolicitudDetallePage: React.FC = () => {
         </Box>
 
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          {cliente && (
-            <Button
-              size="small"
-              variant="outlined"
-              component={Link}
-              href={`/clientes/${cliente.id}`}
-            >
-              Ver cliente
-            </Button>
-          )}
-
           {editMode ? (
             <>
               <Button size="small" variant="contained" onClick={onSave} disabled={saving}>
@@ -394,12 +491,27 @@ const SolicitudDetallePage: React.FC = () => {
               Datos de la solicitud
             </Typography>
             <Grid container spacing={1}>
-              <Grid size={{ xs: 6 }}>
-                <Typography variant="caption" color="text.secondary">
-                  Capital solicitado
-                </Typography>
+              {/* Cliente y cobrador */}
+              {editMode && (
+                <>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      label="Fecha de solicitud"
+                      type="date"
+                      name="fechaSolicitud"
+                      value={form.fechaSolicitud}
+                      onChange={onChangeForm}
+                      fullWidth
+                      size="small"
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Grid>
+                </>
+              )}
+              <Grid size={{ xs: 12, sm: 6 }}>
                 {editMode ? (
                   <TextField
+                    label="Capital solicitado"
                     fullWidth
                     size="small"
                     type="number"
@@ -409,42 +521,12 @@ const SolicitudDetallePage: React.FC = () => {
                     inputProps={{ inputMode: 'decimal', step: '0.01' }}
                   />
                 ) : (
-                  <Typography>{formatMoney(capitalSolicitado)}</Typography>
-                )}
-              </Grid>
-              <Grid size={{ xs: 6 }}>
-                <Typography variant="caption" color="text.secondary">
-                  Finalidad del crédito
-                </Typography>
-                {editMode ? (
-                  <TextField
-                    fullWidth
-                    size="small"
-                    name="finalidadCredito"
-                    value={form.finalidadCredito}
-                    onChange={onChangeForm}
-                    placeholder="Finalidad del crédito"
-                  />
-                ) : (
-                  <Typography>{finalidadCredito || '—'}</Typography>
-                )}
-              </Grid>
-              <Grid size={{ xs: 6 }}>
-                <Typography variant="caption" color="text.secondary">
-                  Plazo (cuotas)
-                </Typography>
-                {editMode ? (
-                  <TextField
-                    fullWidth
-                    size="small"
-                    type="number"
-                    name="plazoCuotas"
-                    value={form.plazoCuotas}
-                    onChange={onChangeForm}
-                    inputProps={{ inputMode: 'numeric', step: '1' }}
-                  />
-                ) : (
-                  <Typography>{plazoCuotas ?? '—'}</Typography>
+                  <>
+                    <Typography variant="caption" color="text.secondary">
+                      Capital solicitado
+                    </Typography>
+                    <Typography>{formatMoney(capitalSolicitado)}</Typography>
+                  </>
                 )}
               </Grid>
               <Grid size={{ xs: 12 }}>
@@ -466,83 +548,67 @@ const SolicitudDetallePage: React.FC = () => {
                   <Typography>{observaciones || '—'}</Typography>
                 )}
               </Grid>
+              {editMode && (
+                <Grid size={{ xs: 12 }}>
+                  <Typography variant="subtitle2" sx={{ mt: 2 }}>Parámetros financieros</Typography>
+                </Grid>
+              )}
+              {editMode && (
+                <>
+                  {/* Tasa y frecuencia como selects simples por ahora */}
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      select
+                      label="Tasa de interés"
+                      value={selectedTasa?._id ?? ''}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        const match = tasaOptions.find((t) => String(t._id) === String(id));
+                        setSelectedTasa(match ?? null);
+                      }}
+                    >
+                      <MenuItem value="" disabled>
+                        <em>Selecciona una tasa</em>
+                      </MenuItem>
+                      {tasaOptions.map((t) => (
+                        <MenuItem key={String(t._id)} value={String(t._id)}>
+                          {t.nombre} {t.porcentajeInteres != null ? `- ${t.porcentajeInteres}%` : ''}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      select
+                      label="Frecuencia de pago"
+                      value={selectedFrecuencia?.nombre ?? ''}
+                      onChange={(e) => {
+                        const nombre = e.target.value;
+                        const match = frecuencias.find((f) => String(f.nombre) === String(nombre));
+                        setSelectedFrecuencia(match ?? null);
+                      }}
+                    >
+                      <MenuItem value="" disabled>
+                        <em>Selecciona una frecuencia</em>
+                      </MenuItem>
+                      {frecuencias.map((f) => (
+                        <MenuItem key={String(f._id)} value={String(f.nombre)}>
+                          {String(f.nombre)}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+                </>
+              )}
             </Grid>
           </Paper>
         </Grid>
 
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>
-              Datos del cliente
-            </Typography>
-            {cliente ? (
-              <Grid container spacing={1}>
-                <Grid size={{ xs: 6 }}>
-                  <Typography variant="caption" color="text.secondary">
-                    Nombre
-                  </Typography>
-                  <Typography>{cliente.nombreCompleto}</Typography>
-                </Grid>
-                <Grid size={{ xs: 6 }}>
-                  <Typography variant="caption" color="text.secondary">
-                    Identidad
-                  </Typography>
-                  <Typography>
-                    {cliente.identidadCliente || 'No registrada'}
-                  </Typography>
-                </Grid>
-                <Grid size={{ xs: 6 }}>
-                  <Typography variant="caption" color="text.secondary">
-                    Código cliente
-                  </Typography>
-                  <Typography>{cliente.codigoCliente || '—'}</Typography>
-                </Grid>
-              </Grid>
-            ) : (
-              <Typography variant="body2">
-                La solicitud no tiene cliente asociado.
-              </Typography>
-            )}
-          </Paper>
-        </Grid>
       </Grid>
-
-      {/* Historial */}
-      <Paper sx={{ p: 2 }}>
-        <Typography variant="subtitle2" sx={{ mb: 1 }}>
-          Historial de cambios
-        </Typography>
-        <TableContainer sx={{ maxHeight: 280 }}>
-          <Table size="small" stickyHeader>
-            <TableHead>
-              <TableRow>
-                <TableCell>Fecha</TableCell>
-                <TableCell>Acción</TableCell>
-                <TableCell>Usuario</TableCell>
-                <TableCell>Comentario</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {historial && historial.length > 0 ? (
-                historial.map((h) => (
-                  <TableRow key={h.id}>
-                    <TableCell>{formatDate(h.fecha)}</TableCell>
-                    <TableCell>{h.accion}</TableCell>
-                    <TableCell>{h.usuario || '—'}</TableCell>
-                    <TableCell>{h.comentario || '—'}</TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={4} align="center">
-                    No hay historial registrado para esta solicitud.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </Paper>
 
       <Snackbar
         open={toastOpen}
