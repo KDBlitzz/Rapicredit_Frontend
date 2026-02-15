@@ -5,7 +5,6 @@ import {
   Box,
   Toolbar,
   Typography,
-  TextField,
   Button,
   IconButton,
   Tooltip,
@@ -21,29 +20,42 @@ export default function Topbar() {
   const theme = useTheme();
   const { mode, toggleColorMode } = useColorMode();
 
+  const showNuevaSolicitud = !pathname.startsWith("/prestamos") && !pathname.startsWith("/solicitudes");
+
   const title = (() => {
+    if (pathname.startsWith("/solicitudes")) return "Solicitudes";
     if (pathname.startsWith("/prestamos")) return "Préstamos";
     if (pathname.startsWith("/clientes")) return "Clientes";
     if (pathname.startsWith("/pagos")) return "Pagos";
+    if (pathname.startsWith("/empleados/estadisticas")) return "Estadísticas";
+    if (pathname.startsWith("/empleados")) return "Empleados";
+    if (pathname.startsWith("/cobradores")) return "Cobradores";
+    if (pathname.startsWith("/carteras")) return "Carteras";
     if (pathname.startsWith("/reportes")) return "Reportes";
     if (pathname.startsWith("/tasas")) return "Tasas";
     if (pathname.startsWith("/configuracion")) return "Configuración";
+    if (pathname.startsWith("/dashboard")) return "Dashboard";
     return "Dashboard";
   })();
 
   return (
     <AppBar
       position="static"
+      color="transparent"
       elevation={0}
       sx={{
         borderBottom: `1px solid ${theme.palette.divider}`,
-        bgcolor: alpha(theme.palette.background.paper, 0.9),
+        bgcolor:
+          theme.palette.mode === "light"
+            ? alpha(theme.palette.success.main, 0.12)
+            : alpha(theme.palette.background.paper, 0.9),
         backdropFilter: "blur(16px)",
+        color: theme.palette.text.primary,
       }}
     >
       <Toolbar sx={{ minHeight: 64, px: 2 }}>
         <Box sx={{ flex: 1 }}>
-          <Typography variant="subtitle1" sx={{ fontWeight: 500 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 500, color: "text.primary" }}>
             {title}
           </Typography>
           <Typography variant="caption" color="text.secondary">
@@ -58,32 +70,25 @@ export default function Topbar() {
             </IconButton>
           </Tooltip>
 
-          <TextField
-            size="small"
-            placeholder="Buscar cliente, préstamo, DNI…"
-            variant="outlined"
-            sx={{
-              minWidth: 260,
-              "& .MuiOutlinedInput-root": {
+          {showNuevaSolicitud ? (
+            <Button
+              component={Link}
+              href="/solicitudes"
+              size="small"
+              sx={{
                 borderRadius: 999,
-                bgcolor: alpha(theme.palette.background.paper, 0.7),
-              },
-            }}
-          />
-          <Button
-            component={Link}
-            href="/solicitudes"
-            size="small"
-            sx={{
-              borderRadius: 999,
-              textTransform: "none",
-              px: 2,
-              background: `linear-gradient(to right, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
-            }}
-            variant="contained"
-          >
-            + Nueva solicitud
-          </Button>
+                textTransform: "none",
+                px: 2,
+                bgcolor: theme.palette.success.main,
+                "&:hover": {
+                  bgcolor: theme.palette.success.dark,
+                },
+              }}
+              variant="contained"
+            >
+              + Nueva solicitud
+            </Button>
+          ) : null}
         </Box>
       </Toolbar>
     </AppBar>
