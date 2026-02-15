@@ -25,7 +25,7 @@ import {
   Chip,
   CircularProgress,
 } from "@mui/material";
-import { Delete } from "@mui/icons-material";
+import { Delete, Edit } from "@mui/icons-material";
 import Link from "next/link";
 import { usePrestamos, EstadoPrestamoFiltro } from "../../hooks/usePrestamos";
 import { apiFetch } from "../../lib/api";
@@ -207,6 +207,17 @@ const PrestamosPage: React.FC = () => {
                       >
                         Ver
                       </Button>
+
+                      <Tooltip title="Editar">
+                        <IconButton
+                          size="small"
+                          color="primary"
+                          component={Link}
+                          href={`/prestamos/${encodeURIComponent(p.codigoPrestamo)}?edit=1`}
+                        >
+                          <Edit fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
 
                       <Tooltip title="Eliminar">
                         <span>
