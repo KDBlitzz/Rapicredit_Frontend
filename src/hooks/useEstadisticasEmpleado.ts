@@ -50,8 +50,10 @@ export interface EstadisticasEmpleadoData {
 
 /**
  * Hook para cargar estadísticas por asesor (empleado).
- * Espera que el backend exponga GET /estadisticas/empleado?codigoUsuario=...&fechaInicio=YYYY-MM-DD&fechaFin=YYYY-MM-DD
- * Si el backend usa otro nombre, puedes adaptar `endpoint` o el mapeo.
+ * Espera que el backend exponga:
+ * - GET /estadistica/:codigoEmpleado
+ * - GET /estadistica/:codigoEmpleado/global
+ * - GET /estadistica/:codigoEmpleado/detallada
  */
 export function useEstadisticasEmpleado(
   codigoUsuario?: string,
@@ -76,102 +78,83 @@ export function useEstadisticasEmpleado(
       setError(null);
       try {
         const params = new URLSearchParams();
-        params.append("codigoUsuario", codigoUsuario);
         if (fechaInicio) params.append("fechaInicio", fechaInicio);
         if (fechaFin) params.append("fechaFin", fechaFin);
         const query = params.toString();
-        const path = query ? `/estadisticas/empleado?${query}` : "/estadisticas/empleado";
+        const basePath = `/estadisticas/${encodeURIComponent(codigoUsuario)}`;
+        const withQuery = (path: string) => (query ? `${path}?${query}` : path);
 
-        const res = await apiFetch<any>(path);
+        const res = await apiFetch<any>(withQuery(basePath));
 
-        // Intentar mapear con tolerancia diferentes formas de respuesta
-        // incluyendo la estructura de estadistica.service.js del backend.
+        const toNumber = (value: unknown) => {
+          const parsed = Number(value);
+          return Number.isFinite(parsed) ? parsed : 0;
+        };
 
-        const resumenGlobalizado = res.resumenGlobalizado || {};
+        const toNumberOrLength = (value: unknown) => {
+          if (Array.isArray(value)) return value.length;
+          return toNumber(value);
+        };
+
+        const moraPorRangos = Array.isArray(res.moraPorRangos)
+          ? res.moraPorRangos
+          : [
+            { rango: "Al dia", cantidadClientes: toNumber(res.clientesAlDiaCount), saldo: 0 },
+            { rango: "Mora leve", cantidadClientes: toNumber(res.clientesMoraLeveCount), saldo: 0 },
+            { rango: "Mora moderada", cantidadClientes: toNumber(res.clientesMoraModeradaCount), saldo: 0 },
+            { rango: "Mora grave", cantidadClientes: toNumber(res.clientesMoraGraveCount), saldo: 0 },
+          ];
+
+        const resumenGlobal = res.resumenGlobalizado || {};
+        const prestamosRaw = Array.isArray(res.prestamos)
+          ? res.prestamos
+          : (Array.isArray(res.detallesPrestamo) ? res.detallesPrestamo : []);
 
         const mapped: EstadisticasEmpleadoData = {
           asesor: res.asesor || res.empleado || null,
           periodo: res.periodo || { inicio: String(fechaInicio || ""), fin: String(fechaFin || "") },
           bonificaciones: Array.isArray(res.bonificaciones) ? res.bonificaciones : [],
-          totalBonificaciones: Number(res.totalBonificaciones ?? 0),
-          renovaciones: Number(
-            res.renovaciones ??
-            res.totalRenovaciones ??
-            resumenGlobalizado.renovacionesTotales ??
-            0,
-          ),
-          nuevosMes: Number(
-            res.nuevosMes ??
-            res.clientesNuevosMes ??
-            resumenGlobalizado.nuevos ??
-            0,
-          ),
-          nuevosInactivos: Number(res.nuevosInactivos ?? res.clientesNuevosInactivos ?? 0),
-          moraPorcentaje: Number(res.moraPorcentaje ?? res.porcentajeMora ?? 0),
-          clientesEnMora: Number(res.clientesEnMora ?? res.totalClientesEnMora ?? 0),
-          moraPorRangos: Array.isArray(res.moraPorRangos)
-            ? res.moraPorRangos
-            : Array.isArray(res.moraRangos)
-            ? res.moraRangos
-            : [],
+          totalBonificaciones: toNumber(res.totalBonificaciones ?? 0),
+          renovaciones: toNumberOrLength(res.renovacionesMes ?? res.renovaciones ?? res.renovacionesTotales ?? 0),
+          nuevosMes: toNumber(res.clientesNuevosMes ?? res.nuevosMes ?? 0),
+          nuevosInactivos: toNumber(res.clientesNuevosInactivos ?? res.nuevosInactivos ?? 0),
+          moraPorcentaje: toNumber(res.porcentajeMora ?? res.moraPorcentaje ?? 0),
+          clientesEnMora: toNumber(res.clientesEnMora ?? 0),
+          moraPorRangos,
           carteraActiva: {
-            cantidadClientes: Number(
-              res.carteraActiva?.cantidadClientes ??
-              res.cantidadClientesActivos ??
-              res.clientesTotales ??
-              resumenGlobalizado.clientesTotales ??
-              0,
+            cantidadClientes: toNumber(res.carteraActiva?.cantidadClientes ?? res.carteraClientesCount ?? res.clientesTotales ?? 0),
+            cantidadPrestamos: toNumberOrLength(
+              res.carteraActiva?.cantidadPrestamos
+                ?? res.prestamosTotales
+                ?? res.totalPrestamos
+                ?? 0
             ),
-            cantidadPrestamos: Number(
-              res.carteraActiva?.cantidadPrestamos ??
-              res.cantidadPrestamosActivos ??
-              res.prestamosTotales ??
-              0,
-            ),
-            montoOtorgadoTotal: Number(
-              res.carteraActiva?.montoOtorgadoTotal ??
-              res.montoOtorgadoTotal ??
-              0,
-            ),
-            saldoActualTotal: Number(
-              res.carteraActiva?.saldoActualTotal ??
-              res.saldoActualTotal ??
-              0,
-            ),
-            interesesCobradosTotal: Number(
-              res.carteraActiva?.interesesCobradosTotal ??
-              res.interesesCobradosTotal ??
-              resumenGlobalizado.interesesCobrados ??
-              0,
-            ),
+            montoOtorgadoTotal: toNumber(res.carteraActiva?.montoOtorgadoTotal ?? 0),
+            saldoActualTotal: toNumber(res.carteraActiva?.saldoActualTotal ?? 0),
+            interesesCobradosTotal: toNumber(res.carteraActiva?.interesesCobradosTotal ?? resumenGlobal.interesesCobrados ?? 0),
           },
-          prestamos: Array.isArray(res.prestamos || res.detallesPrestamo)
-            ? (res.prestamos || res.detallesPrestamo).map((p: any) => ({
-                id: p.id ?? p._id,
-                codigoFinanciamiento: p.codigoFinanciamiento ?? p.codigo,
-                cliente:
-                  p.cliente ??
-                  (p.Cliente
-                    ? { nombre: p.Cliente }
-                    : null),
-                montoOtorgado: Number(p.montoOtorgado ?? p.monto ?? 0),
-                saldoActual: Number(p.saldoActual ?? p.saldo ?? 0),
-                enMora: Boolean(
-                  p.enMora ??
-                    (typeof p.riesgoMora === "string" && p.riesgoMora !== "Al dia") ??
-                    (String(p.estado || "").toUpperCase() === "EN_MORA"),
-                ),
-                interesesCobradosTotal: Number(
-                  p.interesesCobradosTotal ??
-                    p.interesesCobrados ??
-                    p.intereses ??
-                    0,
-                ),
-                interesesDevengadosTotal: Number(
-                  p.interesesDevengadosTotal ?? p.interesesDevengados ?? 0,
-                ),
-              }))
-            : [],
+          prestamos: prestamosRaw.map((p: any) => {
+            const clienteNombre = p.cliente?.nombre
+              || p.cliente?.nombreCompleto
+              || p.Cliente
+              || p.cliente?.codigoCliente
+              || p.codigoCliente;
+
+            const enMora = typeof p.enMora === "boolean"
+              ? p.enMora
+              : (String(p.riesgoMora || "").toLowerCase() !== "al dia" && String(p.riesgoMora || "") !== "");
+
+            return {
+              id: p.id ?? p._id,
+              codigoFinanciamiento: p.codigoFinanciamiento ?? p.codigo,
+              cliente: clienteNombre ? { nombre: clienteNombre } : null,
+              montoOtorgado: toNumber(p.montoOtorgado ?? p.monto ?? p.MontoOtorgado ?? 0),
+              saldoActual: toNumber(p.saldoActual ?? p.saldo ?? 0),
+              enMora,
+              interesesCobradosTotal: toNumber(p.interesesCobradosTotal ?? p.interesesCobrados ?? 0),
+              interesesDevengadosTotal: toNumber(p.interesesDevengadosTotal ?? p.interesesDevengados ?? 0),
+            };
+          }),
         };
 
         if (!cancelled) setData(mapped);

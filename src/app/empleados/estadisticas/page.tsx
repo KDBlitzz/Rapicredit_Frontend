@@ -17,8 +17,12 @@ import {
   TableBody,
   Chip,
   CircularProgress,
+  Autocomplete,
 } from "@mui/material";
-import { useEmpleados, EstadoEmpleadoFiltro } from "../../../hooks/useEmpleados";
+import {
+  useEmpleados,
+  EstadoEmpleadoFiltro,
+} from "../../../hooks/useEmpleados";
 import { useEstadisticasEmpleado } from "../../../hooks/useEstadisticasEmpleado";
 
 function pad(n: number) { return n < 10 ? `0${n}` : String(n); }
@@ -35,13 +39,23 @@ function startEndOfMonth(date: Date) {
 
 const EstadisticasEmpleadosPage: React.FC = () => {
   const [estadoFiltro] = useState<EstadoEmpleadoFiltro>("ACTIVO");
-  const [busqueda, setBusqueda] = useState("");
+  const [busquedaAsesor, setBusquedaAsesor] = useState("");
 
   const { data: empleados, loading: loadingEmpleados } = useEmpleados({
-    busqueda,
+    busqueda: "",
     estado: estadoFiltro,
     rol: "",
   });
+
+  const empleadosFiltrados = useMemo(() => {
+    if (!busquedaAsesor.trim()) return empleados;
+    const q = busquedaAsesor.trim().toLowerCase();
+    return empleados.filter((e) =>
+      e.codigoUsuario?.toLowerCase().includes(q) ||
+      e.nombreCompleto.toLowerCase().includes(q) ||
+      (e.usuario || '').toLowerCase().includes(q)
+    );
+  }, [empleados, busquedaAsesor]);
 
   const defaultPeriod = useMemo(() => startEndOfMonth(new Date()), []);
   const [fechaInicio, setFechaInicio] = useState(defaultPeriod.inicio);
@@ -82,36 +96,21 @@ const EstadisticasEmpleadosPage: React.FC = () => {
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
       {/* Filtros */}
       <Grid container spacing={1}>
-        <Grid size={{ xs: 12, sm: 4, md: 4 }}>
-          <TextField
+        <Grid size={{ xs: 12, sm: 6, md: 6 }}>
+          <Autocomplete
             fullWidth
             size="small"
-            variant="outlined"
-            label="Buscar asesor"
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            InputLabelProps={{ shrink: true }}
+            options={empleadosFiltrados}
+            getOptionLabel={(e) => `${e.nombreCompleto} (${e.codigoUsuario || 'sin código'})`}
+            value={empleados.find((e) => e.codigoUsuario === codigoUsuario) || null}
+            onChange={(_, newValue) => setCodigoUsuario(newValue?.codigoUsuario || "")}
+            inputValue={busquedaAsesor}
+            onInputChange={(_, newInputValue) => setBusquedaAsesor(newInputValue)}
+            renderInput={(params) => <TextField {...params} label="Buscar y seleccionar asesor" />}
+            noOptionsText="Sin coincidencias"
           />
         </Grid>
-        <Grid size={{ xs: 12, sm: 4, md: 4 }}>
-          <TextField
-            select
-            fullWidth
-            size="small"
-            label="Asesor"
-            value={codigoUsuario}
-            onChange={(e) => setCodigoUsuario(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-          >
-            <MenuItem value="">Seleccione asesor</MenuItem>
-            {empleados.map((e) => (
-              <MenuItem key={e._id} value={e.codigoUsuario || ""}>
-                {e.nombreCompleto}
-              </MenuItem>
-            ))}
-          </TextField>
-        </Grid>
-        <Grid size={{ xs: 6, sm: 2, md: 2 }}>
+        <Grid size={{ xs: 12, sm: 3, md: 3 }}>
           <TextField
             fullWidth
             size="small"
@@ -122,12 +121,11 @@ const EstadisticasEmpleadosPage: React.FC = () => {
             InputLabelProps={{ shrink: true }}
           />
         </Grid>
-        <Grid size={{ xs: 6, sm: 2, md: 2 }}>
+        <Grid size={{ xs: 12, sm: 1, md: 1 }}>
           <Button
             fullWidth
             variant="contained"
             onClick={() => {
-              // refresh by toggling dates slightly
               setFechaInicio((prev) => prev);
             }}
             sx={{ height: 40 }}
