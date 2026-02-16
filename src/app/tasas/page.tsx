@@ -327,7 +327,14 @@ export default function TasasPage() {
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      <Paper sx={{ p: 2, backgroundColor: "rgba(15,23,42,0.6)", borderColor: "rgba(74, 222, 128, 0.25)" }}>
+      <Paper
+        elevation={0}
+        sx={(theme) => ({
+          p: 2,
+          bgcolor: theme.palette.mode === "dark" ? "rgba(15,23,42,0.6)" : "transparent",
+          border: theme.palette.mode === "dark" ? "1px solid rgba(74, 222, 128, 0.25)" : "none",
+        })}
+      >
         <Stack
           direction={{ xs: "column", md: "row" }}
           alignItems={{ xs: "flex-start", md: "center" }}
@@ -388,7 +395,14 @@ export default function TasasPage() {
 
         {loading && <LinearProgress sx={{ mt: 2 }} />}
 
-        <TableContainer component={Paper} variant="outlined" sx={{ mt: 2 }}>
+        <TableContainer
+          component={Paper}
+          variant="outlined"
+          sx={(theme) => ({
+            mt: 2,
+            border: theme.palette.mode === "light" ? "none" : undefined,
+          })}
+        >
           <Table size="small">
             <TableHead>
               <TableRow>

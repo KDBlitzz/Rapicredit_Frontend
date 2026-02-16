@@ -25,12 +25,14 @@ import {
   Chip,
   CircularProgress,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import { Delete, Edit } from "@mui/icons-material";
 import Link from "next/link";
 import { usePrestamos, EstadoPrestamoFiltro } from "../../hooks/usePrestamos";
 import { apiFetch } from "../../lib/api";
 
 const PrestamosPage: React.FC = () => {
+  const theme = useTheme();
   const [busqueda, setBusqueda] = useState("");
   const [estado, setEstado] = useState<EstadoPrestamoFiltro>("TODOS");
 
@@ -96,7 +98,8 @@ const PrestamosPage: React.FC = () => {
     else if (val === "CERRADO") color = "default";
     else if (val === "RECHAZADO") color = "error";
 
-    return <Chip size="small" label={val} color={color} variant="outlined" />;
+    const variant = theme.palette.mode === "light" ? "filled" : "outlined";
+    return <Chip size="small" label={val} color={color} variant={variant} />;
   };
 
   return (
@@ -162,7 +165,18 @@ const PrestamosPage: React.FC = () => {
 
       {/* Tabla */}
       <Paper sx={{ p: 2 }}>
-        <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
+        <Box
+          sx={(theme) => ({
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            mb: 1,
+            px: 1.5,
+            py: 1,
+            borderRadius: 2,
+            bgcolor: "transparent",
+          })}
+        >
           <Typography variant="subtitle2">Listado de préstamos</Typography>
           <Chip size="small" label={`Total: ${data.length}`} />
         </Box>
