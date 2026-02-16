@@ -14,8 +14,11 @@ import {
 import { alpha, useTheme } from "@mui/material/styles";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import ExpandLess from "@mui/icons-material/ExpandLess";
 import ExpandMore from "@mui/icons-material/ExpandMore";
+import { signOut } from "firebase/auth";
+import { auth } from "../lib/firebase";
 
 type NavSubItem = { label: string; href: string };
 type NavItem = NavSubItem & { submenu?: NavSubItem[] };
@@ -64,6 +67,7 @@ const navItems: NavSection[] = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [openSubmenu, setOpenSubmenu] = useState<string | null>(null);
   const theme = useTheme();
 
@@ -81,6 +85,16 @@ export default function Sidebar() {
 
   const handleSubmenuToggle = (label: string) => {
     setOpenSubmenu(openSubmenu === label ? null : label);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch {
+      // ignore
+    } finally {
+      router.push("/login");
+    }
   };
 
   return (
@@ -210,6 +224,29 @@ export default function Sidebar() {
                 </React.Fragment>
               );
             })}
+
+            {section.section === "Sistema" ? (
+              <ListItemButton
+                onClick={handleLogout}
+                sx={{
+                  mb: 0.5,
+                  mt: 0.5,
+                  color: sidebarText,
+                  "&:hover": isLight
+                    ? { bgcolor: alpha(theme.palette.common.white, 0.14) }
+                    : { bgcolor: alpha(theme.palette.success.main, 0.12) },
+                }}
+              >
+                <ListItemText
+                  primary="Cerrar Sesión"
+                  primaryTypographyProps={{
+                    fontSize: 14,
+                    color: sidebarTextSecondary,
+                    fontWeight: 700,
+                  }}
+                />
+              </ListItemButton>
+            ) : null}
           </List>
         ))}
       </Box>
