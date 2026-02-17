@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import {
   Box,
   Typography,
@@ -11,16 +11,13 @@ import {
   ListItemText,
   Collapse,
 } from "@mui/material";
-import { alpha, useTheme } from "@mui/material/styles";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useRouter } from "next/navigation";
 import ExpandLess from "@mui/icons-material/ExpandLess";
 import ExpandMore from "@mui/icons-material/ExpandMore";
-import { signOut } from "firebase/auth";
-import { auth } from "../lib/firebase";
+import { useEmpleadoActual } from "../hooks/useEmpleadoActual";
 
-type NavSubItem = { label: string; href: string };
+type NavSubItem = { label: string; href: string; requiredPermisos?: string[] };
 type NavItem = NavSubItem & { submenu?: NavSubItem[] };
 type NavSection = { section: string; items: NavItem[] };
 
@@ -29,18 +26,24 @@ const navItems: NavSection[] = [
     section: "General",
     items: [
       { label: "Dashboard", href: "/dashboard" },      
-      { label: "Préstamos", href: "/prestamos" },
-      { label: "Pagos", href: "/pagos" },   
-      { label: "Solicitudes", href: "/solicitudes" },
-      { label: "Tasas", href: "/tasas" },
-      { label: "Clientes", href: "/clientes" },         
+      // Créditos / préstamos y pagos
+      { label: "Préstamos", href: "/prestamos", requiredPermisos: ["f001", "F002"] },
+      { label: "Pagos", href: "/pagos", requiredPermisos: ["F005"] },   
+      // Solicitudes de crédito (aprobación / gestión)
+      { label: "Solicitudes", href: "/solicitudes", requiredPermisos: ["F010"] },
+      // Tasas y configuración de crédito
+      { label: "Tasas", href: "/tasas", requiredPermisos: ["F014"] },
+      // Clientes
+      { label: "Clientes", href: "/clientes", requiredPermisos: ["C001", "C003"] },         
     ],
   },
   {
     section: "Personal",
     items: [
-      { label: "Empleados", href: "/empleados" },
-      { label: "Gestión de Carteras", href: "/carteras" },
+      // Gestión de empleados: requiere permisos de seguridad
+      { label: "Empleados", href: "/empleados", requiredPermisos: ["S003", "S001"] },
+      // Carteras por usuario
+      { label: "Gestión de Carteras", href: "/carteras", requiredPermisos: ["S001"] },
     ],
   },
   {
@@ -56,45 +59,30 @@ const navItems: NavSection[] = [
           { label: "Trazabilidad de decisiones", href: "/reportes/trazabilidad-decisiones" },
         ]
       },
-      { label: "Estadísticas Asesor", href: "/empleados/estadisticas" }
+      { label: "Estadísticas Asesor", href: "/empleados/estadisticas", requiredPermisos: ["F008", "F009"] }
     ],
   },
   {
     section: "Sistema",
-    items: [{ label: "Configuración", href: "/configuracion" }],
+    items: [{ label: "Configuración", href: "/configuracion", requiredPermisos: ["S001", "S002", "S003"] }],
   },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const router = useRouter();
   const [openSubmenu, setOpenSubmenu] = useState<string | null>(null);
-  const theme = useTheme();
+  const { empleado } = useEmpleadoActual();
 
-  const isLight = theme.palette.mode === "light";
-  const sidebarBg = useMemo(() => {
-    return isLight ? theme.palette.success.dark : theme.palette.background.paper;
-  }, [isLight, theme.palette.background.paper, theme.palette.success.dark]);
+  const permisosActuales = (empleado?.permisos || []).map((p) => p.toUpperCase());
 
-  const sidebarBorder = useMemo(() => {
-    return `1px solid ${alpha(theme.palette.divider, isLight ? 0.6 : 0.3)}`;
-  }, [theme.palette.divider, isLight]);
-
-  const sidebarText = isLight ? theme.palette.common.white : theme.palette.text.primary;
-  const sidebarTextSecondary = isLight ? alpha(theme.palette.common.white, 0.78) : theme.palette.text.secondary;
+  const hasPermisos = (required?: string[]) => {
+    if (!required || required.length === 0) return true;
+    if (!permisosActuales.length) return false;
+    return required.some((code) => permisosActuales.includes(code.toUpperCase()));
+  };
 
   const handleSubmenuToggle = (label: string) => {
     setOpenSubmenu(openSubmenu === label ? null : label);
-  };
-
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-    } catch {
-      // ignore
-    } finally {
-      router.push("/login");
-    }
   };
 
   return (
@@ -102,14 +90,11 @@ export default function Sidebar() {
       component="aside"
       sx={{
         width: 260,
-        borderRight: sidebarBorder,
-        bgcolor: sidebarBg,
+        borderRight: "1px solid rgba(148,163,184,0.25)",
+        bgcolor: "background.paper",
         display: { xs: "none", md: "flex" },
         flexDirection: "column",
         p: 2,
-        "& .MuiTypography-root": {
-          fontWeight: 700,
-        },
       }}
     >
       <Box sx={{ mb: 3 }}>
@@ -118,13 +103,13 @@ export default function Sidebar() {
           sx={{
             letterSpacing: ".14em",
             textTransform: "uppercase",
-            color: isLight ? theme.palette.common.white : "primary.main",
+            color: "primary.main",
             fontWeight: 700,
           }}
         >
           RapiCredit
         </Typography>
-        <Typography variant="body2" sx={{ color: sidebarTextSecondary }}>
+        <Typography variant="body2" sx={{ color: "text.secondary" }}>
           Panel de administración
         </Typography>
       </Box>
@@ -138,12 +123,11 @@ export default function Sidebar() {
               <ListSubheader
                 sx={{
                   bgcolor: "transparent",
-                  color: sidebarTextSecondary,
+                  color: "text.secondary",
                   textTransform: "uppercase",
                   letterSpacing: ".12em",
                   fontSize: 11,
                   px: 0,
-                  fontWeight: 700,
                 }}
               >
                 {section.section}
@@ -151,6 +135,7 @@ export default function Sidebar() {
             }
           >
             {section.items.map((item) => {
+              if (!hasPermisos(item.requiredPermisos)) return null;
               const active = pathname.startsWith(item.href);
               const hasSubmenu = !!item.submenu?.length;
               const isOpen = openSubmenu === item.label;
@@ -163,22 +148,21 @@ export default function Sidebar() {
                     onClick={hasSubmenu ? () => handleSubmenuToggle(item.label) : undefined}
                     selected={active}
                     sx={{
+                      borderRadius: 2,
                       mb: 0.5,
-                      color: sidebarText,
-                      "&.Mui-selected": isLight
-                        ? { bgcolor: alpha(theme.palette.common.white, 0.18) }
-                        : { bgcolor: alpha(theme.palette.success.main, 0.16) },
-                      "&:hover": isLight
-                        ? { bgcolor: alpha(theme.palette.common.white, 0.14) }
-                        : { bgcolor: alpha(theme.palette.success.main, 0.12) },
+                      "&.Mui-selected": {
+                        bgcolor: "rgba(56,189,248,0.18)",
+                      },
+                      "&:hover": {
+                        bgcolor: "rgba(148,163,184,0.12)",
+                      },
                     }}
                   >
                     <ListItemText
                       primary={item.label}
                       primaryTypographyProps={{
                         fontSize: 14,
-                        color: active ? sidebarText : sidebarTextSecondary,
-                        fontWeight: 700,
+                        color: active ? "text.primary" : "text.secondary",
                       }}
                     />
                     {hasSubmenu && (isOpen ? <ExpandLess /> : <ExpandMore />)}
@@ -188,6 +172,7 @@ export default function Sidebar() {
                     <Collapse in={isOpen} timeout="auto" unmountOnExit>
                       <List component="div" disablePadding dense>
                         {item.submenu?.map((subItem) => {
+                          if (!hasPermisos(subItem.requiredPermisos)) return null;
                           const subActive = pathname === subItem.href;
                           return (
                             <ListItemButton
@@ -197,22 +182,21 @@ export default function Sidebar() {
                               selected={subActive}
                               sx={{
                                 pl: 4,
+                                borderRadius: 2,
                                 mb: 0.5,
-                                color: sidebarText,
-                                "&.Mui-selected": isLight
-                                  ? { bgcolor: alpha(theme.palette.common.white, 0.18) }
-                                  : { bgcolor: alpha(theme.palette.success.main, 0.16) },
-                                "&:hover": isLight
-                                  ? { bgcolor: alpha(theme.palette.common.white, 0.14) }
-                                  : { bgcolor: alpha(theme.palette.success.main, 0.12) },
+                                "&.Mui-selected": {
+                                  bgcolor: "rgba(56,189,248,0.18)",
+                                },
+                                "&:hover": {
+                                  bgcolor: "rgba(148,163,184,0.12)",
+                                },
                               }}
                             >
                               <ListItemText
                                 primary={subItem.label}
                                 primaryTypographyProps={{
                                   fontSize: 13,
-                                  color: subActive ? sidebarText : sidebarTextSecondary,
-                                  fontWeight: 700,
+                                  color: subActive ? "text.primary" : "text.secondary",
                                 }}
                               />
                             </ListItemButton>
@@ -224,29 +208,6 @@ export default function Sidebar() {
                 </React.Fragment>
               );
             })}
-
-            {section.section === "Sistema" ? (
-              <ListItemButton
-                onClick={handleLogout}
-                sx={{
-                  mb: 0.5,
-                  mt: 0.5,
-                  color: sidebarText,
-                  "&:hover": isLight
-                    ? { bgcolor: alpha(theme.palette.common.white, 0.14) }
-                    : { bgcolor: alpha(theme.palette.success.main, 0.12) },
-                }}
-              >
-                <ListItemText
-                  primary="Cerrar Sesión"
-                  primaryTypographyProps={{
-                    fontSize: 14,
-                    color: sidebarTextSecondary,
-                    fontWeight: 700,
-                  }}
-                />
-              </ListItemButton>
-            ) : null}
           </List>
         ))}
       </Box>
@@ -258,22 +219,28 @@ export default function Sidebar() {
             width: 32,
             height: 32,
             borderRadius: "50%",
-            bgcolor: isLight ? alpha(theme.palette.common.white, 0.22) : "primary.main",
+            bgcolor: "primary.main",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             mr: 1.5,
             fontSize: 14,
             fontWeight: 600,
-            color: isLight ? theme.palette.common.white : theme.palette.common.white,
           }}
         >
-          A
+          {(empleado?.nombreCompleto || empleado?.usuario || "A")
+            .split(" ")
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((p) => p[0]?.toUpperCase())
+            .join("") || "A"}
         </Box>
         <Box>
-          <Typography variant="body2" sx={{ color: sidebarText }}>Admin</Typography>
-          <Typography variant="caption" sx={{ color: sidebarTextSecondary }}>
-            Gerente
+          <Typography variant="body2">
+            {empleado?.nombreCompleto || empleado?.usuario || "Usuario"}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {empleado?.rol || "Sin rol"}
           </Typography>
         </Box>
       </Box>
