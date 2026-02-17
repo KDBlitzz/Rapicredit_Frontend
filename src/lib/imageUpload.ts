@@ -40,8 +40,27 @@ export async function uploadImage(
   });
 
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `Error ${res.status}: ${res.statusText}`);
+    const raw = await res.text();
+    let body: unknown = null;
+    try {
+      body = raw ? JSON.parse(raw) : null;
+    } catch {
+      body = raw;
+    }
+
+    const msg = (() => {
+      if (body && typeof body === 'object') {
+        const anyBody = body as Record<string, unknown>;
+        const m = anyBody['message'];
+        const e = anyBody['error'];
+        const parts = [typeof m === 'string' ? m : null, typeof e === 'string' ? e : null].filter(Boolean);
+        if (parts.length > 0) return parts.join(' - ');
+      }
+      if (typeof body === 'string' && body.trim()) return body;
+      return `Error ${res.status}: ${res.statusText}`;
+    })();
+
+    throw new Error(msg);
   }
 
   return res.json();

@@ -10,6 +10,10 @@ import {
   Chip,
   CircularProgress,
   Button,
+  IconButton,
+  List,
+  ListItem,
+  ListItemText,
   TextField,
   MenuItem,
   Snackbar,
@@ -17,6 +21,8 @@ import {
 } from '@mui/material';
 import Link from 'next/link';
 import { apiFetch } from '../../../lib/api';
+import { uploadImageFiles } from '../../../lib/imageUpload';
+import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 import { useTasasInteres, TasaInteres } from '../../../hooks/useTasasInteres';
 import { useFrecuenciasPago, FrecuenciaPago } from '../../../hooks/useFrecuenciasPago';
 
@@ -60,6 +66,8 @@ interface SolicitudDetalle {
   frecuenciaPago?: string | null;
   tasaInteresId?: string | null;
   tasaInteresNombre?: string | null;
+  fotosNegocio?: string[] | null;
+  datosNegocio?: UnknownRecord | null;
 }
 
 const SolicitudDetallePage: React.FC = () => {
@@ -80,6 +88,9 @@ const SolicitudDetallePage: React.FC = () => {
 
   const [editMode, setEditMode] = useState<boolean>(initialEditMode);
   const [saving, setSaving] = useState(false);
+
+  const [existingFotosNegocio, setExistingFotosNegocio] = useState<string[]>([]);
+  const [newFotosNegocio, setNewFotosNegocio] = useState<File[]>([]);
 
   const [form, setForm] = useState({
     capitalSolicitado: '',
@@ -178,6 +189,16 @@ const SolicitudDetallePage: React.FC = () => {
             if (!isRecord(raw)) return null;
             return asString(raw['nombre']) ?? null;
           })(),
+          datosNegocio: isRecord(res['datosNegocio']) ? (res['datosNegocio'] as UnknownRecord) : null,
+          fotosNegocio: (() => {
+            const dn = res['datosNegocio'];
+            if (!isRecord(dn)) return null;
+            const f = dn['fotos'];
+            if (Array.isArray(f)) {
+              return f.map((x: unknown) => asString(x)).filter((x): x is string => !!x) || null;
+            }
+            return null;
+          })(),
         };
 
         if (!cancelled) {
@@ -225,6 +246,9 @@ const SolicitudDetallePage: React.FC = () => {
       fechaSolicitud: dateValue,
     });
 
+    setExistingFotosNegocio(Array.isArray(data.fotosNegocio) ? data.fotosNegocio : []);
+    setNewFotosNegocio([]);
+
     if (data.tasaInteresId) {
       const match = tasas.find(
         (t) => String(t._id) === String(data.tasaInteresId) || String(t.codigoTasa ?? '') === String(data.tasaInteresId)
@@ -265,6 +289,7 @@ const SolicitudDetallePage: React.FC = () => {
   const onCancelEdit = () => {
     if (saving) return;
     setEditMode(false);
+    setNewFotosNegocio([]);
     // reset al estado actual
     if (data) {
       const dateValue = data.fechaSolicitud ? String(data.fechaSolicitud).slice(0, 10) : '';
@@ -275,7 +300,24 @@ const SolicitudDetallePage: React.FC = () => {
         observaciones: data.observaciones ? String(data.observaciones) : '',
         fechaSolicitud: dateValue,
       });
+
+      setExistingFotosNegocio(Array.isArray(data.fotosNegocio) ? data.fotosNegocio : []);
     }
+  };
+
+  const handleNegocioFotosChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    setNewFotosNegocio((prev) => [...prev, ...files]);
+    e.target.value = '';
+  };
+
+  const removeExistingNegocioFoto = (idx: number) => {
+    setExistingFotosNegocio((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const removeNewNegocioFoto = (idx: number) => {
+    setNewFotosNegocio((prev) => prev.filter((_, i) => i !== idx));
   };
 
   const onSave = async () => {
@@ -371,6 +413,23 @@ const SolicitudDetallePage: React.FC = () => {
     }
     payload.frecuenciaPago = frecuenciaEnum;
 
+    // Fotos del negocio (preservar existentes + subir nuevas)
+    try {
+      const uploads = await uploadImageFiles(newFotosNegocio || []);
+      const nextFotos = [...(existingFotosNegocio || []), ...uploads.map((u) => u.url)];
+      const baseDatosNegocio = (data.datosNegocio && typeof data.datosNegocio === 'object') ? data.datosNegocio : {};
+      payload.datosNegocio = {
+        ...(baseDatosNegocio as Record<string, unknown>),
+        fotos: nextFotos,
+      };
+    } catch (e: unknown) {
+      setToastSeverity('error');
+      const msg = e instanceof Error ? e.message : 'No se pudieron subir las fotos del negocio.';
+      setToastMessage(msg);
+      setToastOpen(true);
+      return;
+    }
+
     setSaving(true);
     try {
       await apiFetch(`/solicitudes/${encodeURIComponent(codigo)}`, {
@@ -434,6 +493,7 @@ const SolicitudDetallePage: React.FC = () => {
     capitalSolicitado,
     estadoSolicitud,
     observaciones,
+    fotosNegocio,
   } = data;
 
   return (
@@ -605,6 +665,89 @@ const SolicitudDetallePage: React.FC = () => {
                 </>
               )}
             </Grid>
+          </Paper>
+        </Grid>
+
+        {/* Fotos del negocio */}
+        <Grid size={{ xs: 12, sm: 6 }}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              Fotos del negocio
+            </Typography>
+
+            {editMode && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                <Button variant="outlined" size="small" component="label" disabled={saving}>
+                  Cargar fotos del negocio
+                  <input type="file" hidden multiple accept="image/*" onChange={handleNegocioFotosChange} />
+                </Button>
+                <Typography variant="caption" color="text.secondary">
+                  {newFotosNegocio.length > 0 ? `${newFotosNegocio.length} nueva(s) seleccionada(s)` : '—'}
+                </Typography>
+              </Box>
+            )}
+
+            {/* Existing photos */}
+            {(editMode ? existingFotosNegocio : (fotosNegocio || [])).length > 0 ? (
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                {(editMode ? existingFotosNegocio : (fotosNegocio || [])).map((url, idx) => (
+                  <Box key={`${url}-${idx}`} sx={{ position: 'relative' }}>
+                    <Box
+                      component="a"
+                      href={url}
+                      target="_blank"
+                      rel="noreferrer"
+                      sx={{ display: 'inline-flex' }}
+                    >
+                      <Box
+                        component="img"
+                        src={url}
+                        alt={`Foto negocio ${idx + 1}`}
+                        loading="lazy"
+                        sx={{ width: 140, height: 100, objectFit: 'cover', borderRadius: 1, border: '1px solid #eee' }}
+                      />
+                    </Box>
+                    {editMode && (
+                      <IconButton
+                        size="small"
+                        onClick={() => removeExistingNegocioFoto(idx)}
+                        disabled={saving}
+                        sx={{ position: 'absolute', top: 4, right: 4, bgcolor: 'background.paper' }}
+                        aria-label="quitar foto"
+                      >
+                        <RemoveCircleOutlineIcon fontSize="small" />
+                      </IconButton>
+                    )}
+                  </Box>
+                ))}
+              </Box>
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                No hay fotos registradas para esta solicitud.
+              </Typography>
+            )}
+
+            {/* New photos list */}
+            {editMode && newFotosNegocio.length > 0 && (
+              <Box sx={{ mt: 1 }}>
+                <Typography variant="caption" color="text.secondary">Nuevas fotos a subir</Typography>
+                <List dense>
+                  {newFotosNegocio.map((f, idx) => (
+                    <ListItem
+                      key={`${f.name}-${idx}`}
+                      sx={{ py: 0, display: 'flex', alignItems: 'center' }}
+                      secondaryAction={
+                        <IconButton edge="end" aria-label="eliminar" size="small" onClick={() => removeNewNegocioFoto(idx)}>
+                          <RemoveCircleOutlineIcon fontSize="small" />
+                        </IconButton>
+                      }
+                    >
+                      <ListItemText primary={f.name} />
+                    </ListItem>
+                  ))}
+                </List>
+              </Box>
+            )}
           </Paper>
         </Grid>
 

@@ -229,6 +229,18 @@ const SolicitudesPage: React.FC = () => {
                     </TableCell>
                     <TableCell align="center">
                       <Box sx={{ display: 'flex', justifyContent: 'center', gap: 0.5 }}>
+                        <Tooltip title="Ver solicitud">
+                          <span>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={() => router.push(`/solicitudes/${encodeURIComponent(s.codigoSolicitud)}`)}
+                              disabled={actionLoading}
+                            >
+                              Ver
+                            </Button>
+                          </span>
+                        </Tooltip>
                         <Tooltip title="Editar">
                           <span>
                             <IconButton

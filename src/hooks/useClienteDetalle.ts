@@ -145,7 +145,7 @@ export function useClienteDetalle(id: string) {
 
           // Accept either `documentosFotos` or legacy `fotosDocs`
           documentosFotos: res.documentosFotos ?? res.fotosDocs ?? [],
-          negocioFotos: res.negocioFotos ?? [],
+          negocioFotos: res.negocioFotos ?? res.fotosNegocio ?? [],
           fotosDireccion: res.fotosDireccion ?? res.direccionFotos ?? [],
           fotosDireccionConyuge: res.fotosDireccionConyuge ?? res.conyugeDireccionFotos ?? [],
         };

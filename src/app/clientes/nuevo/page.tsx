@@ -1,6 +1,7 @@
+
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Paper,
@@ -88,6 +89,43 @@ interface ClienteForm {
   documentosFotos: File[];
   negocioFotos: File[];
 }
+
+const FilePreviewGrid: React.FC<{ files: File[]; altPrefix: string }> = ({ files, altPrefix }) => {
+  const urls = useMemo(() => {
+    return (files || []).map((f) => URL.createObjectURL(f));
+  }, [files]);
+
+  useEffect(() => {
+    return () => {
+      urls.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [urls]);
+
+  if (!files || files.length === 0) return null;
+
+  return (
+    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+      {urls.map((u, idx) => (
+        <Box
+          key={`${altPrefix}-${idx}`}
+          component="a"
+          href={u}
+          target="_blank"
+          rel="noreferrer"
+          sx={{ display: 'inline-flex' }}
+        >
+          <Box
+            component="img"
+            src={u}
+            alt={`${altPrefix}-${idx + 1}`}
+            loading="lazy"
+            sx={{ width: 140, height: 100, objectFit: 'cover', borderRadius: 1, border: '1px solid #eee' }}
+          />
+        </Box>
+      ))}
+    </Box>
+  );
+};
 
 const steps = [
   'Información Personal',
@@ -1240,6 +1278,7 @@ const NuevoClientePage: React.FC = () => {
                       ))}
                     </List>
                   )}
+                  <FilePreviewGrid files={form.direccionFotos || []} altPrefix="dir" />
                 </Box>
 
                 <Box sx={{ gridColumn: { xs: '1', sm: '1 / span 2' }, mt: 2 }}>
@@ -1339,6 +1378,7 @@ const NuevoClientePage: React.FC = () => {
                             ))}
                           </List>
                         )}
+                        <FilePreviewGrid files={form.conyugeDireccionFotos || []} altPrefix="dirc" />
                       </Box>
                     </Grid>
                   </Grid>
@@ -1510,6 +1550,7 @@ const NuevoClientePage: React.FC = () => {
                       ))}
                     </List>
                   )}
+                  <FilePreviewGrid files={form.documentosFotos || []} altPrefix="doc" />
                 </Box>
 
                 <Box sx={{ gridColumn: { xs: '1', sm: '1 / span 2' }, mt: 3 }}>
@@ -1707,6 +1748,7 @@ const NuevoClientePage: React.FC = () => {
                       ))}
                     </List>
                   )}
+                  <FilePreviewGrid files={form.negocioFotos || []} altPrefix="neg" />
                 </Box>
               </>
             )}

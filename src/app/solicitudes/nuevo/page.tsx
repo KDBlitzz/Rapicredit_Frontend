@@ -18,6 +18,7 @@ import {
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '../../../lib/api';
+import { uploadImageFiles } from '../../../lib/imageUpload';
 import { useClientes, ClienteResumen } from '../../../hooks/useClientes';
 import { useEmpleados, Empleado } from '../../../hooks/useEmpleados';
 import { useTasasInteres, TasaInteres } from '../../../hooks/useTasasInteres';
@@ -40,6 +41,7 @@ const NuevoSolicitudPage: React.FC = () => {
     finalidadCredito: '',
     fechaSolicitud: hoy,
     observaciones: '',
+    fotosNegocio: [] as File[],
   });
 
   // Cargar opciones de clientes y cobradores
@@ -231,6 +233,9 @@ const NuevoSolicitudPage: React.FC = () => {
     setSaving(true);
 
     try {
+      // Subir fotos de negocio seleccionadas en el formulario
+      const negocioUploads = await uploadImageFiles(form.fotosNegocio || []);
+
       // Mapear la frecuencia (Días/Semanas/Quincenas/Meses) al enum del backend
       const frecuenciaEnum = (() => {
         const nombre = (selectedFrecuencia as any)?.nombre;
@@ -258,7 +263,10 @@ const NuevoSolicitudPage: React.FC = () => {
             departamento: (clienteDetalle as any).negocioDepartamento || undefined,
             municipio: (clienteDetalle as any).negocioMunicipio || undefined,
             zonaResidencial: (clienteDetalle as any).negocioZonaResidencial || undefined,
-            fotos: (clienteDetalle as any).negocioFotos || undefined,
+            fotos: [
+              ...(((clienteDetalle as any).negocioFotos || []) as string[]),
+              ...negocioUploads.map((u) => u.url),
+            ],
           }
         : {};
 
@@ -488,6 +496,43 @@ const NuevoSolicitudPage: React.FC = () => {
                     />
                   </Grid>
                 </Grid>
+              </AccordionDetails>
+            </Accordion>
+
+            {/* Fotos del negocio (opcional) */}
+            <Accordion>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography variant="subtitle2">Fotos requeridas del negocio</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <input
+                    id="fotos-negocio-input"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []);
+                      setForm((prev) => ({ ...prev, fotosNegocio: files }));
+                    }}
+                  />
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => {
+                      const el = document.getElementById('fotos-negocio-input') as HTMLInputElement | null;
+                      el?.click();
+                    }}
+                  >
+                    Cargar fotos del negocio
+                  </Button>
+                  <Typography variant="caption" color="text.secondary">
+                    {form.fotosNegocio && form.fotosNegocio.length > 0
+                      ? `${form.fotosNegocio.length} archivo(s) seleccionados`
+                      : 'Ningún archivo seleccionado'}
+                  </Typography>
+                </Box>
               </AccordionDetails>
             </Accordion>
 

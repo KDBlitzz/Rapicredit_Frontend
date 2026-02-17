@@ -1,6 +1,7 @@
+
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Paper,
@@ -90,6 +91,73 @@ interface ClienteForm {
   documentosFotos: File[];
   negocioFotos: File[];
 }
+
+const isHttpUrl = (value: string) => /^https?:\/\//i.test(String(value));
+
+const UrlPreviewGrid: React.FC<{ items: string[]; altPrefix: string }> = ({ items, altPrefix }) => {
+  const urls = (items || []).filter((v) => isHttpUrl(v));
+  if (urls.length === 0) return null;
+
+  return (
+    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+      {urls.map((u, idx) => (
+        <Box
+          key={`${altPrefix}-${idx}`}
+          component="a"
+          href={u}
+          target="_blank"
+          rel="noreferrer"
+          sx={{ display: 'inline-flex' }}
+        >
+          <Box
+            component="img"
+            src={u}
+            alt={`${altPrefix}-${idx + 1}`}
+            loading="lazy"
+            sx={{ width: 140, height: 100, objectFit: 'cover', borderRadius: 1, border: '1px solid #eee' }}
+          />
+        </Box>
+      ))}
+    </Box>
+  );
+};
+
+const FilePreviewGrid: React.FC<{ files: File[]; altPrefix: string }> = ({ files, altPrefix }) => {
+  const urls = useMemo(() => {
+    return (files || []).map((f) => URL.createObjectURL(f));
+  }, [files]);
+
+  useEffect(() => {
+    return () => {
+      urls.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [urls]);
+
+  if (!files || files.length === 0) return null;
+
+  return (
+    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+      {urls.map((u, idx) => (
+        <Box
+          key={`${altPrefix}-${idx}`}
+          component="a"
+          href={u}
+          target="_blank"
+          rel="noreferrer"
+          sx={{ display: 'inline-flex' }}
+        >
+          <Box
+            component="img"
+            src={u}
+            alt={`${altPrefix}-${idx + 1}`}
+            loading="lazy"
+            sx={{ width: 140, height: 100, objectFit: 'cover', borderRadius: 1, border: '1px solid #eee' }}
+          />
+        </Box>
+      ))}
+    </Box>
+  );
+};
 
 const steps = [
   'Información Personal',
@@ -570,7 +638,10 @@ const EditarClientePage: React.FC = () => {
       setDireccionError('');
     }
 
-    if (!form.direccionFotos || form.direccionFotos.length === 0) {
+    const totalDireccionFotos =
+      (existingFotosDireccion?.length ?? 0) + (form.direccionFotos?.length ?? 0);
+
+    if (totalDireccionFotos === 0) {
       setDireccionFotosError('Debe adjuntar al menos una foto de la dirección');
       ok = false;
     } else {
@@ -1308,6 +1379,34 @@ const EditarClientePage: React.FC = () => {
                       {direccionFotosError}
                     </Typography>
                   ) : null}
+
+                  {existingFotosDireccion.length > 0 && (
+                    <>
+                      <List dense>
+                        {existingFotosDireccion.map((f, idx) => {
+                          const isUrl = isHttpUrl(String(f));
+                          const label = isUrl ? String(f).split('/').pop() || String(f) : String(f);
+                          return (
+                            <ListItem
+                              key={`existing-dir-${idx}`}
+                              sx={{ py: 0, display: 'flex', alignItems: 'center' }}
+                              secondaryAction={
+                                isUrl ? (
+                                  <Button size="small" component="a" href={String(f)} target="_blank" rel="noreferrer">
+                                    Ver
+                                  </Button>
+                                ) : null
+                              }
+                            >
+                              <ListItemText primary={label} />
+                            </ListItem>
+                          );
+                        })}
+                      </List>
+                      <UrlPreviewGrid items={existingFotosDireccion} altPrefix="dir-existing" />
+                    </>
+                  )}
+
                   {(form.direccionFotos || []).length > 0 && (
                     <List dense>
                       {(form.direccionFotos || []).map((f, idx) => (
@@ -1341,6 +1440,7 @@ const EditarClientePage: React.FC = () => {
                       ))}
                     </List>
                   )}
+                  <FilePreviewGrid files={form.direccionFotos || []} altPrefix="dir-new" />
                 </Box>
 
                 <Box sx={{ gridColumn: { xs: '1', sm: '1 / span 2' }, mt: 2 }}>
@@ -1440,6 +1540,35 @@ const EditarClientePage: React.FC = () => {
                             ))}
                           </List>
                         )}
+
+                        {existingFotosDireccionConyuge.length > 0 && (
+                          <>
+                            <List dense>
+                              {existingFotosDireccionConyuge.map((f, idx) => {
+                                const isUrl = isHttpUrl(String(f));
+                                const label = isUrl ? String(f).split('/').pop() || String(f) : String(f);
+                                return (
+                                  <ListItem
+                                    key={`existing-dirc-${idx}`}
+                                    sx={{ py: 0, display: 'flex', alignItems: 'center' }}
+                                    secondaryAction={
+                                      isUrl ? (
+                                        <Button size="small" component="a" href={String(f)} target="_blank" rel="noreferrer">
+                                          Ver
+                                        </Button>
+                                      ) : null
+                                    }
+                                  >
+                                    <ListItemText primary={label} />
+                                  </ListItem>
+                                );
+                              })}
+                            </List>
+                            <UrlPreviewGrid items={existingFotosDireccionConyuge} altPrefix="dirc-existing" />
+                          </>
+                        )}
+
+                        <FilePreviewGrid files={form.conyugeDireccionFotos || []} altPrefix="dirc-new" />
                       </Box>
                     </Grid>
                   </Grid>
@@ -1591,35 +1720,30 @@ const EditarClientePage: React.FC = () => {
                     />
                   </Button>
                   {existingFotosDocs.length > 0 && (
-                    <List dense>
-                      {existingFotosDocs.map((f, idx) => {
-                        const isUrl = /^https?:\/\//i.test(String(f));
-                        const label = isUrl
-                          ? String(f).split('/').pop() || String(f)
-                          : String(f);
-                        return (
-                          <ListItem
-                            key={`existing-doc-${idx}`}
-                            sx={{ py: 0, display: 'flex', alignItems: 'center' }}
-                            secondaryAction={
-                              isUrl ? (
-                                <Button
-                                  size="small"
-                                  component="a"
-                                  href={String(f)}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                >
-                                  Ver
-                                </Button>
-                              ) : null
-                            }
-                          >
-                            <ListItemText primary={label} />
-                          </ListItem>
-                        );
-                      })}
-                    </List>
+                    <>
+                      <List dense>
+                        {existingFotosDocs.map((f, idx) => {
+                          const isUrl = isHttpUrl(String(f));
+                          const label = isUrl ? String(f).split('/').pop() || String(f) : String(f);
+                          return (
+                            <ListItem
+                              key={`existing-doc-${idx}`}
+                              sx={{ py: 0, display: 'flex', alignItems: 'center' }}
+                              secondaryAction={
+                                isUrl ? (
+                                  <Button size="small" component="a" href={String(f)} target="_blank" rel="noreferrer">
+                                    Ver
+                                  </Button>
+                                ) : null
+                              }
+                            >
+                              <ListItemText primary={label} />
+                            </ListItem>
+                          );
+                        })}
+                      </List>
+                      <UrlPreviewGrid items={existingFotosDocs} altPrefix="doc-existing" />
+                    </>
                   )}
                   {form.documentosFotos.length > 0 && (
                     <List dense>
@@ -1643,6 +1767,7 @@ const EditarClientePage: React.FC = () => {
                       ))}
                     </List>
                   )}
+                  <FilePreviewGrid files={form.documentosFotos || []} altPrefix="doc-new" />
                 </Box>
 
                 <Box sx={{ gridColumn: { xs: '1', sm: '1 / span 2' }, mt: 3 }}>
@@ -1819,6 +1944,34 @@ const EditarClientePage: React.FC = () => {
                       onChange={handleNegocioFotosChange}
                     />
                   </Button>
+
+                  {existingFotosNegocio.length > 0 && (
+                    <>
+                      <List dense>
+                        {existingFotosNegocio.map((f, idx) => {
+                          const isUrl = isHttpUrl(String(f));
+                          const label = isUrl ? String(f).split('/').pop() || String(f) : String(f);
+                          return (
+                            <ListItem
+                              key={`existing-neg-${idx}`}
+                              sx={{ py: 0, display: 'flex', alignItems: 'center' }}
+                              secondaryAction={
+                                isUrl ? (
+                                  <Button size="small" component="a" href={String(f)} target="_blank" rel="noreferrer">
+                                    Ver
+                                  </Button>
+                                ) : null
+                              }
+                            >
+                              <ListItemText primary={label} />
+                            </ListItem>
+                          );
+                        })}
+                      </List>
+                      <UrlPreviewGrid items={existingFotosNegocio} altPrefix="neg-existing" />
+                    </>
+                  )}
+
                   {form.negocioFotos.length > 0 && (
                     <List dense>
                       {form.negocioFotos.map((f, idx) => (
@@ -1841,6 +1994,7 @@ const EditarClientePage: React.FC = () => {
                       ))}
                     </List>
                   )}
+                  <FilePreviewGrid files={form.negocioFotos || []} altPrefix="neg-new" />
                 </Box>
               </>
             )}
