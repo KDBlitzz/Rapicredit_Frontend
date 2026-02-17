@@ -56,6 +56,7 @@ export interface ClienteDetalle {
   negocioZonaResidencial?: string;
   // NUEVO: parentesco con el propietario del negocio
   parentescoPropietario?: string;
+  negocioParentescoTelefono?: string;
   ventaDiaria?: number;
   capacidadPago?: number;
 
@@ -138,6 +139,7 @@ export function useClienteDetalle(id: string) {
           negocioMunicipio: res.negocioMunicipio || undefined,
           negocioZonaResidencial: res.negocioZonaResidencial || undefined,
           parentescoPropietario: res.parentescoPropietario || undefined,
+          negocioParentescoTelefono: res.negocioParentescoTelefono || undefined,
           ventaDiaria: typeof res.ventaDiaria === 'number' ? res.ventaDiaria : undefined,
           capacidadPago: typeof res.capacidadPago === 'number' ? res.capacidadPago : undefined,
 
