@@ -17,7 +17,12 @@ import ExpandLess from "@mui/icons-material/ExpandLess";
 import ExpandMore from "@mui/icons-material/ExpandMore";
 import { useEmpleadoActual } from "../hooks/useEmpleadoActual";
 
-type NavSubItem = { label: string; href: string; requiredPermisos?: string[] };
+type NavSubItem = {
+  label: string;
+  href: string;
+  requiredPermisos?: string[];
+  hiddenForRoles?: string[]; // roles (en minúsculas) para los que este item no debe mostrarse
+};
 type NavItem = NavSubItem & { submenu?: NavSubItem[] };
 type NavSection = { section: string; items: NavItem[] };
 
@@ -41,7 +46,12 @@ const navItems: NavSection[] = [
     section: "Personal",
     items: [
       // Gestión de empleados: requiere permisos de seguridad
-      { label: "Empleados", href: "/empleados", requiredPermisos: ["S003", "S001"] },
+      {
+        label: "Empleados",
+        href: "/empleados",
+        requiredPermisos: ["S003", "S001"],
+        hiddenForRoles: ["asesor"], // Los asesores no deben ver Empleados
+      },
       // Carteras por usuario
       { label: "Gestión de Carteras", href: "/carteras", requiredPermisos: ["S001"] },
     ],
@@ -74,6 +84,7 @@ export default function Sidebar() {
   const { empleado } = useEmpleadoActual();
 
   const permisosActuales = (empleado?.permisos || []).map((p) => p.toUpperCase());
+  const rolActual = (empleado?.rol || "").toLowerCase();
 
   const hasPermisos = (required?: string[]) => {
     if (!required || required.length === 0) return true;
@@ -115,7 +126,13 @@ export default function Sidebar() {
       </Box>
 
       <Box sx={{ flex: 1, overflow: "auto" }}>
-        {navItems.map((section) => (
+        {navItems.map((section) => {
+          // Para rol Asesor ocultamos toda la sección "Personal"
+          if (rolActual === "asesor" && section.section === "Personal") {
+            return null;
+          }
+
+          return (
           <List
             key={section.section}
             dense
@@ -135,6 +152,9 @@ export default function Sidebar() {
             }
           >
             {section.items.map((item) => {
+              if (item.hiddenForRoles && item.hiddenForRoles.includes(rolActual)) {
+                return null;
+              }
               if (!hasPermisos(item.requiredPermisos)) return null;
               const active = pathname.startsWith(item.href);
               const hasSubmenu = !!item.submenu?.length;
@@ -172,6 +192,12 @@ export default function Sidebar() {
                     <Collapse in={isOpen} timeout="auto" unmountOnExit>
                       <List component="div" disablePadding dense>
                         {item.submenu?.map((subItem) => {
+                          if (
+                            subItem.hiddenForRoles &&
+                            subItem.hiddenForRoles.includes(rolActual)
+                          ) {
+                            return null;
+                          }
                           if (!hasPermisos(subItem.requiredPermisos)) return null;
                           const subActive = pathname === subItem.href;
                           return (
@@ -209,7 +235,8 @@ export default function Sidebar() {
               );
             })}
           </List>
-        ))}
+          );
+        })}
       </Box>
 
       <Divider sx={{ my: 1 }} />
