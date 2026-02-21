@@ -14,11 +14,16 @@ import { DarkMode, LightMode } from "@mui/icons-material";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useColorMode } from "../app/ThemeRegistry";
+import { useEmpleadoActual } from "../hooks/useEmpleadoActual";
 
 export default function Topbar() {
   const pathname = usePathname();
   const theme = useTheme();
   const { mode, toggleColorMode } = useColorMode();
+  const { empleado } = useEmpleadoActual();
+
+  const permisosActuales = (empleado?.permisos || []).map((p) => p.toUpperCase());
+  const canGestionarSolicitudes = permisosActuales.includes("F010");
 
   const showNuevaSolicitud = !pathname.startsWith("/prestamos") && !pathname.startsWith("/solicitudes");
 
@@ -70,7 +75,7 @@ export default function Topbar() {
             </IconButton>
           </Tooltip>
 
-          {showNuevaSolicitud ? (
+          {showNuevaSolicitud && canGestionarSolicitudes ? (
             <Button
               component={Link}
               href="/solicitudes"

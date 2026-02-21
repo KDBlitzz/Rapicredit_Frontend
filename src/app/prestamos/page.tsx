@@ -30,6 +30,7 @@ import { Delete, Edit } from "@mui/icons-material";
 import Link from "next/link";
 import { usePrestamos, EstadoPrestamoFiltro } from "../../hooks/usePrestamos";
 import { apiFetch } from "../../lib/api";
+import { usePermisos } from "../../hooks/usePermisos";
 
 const PrestamosPage: React.FC = () => {
   const theme = useTheme();
@@ -49,6 +50,8 @@ const PrestamosPage: React.FC = () => {
     busqueda,
     estado,
   }, { refreshKey });
+
+  const { hasPermiso, hasAnyPermiso, loading: loadingPermisos } = usePermisos();
 
   const doDelete = async (codigoPrestamo: string) => {
     if (!codigoPrestamo) return;
@@ -102,6 +105,23 @@ const PrestamosPage: React.FC = () => {
     return <Chip size="small" label={val} color={color} variant={variant} />;
   };
 
+  const canVerModuloPrestamos = hasAnyPermiso(["f001", "F002"]);
+  const canGestionarPrestamos = hasPermiso("F002");
+  const canVerPerfilPrestamo = hasPermiso("F003");
+
+  if (!loadingPermisos && !canVerModuloPrestamos) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Sin permisos para Créditos/Préstamos
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          No tiene permisos asignados para ver información de créditos o préstamos.
+        </Typography>
+      </Box>
+    );
+  }
+
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
       {/* Filtros */}
@@ -137,14 +157,16 @@ const PrestamosPage: React.FC = () => {
           size={{ xs: 12, sm: 12, md: 5 }}
           sx={{ display: "flex", justifyContent: { md: "flex-end" } }}
         >
-          <Button
-            variant="contained"
-            sx={{ borderRadius: 999, mt: { xs: 1, md: 0 } }}
-            component={Link}
-            href="/solicitudes/nuevo"
-          >
-            + Nueva solicitud
-          </Button>
+          {canGestionarPrestamos && (
+            <Button
+              variant="contained"
+              sx={{ borderRadius: 999, mt: { xs: 1, md: 0 } }}
+              component={Link}
+              href="/solicitudes/nuevo"
+            >
+              + Nueva solicitud
+            </Button>
+          )}
         </Grid>
       </Grid>
 
@@ -213,38 +235,44 @@ const PrestamosPage: React.FC = () => {
                     <TableCell>{formatDate(p.fechaDesembolso)}</TableCell>
                     <TableCell>{formatDate(p.fechaVencimiento)}</TableCell>
                     <TableCell align="right">
-                      <Button
-                        size="small"
-                        variant="text"
-                        component={Link}
-                        href={`/prestamos/${encodeURIComponent(p.codigoPrestamo)}`}
-                      >
-                        Ver
-                      </Button>
-
-                      <Tooltip title="Editar">
-                        <IconButton
+                      {canVerPerfilPrestamo && (
+                        <Button
                           size="small"
-                          color="primary"
+                          variant="text"
                           component={Link}
-                          href={`/prestamos/${encodeURIComponent(p.codigoPrestamo)}?edit=1`}
+                          href={`/prestamos/${encodeURIComponent(p.codigoPrestamo)}`}
                         >
-                          <Edit fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
+                          Ver
+                        </Button>
+                      )}
 
-                      <Tooltip title="Eliminar">
-                        <span>
-                          <IconButton
-                            size="small"
-                            color="error"
-                            disabled={deleteLoading}
-                            onClick={() => setConfirmDelete({ codigoPrestamo: p.codigoPrestamo })}
-                          >
-                            <Delete fontSize="small" />
-                          </IconButton>
-                        </span>
-                      </Tooltip>
+                      {canGestionarPrestamos && (
+                        <>
+                          <Tooltip title="Editar">
+                            <IconButton
+                              size="small"
+                              color="primary"
+                              component={Link}
+                              href={`/prestamos/${encodeURIComponent(p.codigoPrestamo)}?edit=1`}
+                            >
+                              <Edit fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+
+                          <Tooltip title="Eliminar">
+                            <span>
+                              <IconButton
+                                size="small"
+                                color="error"
+                                disabled={deleteLoading}
+                                onClick={() => setConfirmDelete({ codigoPrestamo: p.codigoPrestamo })}
+                              >
+                                <Delete fontSize="small" />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                        </>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

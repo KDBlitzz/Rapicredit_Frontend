@@ -38,6 +38,7 @@ import {
   useClientes,
   EstadoClienteFiltro,
 } from '../../hooks/useClientes';
+import { usePermisos } from "../../hooks/usePermisos";
 
 const ClientesPage: React.FC = () => {
   const [busqueda, setBusqueda] = useState('');
@@ -51,6 +52,7 @@ const ClientesPage: React.FC = () => {
   } | null>(null);
 
   const { data, loading, error, refresh } = useClientes({ busqueda, estado });
+  const { hasPermiso, hasAnyPermiso, loading: loadingPermisos } = usePermisos();
 
   // Local override of actividad to simulate activate/deactivate without backend
   const [actividadOverrides, setActividadOverrides] = useState<Record<string, boolean>>({});
@@ -123,6 +125,24 @@ const ClientesPage: React.FC = () => {
     );
   };
 
+  // Guardar acceso básico: requiere al menos ver/buscar o ver perfil o gestionar clientes
+  const canVerModuloClientes = hasAnyPermiso(["C001", "C002", "C003"]);
+  const canGestionarClientes = hasPermiso("C003");
+  const canVerPerfilCliente = hasPermiso("C002");
+
+  if (!loadingPermisos && !canVerModuloClientes) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Sin permisos para Clientes
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          No tiene permisos asignados para ver información de clientes. Si cree que es un error, contacte al administrador.
+        </Typography>
+      </Box>
+    );
+  }
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       {/* Filtros y header */}
@@ -155,14 +175,16 @@ const ClientesPage: React.FC = () => {
         <Grid size={{ xs: 12, sm: 12, md: 5 }}
           sx={{ display: 'flex', justifyContent: { md: 'flex-end' } }}
         >
-          <Button
-            variant="contained"
-            sx={{ borderRadius: 999, mt: { xs: 1, md: 0 } }}
-            component={Link}
-            href="/clientes/nuevo"
-          >
-            + Nuevo cliente
-          </Button>
+          {canGestionarClientes && (
+            <Button
+              variant="contained"
+              sx={{ borderRadius: 999, mt: { xs: 1, md: 0 } }}
+              component={Link}
+              href="/clientes/nuevo"
+            >
+              + Nuevo cliente
+            </Button>
+          )}
         </Grid>
       </Grid>
 
@@ -211,27 +233,33 @@ const ClientesPage: React.FC = () => {
                     <TableCell>{renderActividadChip(getActividad(c.id, c.actividad))}</TableCell>
                     <TableCell>
                       <Box sx={{ display: 'flex', gap: 0.5 }}>
-                        <Button size="small" variant="text" onClick={() => handleOpenViewer(c.codigoCliente)}>Ver</Button>
-                        <Button
-                          size="small"
-                          variant="text"
-                          component={Link}
-                          href={`/clientes/${c.codigoCliente}?edit=1`}
-                          startIcon={<EditIcon fontSize="small" />}
-                          aria-label="Editar"
-                        />
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          color={getActividad(c.id, c.actividad) ? "error" : "success"}
-                          onClick={() => {
-                            const nuevoEstado = !getActividad(c.id, c.actividad);
-                            // Abrir confirmación para ambos casos (activar/desactivar)
-                            setConfirmCliente({ id: c.id, codigo: c.codigoCliente, estado: nuevoEstado });
-                          }}
-                        >
-                          {getActividad(c.id, c.actividad) ? "Desactivar" : "Activar"}
-                        </Button>
+                        {canVerPerfilCliente && (
+                          <Button size="small" variant="text" onClick={() => handleOpenViewer(c.codigoCliente)}>Ver</Button>
+                        )}
+                        {canGestionarClientes && (
+                          <>
+                            <Button
+                              size="small"
+                              variant="text"
+                              component={Link}
+                              href={`/clientes/${c.codigoCliente}?edit=1`}
+                              startIcon={<EditIcon fontSize="small" />}
+                              aria-label="Editar"
+                            />
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color={getActividad(c.id, c.actividad) ? "error" : "success"}
+                              onClick={() => {
+                                const nuevoEstado = !getActividad(c.id, c.actividad);
+                                // Abrir confirmación para ambos casos (activar/desactivar)
+                                setConfirmCliente({ id: c.id, codigo: c.codigoCliente, estado: nuevoEstado });
+                              }}
+                            >
+                              {getActividad(c.id, c.actividad) ? "Desactivar" : "Activar"}
+                            </Button>
+                          </>
+                        )}
                       </Box>
                     </TableCell>
                   </TableRow>
