@@ -74,7 +74,8 @@ const navItems: NavSection[] = [
   },
   {
     section: "Sistema",
-    items: [{ label: "Configuración", href: "/configuracion", requiredPermisos: ["S001", "S002", "S003"] }],
+    // Configuración solo para seguridad avanzada (S001/S002). Asesor (S003) no la ve.
+    items: [{ label: "Configuración", href: "/configuracion", requiredPermisos: ["S001", "S002"] }],
   },
 ];
 
