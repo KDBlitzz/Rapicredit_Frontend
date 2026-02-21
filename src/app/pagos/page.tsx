@@ -1,8 +1,26 @@
 'use client';
 
 import { Box, Paper, Typography, Grid, TextField, MenuItem, Button, TableContainer, Table, TableHead, TableRow, TableCell, TableBody, Chip } from '@mui/material';
+import { usePermisos } from "../../hooks/usePermisos";
 
 export default function PagosPage() {
+  const { hasAnyPermiso, hasPermiso, loading: loadingPermisos } = usePermisos();
+
+  const canVerModuloPagos = hasAnyPermiso(["F005", "F009"]); // Aplicar pago / Transacción aplicar pago
+  const canAplicarPago = hasPermiso("F005");
+
+  if (!loadingPermisos && !canVerModuloPagos) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Sin permisos para Pagos
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          No tiene permisos asignados para registrar o consultar pagos.
+        </Typography>
+      </Box>
+    );
+  }
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       <Grid container spacing={2}>
@@ -34,11 +52,13 @@ export default function PagosPage() {
                   <MenuItem value="DEPOSITO">Depósito</MenuItem>
                 </TextField>
               </Grid>
-              <Grid size={{ xs: 12 }}>
-                <Button variant="contained" sx={{ borderRadius: 999 }}>
-                  Registrar pago
-                </Button>
-              </Grid>
+              {canAplicarPago && (
+                <Grid size={{ xs: 12 }}>
+                  <Button variant="contained" sx={{ borderRadius: 999 }}>
+                    Registrar pago
+                  </Button>
+                </Grid>
+              )}
             </Grid>
           </Paper>
         </Grid>
