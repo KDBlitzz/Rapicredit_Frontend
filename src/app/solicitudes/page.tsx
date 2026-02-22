@@ -30,6 +30,7 @@ import { useRouter } from 'next/navigation';
 import { Edit } from '@mui/icons-material';
 import { useSolicitudes, EstadoSolicitudFiltro } from '../../hooks/useSolicitudes';
 import { apiFetch } from '../../lib/api';
+import { usePermisos } from "../../hooks/usePermisos";
 
 type SolicitudAccion = 'REVISION';
 
@@ -55,6 +56,8 @@ const SolicitudesPage: React.FC = () => {
     },
     { refreshKey }
   );
+
+  const { hasPermiso, hasAnyPermiso, loading: loadingPermisos } = usePermisos();
 
   const handleBusquedaChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -101,6 +104,24 @@ const SolicitudesPage: React.FC = () => {
     if (a === 'REVISION') return '¿Mandar esta solicitud a revisión?';
     return '';
   };
+
+  const canVerModuloSolicitudes = hasAnyPermiso(["f001", "F002"]);
+  const canCrearSolicitudes = hasPermiso("F002");
+  const canGestionarFlujoSolicitudes = hasPermiso("F010"); // Aprobar/Rechazar crédito / flujo de revisión
+  const canCalcularCuota = hasPermiso("F004");
+
+  if (!loadingPermisos && !canVerModuloSolicitudes) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Sin permisos para Solicitudes
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          No tiene permisos asignados para ver o gestionar solicitudes de crédito.
+        </Typography>
+      </Box>
+    );
+  }
 
   const runAction = async () => {
     if (!confirmAction || !targetSolicitudId || !targetSolicitudCodigo) return;
@@ -153,22 +174,26 @@ const SolicitudesPage: React.FC = () => {
           >
             Recargar
           </Button>
-          <Button
-            variant="contained"
-            sx={{ borderRadius: 999, mt: { xs: 1, md: 0 } }}
-            component={Link}
-            href="/solicitudes/nuevo"
-          >
-            + Nueva solicitud
-          </Button>
-          <Button
-            variant="outlined"
-            sx={{ ml: 1, mt: { xs: 1, md: 0 } }}
-            component={Link}
-            href="/solicitudes/aprobacion"
-          >
-            Pre-aprobación
-          </Button>
+          {canCrearSolicitudes && (
+            <Button
+              variant="contained"
+              sx={{ borderRadius: 999, mt: { xs: 1, md: 0 } }}
+              component={Link}
+              href="/solicitudes/nuevo"
+            >
+              + Nueva solicitud
+            </Button>
+          )}
+          {canGestionarFlujoSolicitudes && (
+            <Button
+              variant="outlined"
+              sx={{ ml: 1, mt: { xs: 1, md: 0 } }}
+              component={Link}
+              href="/solicitudes/aprobacion"
+            >
+              Pre-aprobación
+            </Button>
+          )}
         </Grid>
       </Grid>
 
@@ -193,7 +218,9 @@ const SolicitudesPage: React.FC = () => {
           <Typography variant="subtitle2">Listado de solicitudes</Typography>
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
             <Chip size="small" label={`Total: ${data.length}`} />
-            <Button size="small" variant="outlined">Calcular cuota</Button>
+            {canCalcularCuota && (
+              <Button size="small" variant="outlined">Calcular cuota</Button>
+            )}
           </Box>
         </Box>
 
@@ -254,18 +281,20 @@ const SolicitudesPage: React.FC = () => {
                           </span>
                         </Tooltip>
 
-                        <Tooltip title="Mandar a revisión">
-                          <span>
-                            <IconButton
-                              size="small"
-                              color="warning"
-                              onClick={() => openConfirm('REVISION', s.id, s.codigoSolicitud)}
-                              disabled={actionLoading}
-                            >
-                              <Box component="span" sx={{ fontSize: 16, lineHeight: 1 }}>📌</Box>
-                            </IconButton>
-                          </span>
-                        </Tooltip>
+                        {canGestionarFlujoSolicitudes && (
+                          <Tooltip title="Mandar a revisión">
+                            <span>
+                              <IconButton
+                                size="small"
+                                color="warning"
+                                onClick={() => openConfirm('REVISION', s.id, s.codigoSolicitud)}
+                                disabled={actionLoading}
+                              >
+                                <Box component="span" sx={{ fontSize: 16, lineHeight: 1 }}>📌</Box>
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                        )}
                       </Box>
                     </TableCell>
                   </TableRow>
