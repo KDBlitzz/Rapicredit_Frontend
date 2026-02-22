@@ -1,6 +1,7 @@
+
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Paper,
@@ -26,6 +27,7 @@ import {
 } from '@mui/material';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '../../../lib/api';
+import { uploadImageFiles } from '../../../lib/imageUpload';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 
@@ -87,6 +89,43 @@ interface ClienteForm {
   documentosFotos: File[];
   negocioFotos: File[];
 }
+
+const FilePreviewGrid: React.FC<{ files: File[]; altPrefix: string }> = ({ files, altPrefix }) => {
+  const urls = useMemo(() => {
+    return (files || []).map((f) => URL.createObjectURL(f));
+  }, [files]);
+
+  useEffect(() => {
+    return () => {
+      urls.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [urls]);
+
+  if (!files || files.length === 0) return null;
+
+  return (
+    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+      {urls.map((u, idx) => (
+        <Box
+          key={`${altPrefix}-${idx}`}
+          component="a"
+          href={u}
+          target="_blank"
+          rel="noreferrer"
+          sx={{ display: 'inline-flex' }}
+        >
+          <Box
+            component="img"
+            src={u}
+            alt={`${altPrefix}-${idx + 1}`}
+            loading="lazy"
+            sx={{ width: 140, height: 100, objectFit: 'cover', borderRadius: 1, border: '1px solid #eee' }}
+          />
+        </Box>
+      ))}
+    </Box>
+  );
+};
 
 const steps = [
   'Información Personal',
@@ -704,74 +743,84 @@ const NuevoClientePage: React.FC = () => {
       return;
     }
 
-    /**
-     * 🔥 PAYLOAD ALINEADO AL BACKEND (MONGOOSE)
-     */
-    const payload = {
-      codigoCliente: form.codigoCliente,
-      identidadCliente: form.identidadCliente,
-      nacionalidad: form.nacionalidad,
-      RTN: form.RTN || undefined,
-
-      estadoCivil: form.estadoCivil,
-      nivelEducativo: form.nivelEducativo,
-
-      nombre: form.nombre,
-      apellido: form.apellido,
-      email: form.email || undefined,
-      sexo: form.sexo,
-      fechaNacimiento: form.fechaNacimiento,
-
-      // Dirección
-      departamentoResidencia: form.departamentoResidencia,
-      municipioResidencia: form.municipioResidencia,
-      zonaResidencialCliente: form.zonaResidencialCliente,
-      direccion: form.direccion,
-      tipoVivienda: form.tipoVivienda,
-      antiguedadVivenda: Number(form.antiguedadVivenda),
-      fotosDireccion: (form.direccionFotos || []).map((f) => f.name),
-
-      // Contacto
-      telefono: form.telefono,
-
-      // Cónyuge
-      conyugeNombre: form.conyugeNombre || undefined,
-      conyugeTelefono: form.conyugeTelefono || undefined,
-
-      // Financieros
-      limiteCredito: Number(form.limiteCredito),
-      ventaDiaria: Number(form.ventaDiaria || 0),
-      capacidadPago: Number(form.capacidadPago || 0),
-
-      // 🔑 Backend field (antes estadoDeuda en el UI)
-      riesgoMora: form.estadoDeuda,
-
-      // Referencias
-      referencias: form.referencias.filter((r) => r.trim() !== ''),
-      refsParentescoTelefonos: (form.refsParentescoTelefonos || []).filter((t) => t && t.replace(/\s/g, '').length > 0),
-
-      // 🔑 Backend field (antes actividad en el UI)
-      activo: form.actividad,
-
-      // Negocio (NO usamos dirección)
-      negocioNombre: form.negocioNombre || undefined,
-      negocioTipo: form.negocioTipo || undefined,
-      negocioTelefono: form.negocioTelefono || undefined,
-      negocioDepartamento: form.negocioDepartamento || undefined,
-      negocioMunicipio: form.negocioMunicipio || undefined,
-      negocioZonaResidencial: form.negocioZonaResidencial || undefined,
-      parentescoPropietario: form.negocioParentesco || undefined,
-
-      // Fotos (enviamos nombres de archivo por ahora)
-      fotosDocs: form.documentosFotos.map((f) => f.name),
-      fotosNegocio: form.negocioFotos.map((f) => f.name),
-      fotosDireccionConyuge: (form.conyugeDireccionFotos || []).map((f) => f.name),
-      // Cobrador asociado (id)
-    };
-
     setSaving(true);
 
     try {
+      const [direccionUploads, conyugeDirUploads, docsUploads, negocioUploads] =
+        await Promise.all([
+          uploadImageFiles(form.direccionFotos || []),
+          uploadImageFiles(form.conyugeDireccionFotos || []),
+          uploadImageFiles(form.documentosFotos || []),
+          uploadImageFiles(form.negocioFotos || []),
+        ]);
+
+      /**
+       * 🔥 PAYLOAD ALINEADO AL BACKEND (MONGOOSE)
+       */
+      const payload = {
+        codigoCliente: form.codigoCliente,
+        identidadCliente: form.identidadCliente,
+        nacionalidad: form.nacionalidad,
+        RTN: form.RTN || undefined,
+
+        estadoCivil: form.estadoCivil,
+        nivelEducativo: form.nivelEducativo,
+
+        nombre: form.nombre,
+        apellido: form.apellido,
+        email: form.email || undefined,
+        sexo: form.sexo,
+        fechaNacimiento: form.fechaNacimiento,
+
+        // Dirección
+        departamentoResidencia: form.departamentoResidencia,
+        municipioResidencia: form.municipioResidencia,
+        zonaResidencialCliente: form.zonaResidencialCliente,
+        direccion: form.direccion,
+        tipoVivienda: form.tipoVivienda,
+        antiguedadVivenda: Number(form.antiguedadVivenda),
+        fotosDireccion: direccionUploads.map((u) => u.url),
+
+        // Contacto
+        telefono: form.telefono,
+
+        // Cónyuge
+        conyugeNombre: form.conyugeNombre || undefined,
+        conyugeTelefono: form.conyugeTelefono || undefined,
+
+        // Financieros
+        limiteCredito: Number(form.limiteCredito),
+        ventaDiaria: Number(form.ventaDiaria || 0),
+        capacidadPago: Number(form.capacidadPago || 0),
+
+        // 🔑 Backend field (antes estadoDeuda en el UI)
+        riesgoMora: form.estadoDeuda,
+
+        // Referencias
+        referencias: form.referencias.filter((r) => r.trim() !== ''),
+        refsParentescoTelefonos: (form.refsParentescoTelefonos || []).filter(
+          (t) => t && t.replace(/\s/g, '').length > 0,
+        ),
+
+        // 🔑 Backend field (antes actividad en el UI)
+        activo: form.actividad,
+
+        // Negocio (NO usamos dirección)
+        negocioNombre: form.negocioNombre || undefined,
+        negocioTipo: form.negocioTipo || undefined,
+        negocioTelefono: form.negocioTelefono || undefined,
+        negocioDepartamento: form.negocioDepartamento || undefined,
+        negocioMunicipio: form.negocioMunicipio || undefined,
+        negocioZonaResidencial: form.negocioZonaResidencial || undefined,
+        parentescoPropietario: form.negocioParentesco || undefined,
+
+        // Fotos (ahora enviamos URLs)
+        fotosDocs: docsUploads.map((u) => u.url),
+        fotosNegocio: negocioUploads.map((u) => u.url),
+        fotosDireccionConyuge: conyugeDirUploads.map((u) => u.url),
+        // Cobrador asociado (id)
+      };
+
       console.log("codigoCliente enviado:", form.codigoCliente);
       await apiFetch('/clientes/', {
         method: 'POST',
@@ -1229,6 +1278,7 @@ const NuevoClientePage: React.FC = () => {
                       ))}
                     </List>
                   )}
+                  <FilePreviewGrid files={form.direccionFotos || []} altPrefix="dir" />
                 </Box>
 
                 <Box sx={{ gridColumn: { xs: '1', sm: '1 / span 2' }, mt: 2 }}>
@@ -1328,6 +1378,7 @@ const NuevoClientePage: React.FC = () => {
                             ))}
                           </List>
                         )}
+                        <FilePreviewGrid files={form.conyugeDireccionFotos || []} altPrefix="dirc" />
                       </Box>
                     </Grid>
                   </Grid>
@@ -1499,6 +1550,7 @@ const NuevoClientePage: React.FC = () => {
                       ))}
                     </List>
                   )}
+                  <FilePreviewGrid files={form.documentosFotos || []} altPrefix="doc" />
                 </Box>
 
                 <Box sx={{ gridColumn: { xs: '1', sm: '1 / span 2' }, mt: 3 }}>
@@ -1696,6 +1748,7 @@ const NuevoClientePage: React.FC = () => {
                       ))}
                     </List>
                   )}
+                  <FilePreviewGrid files={form.negocioFotos || []} altPrefix="neg" />
                 </Box>
               </>
             )}

@@ -256,20 +256,30 @@ const SolicitudesPage: React.FC = () => {
                     </TableCell>
                     <TableCell align="center">
                       <Box sx={{ display: 'flex', justifyContent: 'center', gap: 0.5 }}>
-                        {canCrearSolicitudes && (
-                          <Tooltip title="Editar">
-                            <span>
-                              <IconButton
-                                size="small"
-                                color="primary"
-                                onClick={() => router.push(`/solicitudes/${encodeURIComponent(s.codigoSolicitud)}?edit=1`)}
-                                disabled={actionLoading}
-                              >
-                                <Edit fontSize="small" />
-                              </IconButton>
-                            </span>
-                          </Tooltip>
-                        )}
+                        <Tooltip title="Ver solicitud">
+                          <span>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={() => router.push(`/solicitudes/${encodeURIComponent(s.codigoSolicitud)}`)}
+                              disabled={actionLoading}
+                            >
+                              Ver
+                            </Button>
+                          </span>
+                        </Tooltip>
+                        <Tooltip title="Editar">
+                          <span>
+                            <IconButton
+                              size="small"
+                              color="primary"
+                              onClick={() => router.push(`/solicitudes/${encodeURIComponent(s.codigoSolicitud)}?edit=1`)}
+                              disabled={actionLoading}
+                            >
+                              <Edit fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
 
                         {canGestionarFlujoSolicitudes && (
                           <Tooltip title="Mandar a revisión">

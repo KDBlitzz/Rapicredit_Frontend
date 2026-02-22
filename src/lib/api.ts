@@ -18,13 +18,15 @@ export async function apiFetch<T = unknown>(
   path: string,
   options: ApiOptions = {}
 ): Promise<T> {
-  if (!API_BASE_URL) {
+  const isAbsoluteUrl = /^https?:\/\//i.test(path);
+
+  if (!API_BASE_URL && !isAbsoluteUrl) {
     throw new Error('API base URL not configured');
   }
 
-  const base = API_BASE_URL.replace(/\/$/, ''); // sin / al final
+  const base = API_BASE_URL ? API_BASE_URL.replace(/\/$/, '') : '';
   const urlPath = path.startsWith('/') ? path : `/${path}`;
-  const fullUrl = `${base}${urlPath}`;
+  const fullUrl = isAbsoluteUrl ? path : `${base}${urlPath}`;
 
   console.log('apiFetch -> URL:', fullUrl);
 

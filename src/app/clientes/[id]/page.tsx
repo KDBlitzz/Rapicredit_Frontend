@@ -1,6 +1,7 @@
+
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Paper,
@@ -17,7 +18,6 @@ import {
   Select,
   Checkbox,
   FormControlLabel,
-  Chip,
   Snackbar,
   Alert,
   IconButton,
@@ -29,6 +29,7 @@ import { useRouter } from 'next/navigation';
 import { apiFetch } from '../../../lib/api';
 import { useParams } from 'next/navigation';
 import { useClienteDetalle } from '../../../hooks/useClienteDetalle';
+import { uploadImageFiles } from '../../../lib/imageUpload';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 
@@ -90,6 +91,73 @@ interface ClienteForm {
   documentosFotos: File[];
   negocioFotos: File[];
 }
+
+const isHttpUrl = (value: string) => /^https?:\/\//i.test(String(value));
+
+const UrlPreviewGrid: React.FC<{ items: string[]; altPrefix: string }> = ({ items, altPrefix }) => {
+  const urls = (items || []).filter((v) => isHttpUrl(v));
+  if (urls.length === 0) return null;
+
+  return (
+    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+      {urls.map((u, idx) => (
+        <Box
+          key={`${altPrefix}-${idx}`}
+          component="a"
+          href={u}
+          target="_blank"
+          rel="noreferrer"
+          sx={{ display: 'inline-flex' }}
+        >
+          <Box
+            component="img"
+            src={u}
+            alt={`${altPrefix}-${idx + 1}`}
+            loading="lazy"
+            sx={{ width: 140, height: 100, objectFit: 'cover', borderRadius: 1, border: '1px solid #eee' }}
+          />
+        </Box>
+      ))}
+    </Box>
+  );
+};
+
+const FilePreviewGrid: React.FC<{ files: File[]; altPrefix: string }> = ({ files, altPrefix }) => {
+  const urls = useMemo(() => {
+    return (files || []).map((f) => URL.createObjectURL(f));
+  }, [files]);
+
+  useEffect(() => {
+    return () => {
+      urls.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [urls]);
+
+  if (!files || files.length === 0) return null;
+
+  return (
+    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+      {urls.map((u, idx) => (
+        <Box
+          key={`${altPrefix}-${idx}`}
+          component="a"
+          href={u}
+          target="_blank"
+          rel="noreferrer"
+          sx={{ display: 'inline-flex' }}
+        >
+          <Box
+            component="img"
+            src={u}
+            alt={`${altPrefix}-${idx + 1}`}
+            loading="lazy"
+            sx={{ width: 140, height: 100, objectFit: 'cover', borderRadius: 1, border: '1px solid #eee' }}
+          />
+        </Box>
+      ))}
+    </Box>
+  );
+};
 
 const steps = [
   'Información Personal',
@@ -168,45 +236,13 @@ const countryCodes = [
   { code: '+599', name: '🇨🇼 Curazao' },
 ];
 
-// =========================
-// Helper: genera el siguiente codigoCliente
-// =========================
-const nextCodigoFromExisting = (codigos: string[]) => {
-  const parsed = codigos
-    .map((c) => String(c || "").trim())
-    .filter(Boolean)
-    .map((c) => {
-      const m = c.match(/(\d+)\s*$/); // números al final
-      return {
-        original: c,
-        num: m ? parseInt(m[1], 10) : NaN,
-        digitsLen: m ? m[1].length : 0,
-        prefix: m ? c.slice(0, c.length - m[1].length) : "CLI-",
-      };
-    })
-    .filter((x) => Number.isFinite(x.num));
-
-  if (parsed.length === 0) {
-    return "CLI-0001";
-  }
-
-  const maxItem = parsed.reduce((a, b) => (b.num > a.num ? b : a));
-  const width = Math.max(4, maxItem.digitsLen || 0);
-
-  const nextNum = maxItem.num + 1;
-  const nextDigits = String(nextNum).padStart(width, "0");
-
-  return `${maxItem.prefix}${nextDigits}`;
-};
-
-
 const EditarClientePage: React.FC = () => {
   const router = useRouter();
 
   const params = useParams();
   const codigoClienteParam = params?.id as string | undefined;
 
-  const { data: clienteData, loading: loadingCliente, error: errorCliente } = useClienteDetalle(codigoClienteParam ?? '');
+  const { data: clienteData } = useClienteDetalle(codigoClienteParam ?? '');
 
   const [form, setForm] = useState<ClienteForm>({
     codigoCliente: '',
@@ -294,8 +330,8 @@ const EditarClientePage: React.FC = () => {
   // existing foto filenames (from backend) and removed lists
   const [existingFotosDocs, setExistingFotosDocs] = useState<string[]>([]);
   const [existingFotosNegocio, setExistingFotosNegocio] = useState<string[]>([]);
-  const [removedExistingDocs, setRemovedExistingDocs] = useState<string[]>([]);
-  const [removedExistingNegocio, setRemovedExistingNegocio] = useState<string[]>([]);
+  const [existingFotosDireccion, setExistingFotosDireccion] = useState<string[]>([]);
+  const [existingFotosDireccionConyuge, setExistingFotosDireccionConyuge] = useState<string[]>([]);
 
   // Teléfono del cónyuge con mismo formato que teléfonos personales
   const [conyugePhoneEntry, setConyugePhoneEntry] = useState<PhoneEntry>({
@@ -320,6 +356,13 @@ const EditarClientePage: React.FC = () => {
     const fechaNacimientoOnly = normalizeDateOnly(clienteData.fechaNacimiento);
 
     // Fill scalar fields
+    const riesgoMoraFromBackend = clienteData.riesgoMora;
+    const estadoDeudaFromBackend: EstadoDeuda | undefined = estadosDeuda.includes(
+      riesgoMoraFromBackend as EstadoDeuda,
+    )
+      ? (riesgoMoraFromBackend as EstadoDeuda)
+      : undefined;
+
     setForm((prev) => ({
       ...prev,
       codigoCliente: clienteData.codigoCliente || prev.codigoCliente,
@@ -349,7 +392,7 @@ const EditarClientePage: React.FC = () => {
       conyugeTelefono: clienteData.conyugeTelefono || prev.conyugeTelefono,
 
       limiteCredito: String(clienteData.limiteCredito ?? prev.limiteCredito),
-      estadoDeuda: (clienteData.riesgoMora as any) || prev.estadoDeuda,
+      estadoDeuda: estadoDeudaFromBackend || prev.estadoDeuda,
       referencias: Array.isArray(clienteData.referencias) ? clienteData.referencias : prev.referencias,
       actividad: clienteData.actividad ?? clienteData.actividad ?? prev.actividad,
 
@@ -387,8 +430,8 @@ const EditarClientePage: React.FC = () => {
       setNegocioPhoneEntry({ code: m?.[1] || '+504', number: (m?.[2] || '').replace(/[^\d]/g, '').slice(0, 8) });
     }
     // negocio pariente phone
-    if ((clienteData as any).negocioParentescoTelefono) {
-      const m = (clienteData as any).negocioParentescoTelefono.match(/^(\+\d{1,4})\s*(.*)$/);
+    if (clienteData.negocioParentescoTelefono) {
+      const m = clienteData.negocioParentescoTelefono.match(/^(\+\d{1,4})\s*(.*)$/);
       const code = m?.[1] || '+504';
       const num = (m?.[2] || '').replace(/[^\d]/g, '').slice(0, 8);
       setForm((prev) => ({ ...prev, negocioParentescoTelefono: `${code} ${num}` }));
@@ -426,6 +469,12 @@ const EditarClientePage: React.FC = () => {
     // existing fotos
     setExistingFotosDocs(Array.isArray(clienteData.documentosFotos) ? clienteData.documentosFotos : []);
     setExistingFotosNegocio(Array.isArray(clienteData.negocioFotos) ? clienteData.negocioFotos : []);
+    setExistingFotosDireccion(Array.isArray(clienteData.fotosDireccion) ? clienteData.fotosDireccion : []);
+    setExistingFotosDireccionConyuge(
+      Array.isArray(clienteData.fotosDireccionConyuge)
+        ? clienteData.fotosDireccionConyuge
+        : [],
+    );
   }, [clienteData]);
 
   useEffect(() => {
@@ -589,7 +638,10 @@ const EditarClientePage: React.FC = () => {
       setDireccionError('');
     }
 
-    if (!form.direccionFotos || form.direccionFotos.length === 0) {
+    const totalDireccionFotos =
+      (existingFotosDireccion?.length ?? 0) + (form.direccionFotos?.length ?? 0);
+
+    if (totalDireccionFotos === 0) {
       setDireccionFotosError('Debe adjuntar al menos una foto de la dirección');
       ok = false;
     } else {
@@ -811,73 +863,99 @@ const EditarClientePage: React.FC = () => {
       return;
     }
 
-    /**
-     * 🔥 PAYLOAD ALINEADO AL BACKEND (MONGOOSE)
-     */
-    const payload = {
-      identidadCliente: form.identidadCliente,
-      nacionalidad: form.nacionalidad,
-      RTN: form.RTN || undefined,
-
-      estadoCivil: form.estadoCivil,
-      nivelEducativo: form.nivelEducativo,
-
-      nombre: form.nombre,
-      apellido: form.apellido,
-      email: form.email || undefined,
-      sexo: form.sexo,
-      fechaNacimiento: form.fechaNacimiento,
-
-      // Dirección
-      departamentoResidencia: form.departamentoResidencia,
-      municipioResidencia: form.municipioResidencia,
-      zonaResidencialCliente: form.zonaResidencialCliente,
-      direccion: form.direccion,
-      tipoVivienda: form.tipoVivienda,
-      antiguedadVivenda: Number(form.antiguedadVivenda),
-      fotosDireccion: (form.direccionFotos || []).map((f) => f.name),
-
-      // Contacto
-      telefono: form.telefono,
-
-      // Cónyuge
-      conyugeNombre: form.conyugeNombre || undefined,
-      conyugeTelefono: form.conyugeTelefono || undefined,
-
-      // Financieros
-      limiteCredito: Number(form.limiteCredito),
-      ventaDiaria: Number(form.ventaDiaria || 0),
-      capacidadPago: Number(form.capacidadPago || 0),
-
-      // 🔑 Backend field (antes estadoDeuda en el UI)
-      riesgoMora: form.estadoDeuda,
-
-      // Referencias
-      referencias: form.referencias.filter((r) => r.trim() !== ''),
-      refsParentescoTelefonos: (form.refsParentescoTelefonos || []).filter((t) => t && t.replace(/\s/g, '').length > 0),
-
-      // 🔑 Backend field (antes actividad en el UI)
-      activo: form.actividad,
-
-      // Negocio (NO usamos dirección)
-      negocioNombre: form.negocioNombre || undefined,
-      negocioTipo: form.negocioTipo || undefined,
-      negocioTelefono: form.negocioTelefono || undefined,
-      negocioDepartamento: form.negocioDepartamento || undefined,
-      negocioMunicipio: form.negocioMunicipio || undefined,
-      negocioZonaResidencial: form.negocioZonaResidencial || undefined,
-      parentescoPropietario: form.negocioParentesco || undefined,
-
-      // Fotos (enviamos nombres de archivo por ahora)
-      fotosDocs: form.documentosFotos.map((f) => f.name),
-      fotosNegocio: form.negocioFotos.map((f) => f.name),
-      fotosDireccionConyuge: (form.conyugeDireccionFotos || []).map((f) => f.name),
-      
-    };
-
     setSaving(true);
 
     try {
+      const [direccionUploads, conyugeDirUploads, docsUploads, negocioUploads] =
+        await Promise.all([
+          uploadImageFiles(form.direccionFotos || []),
+          uploadImageFiles(form.conyugeDireccionFotos || []),
+          uploadImageFiles(form.documentosFotos || []),
+          uploadImageFiles(form.negocioFotos || []),
+        ]);
+
+      const fotosDocs = [
+        ...existingFotosDocs,
+        ...docsUploads.map((u) => u.url),
+      ];
+      const fotosNegocio = [
+        ...existingFotosNegocio,
+        ...negocioUploads.map((u) => u.url),
+      ];
+      const fotosDireccion = [
+        ...existingFotosDireccion,
+        ...direccionUploads.map((u) => u.url),
+      ];
+      const fotosDireccionConyuge = [
+        ...existingFotosDireccionConyuge,
+        ...conyugeDirUploads.map((u) => u.url),
+      ];
+
+      /**
+       * 🔥 PAYLOAD ALINEADO AL BACKEND (MONGOOSE)
+       */
+      const payload = {
+        identidadCliente: form.identidadCliente,
+        nacionalidad: form.nacionalidad,
+        RTN: form.RTN || undefined,
+
+        estadoCivil: form.estadoCivil,
+        nivelEducativo: form.nivelEducativo,
+
+        nombre: form.nombre,
+        apellido: form.apellido,
+        email: form.email || undefined,
+        sexo: form.sexo,
+        fechaNacimiento: form.fechaNacimiento,
+
+        // Dirección
+        departamentoResidencia: form.departamentoResidencia,
+        municipioResidencia: form.municipioResidencia,
+        zonaResidencialCliente: form.zonaResidencialCliente,
+        direccion: form.direccion,
+        tipoVivienda: form.tipoVivienda,
+        antiguedadVivenda: Number(form.antiguedadVivenda),
+        fotosDireccion,
+
+        // Contacto
+        telefono: form.telefono,
+
+        // Cónyuge
+        conyugeNombre: form.conyugeNombre || undefined,
+        conyugeTelefono: form.conyugeTelefono || undefined,
+
+        // Financieros
+        limiteCredito: Number(form.limiteCredito),
+        ventaDiaria: Number(form.ventaDiaria || 0),
+        capacidadPago: Number(form.capacidadPago || 0),
+
+        // 🔑 Backend field (antes estadoDeuda en el UI)
+        riesgoMora: form.estadoDeuda,
+
+        // Referencias
+        referencias: form.referencias.filter((r) => r.trim() !== ''),
+        refsParentescoTelefonos: (form.refsParentescoTelefonos || []).filter(
+          (t) => t && t.replace(/\s/g, '').length > 0,
+        ),
+
+        // 🔑 Backend field (antes actividad en el UI)
+        activo: form.actividad,
+
+        // Negocio (NO usamos dirección)
+        negocioNombre: form.negocioNombre || undefined,
+        negocioTipo: form.negocioTipo || undefined,
+        negocioTelefono: form.negocioTelefono || undefined,
+        negocioDepartamento: form.negocioDepartamento || undefined,
+        negocioMunicipio: form.negocioMunicipio || undefined,
+        negocioZonaResidencial: form.negocioZonaResidencial || undefined,
+        parentescoPropietario: form.negocioParentesco || undefined,
+
+        // Fotos (ahora enviamos URLs; preservando existentes)
+        fotosDocs,
+        fotosNegocio,
+        fotosDireccionConyuge: fotosDireccionConyuge,
+      };
+
       const targetId = codigoClienteParam || form.codigoCliente;
       await apiFetch(`/clientes/${encodeURIComponent(String(targetId))}`, {
         method: 'PUT',
@@ -915,12 +993,6 @@ const EditarClientePage: React.FC = () => {
 
   const setEstadoDeuda = (estado: EstadoDeuda) => {
     handleChange('estadoDeuda', estado);
-  };
-
-  const handleReferenciaChange = (index: number, value: string) => {
-    const newRefs = [...form.referencias];
-    newRefs[index] = value;
-    handleChange('referencias', newRefs);
   };
 
   const addReferencia = () => {
@@ -1307,6 +1379,34 @@ const EditarClientePage: React.FC = () => {
                       {direccionFotosError}
                     </Typography>
                   ) : null}
+
+                  {existingFotosDireccion.length > 0 && (
+                    <>
+                      <List dense>
+                        {existingFotosDireccion.map((f, idx) => {
+                          const isUrl = isHttpUrl(String(f));
+                          const label = isUrl ? String(f).split('/').pop() || String(f) : String(f);
+                          return (
+                            <ListItem
+                              key={`existing-dir-${idx}`}
+                              sx={{ py: 0, display: 'flex', alignItems: 'center' }}
+                              secondaryAction={
+                                isUrl ? (
+                                  <Button size="small" component="a" href={String(f)} target="_blank" rel="noreferrer">
+                                    Ver
+                                  </Button>
+                                ) : null
+                              }
+                            >
+                              <ListItemText primary={label} />
+                            </ListItem>
+                          );
+                        })}
+                      </List>
+                      <UrlPreviewGrid items={existingFotosDireccion} altPrefix="dir-existing" />
+                    </>
+                  )}
+
                   {(form.direccionFotos || []).length > 0 && (
                     <List dense>
                       {(form.direccionFotos || []).map((f, idx) => (
@@ -1340,6 +1440,7 @@ const EditarClientePage: React.FC = () => {
                       ))}
                     </List>
                   )}
+                  <FilePreviewGrid files={form.direccionFotos || []} altPrefix="dir-new" />
                 </Box>
 
                 <Box sx={{ gridColumn: { xs: '1', sm: '1 / span 2' }, mt: 2 }}>
@@ -1439,6 +1540,35 @@ const EditarClientePage: React.FC = () => {
                             ))}
                           </List>
                         )}
+
+                        {existingFotosDireccionConyuge.length > 0 && (
+                          <>
+                            <List dense>
+                              {existingFotosDireccionConyuge.map((f, idx) => {
+                                const isUrl = isHttpUrl(String(f));
+                                const label = isUrl ? String(f).split('/').pop() || String(f) : String(f);
+                                return (
+                                  <ListItem
+                                    key={`existing-dirc-${idx}`}
+                                    sx={{ py: 0, display: 'flex', alignItems: 'center' }}
+                                    secondaryAction={
+                                      isUrl ? (
+                                        <Button size="small" component="a" href={String(f)} target="_blank" rel="noreferrer">
+                                          Ver
+                                        </Button>
+                                      ) : null
+                                    }
+                                  >
+                                    <ListItemText primary={label} />
+                                  </ListItem>
+                                );
+                              })}
+                            </List>
+                            <UrlPreviewGrid items={existingFotosDireccionConyuge} altPrefix="dirc-existing" />
+                          </>
+                        )}
+
+                        <FilePreviewGrid files={form.conyugeDireccionFotos || []} altPrefix="dirc-new" />
                       </Box>
                     </Grid>
                   </Grid>
@@ -1589,6 +1719,32 @@ const EditarClientePage: React.FC = () => {
                       onChange={handleDocumentosChange}
                     />
                   </Button>
+                  {existingFotosDocs.length > 0 && (
+                    <>
+                      <List dense>
+                        {existingFotosDocs.map((f, idx) => {
+                          const isUrl = isHttpUrl(String(f));
+                          const label = isUrl ? String(f).split('/').pop() || String(f) : String(f);
+                          return (
+                            <ListItem
+                              key={`existing-doc-${idx}`}
+                              sx={{ py: 0, display: 'flex', alignItems: 'center' }}
+                              secondaryAction={
+                                isUrl ? (
+                                  <Button size="small" component="a" href={String(f)} target="_blank" rel="noreferrer">
+                                    Ver
+                                  </Button>
+                                ) : null
+                              }
+                            >
+                              <ListItemText primary={label} />
+                            </ListItem>
+                          );
+                        })}
+                      </List>
+                      <UrlPreviewGrid items={existingFotosDocs} altPrefix="doc-existing" />
+                    </>
+                  )}
                   {form.documentosFotos.length > 0 && (
                     <List dense>
                       {form.documentosFotos.map((f, idx) => (
@@ -1611,6 +1767,7 @@ const EditarClientePage: React.FC = () => {
                       ))}
                     </List>
                   )}
+                  <FilePreviewGrid files={form.documentosFotos || []} altPrefix="doc-new" />
                 </Box>
 
                 <Box sx={{ gridColumn: { xs: '1', sm: '1 / span 2' }, mt: 3 }}>
@@ -1787,6 +1944,34 @@ const EditarClientePage: React.FC = () => {
                       onChange={handleNegocioFotosChange}
                     />
                   </Button>
+
+                  {existingFotosNegocio.length > 0 && (
+                    <>
+                      <List dense>
+                        {existingFotosNegocio.map((f, idx) => {
+                          const isUrl = isHttpUrl(String(f));
+                          const label = isUrl ? String(f).split('/').pop() || String(f) : String(f);
+                          return (
+                            <ListItem
+                              key={`existing-neg-${idx}`}
+                              sx={{ py: 0, display: 'flex', alignItems: 'center' }}
+                              secondaryAction={
+                                isUrl ? (
+                                  <Button size="small" component="a" href={String(f)} target="_blank" rel="noreferrer">
+                                    Ver
+                                  </Button>
+                                ) : null
+                              }
+                            >
+                              <ListItemText primary={label} />
+                            </ListItem>
+                          );
+                        })}
+                      </List>
+                      <UrlPreviewGrid items={existingFotosNegocio} altPrefix="neg-existing" />
+                    </>
+                  )}
+
                   {form.negocioFotos.length > 0 && (
                     <List dense>
                       {form.negocioFotos.map((f, idx) => (
@@ -1809,6 +1994,7 @@ const EditarClientePage: React.FC = () => {
                       ))}
                     </List>
                   )}
+                  <FilePreviewGrid files={form.negocioFotos || []} altPrefix="neg-new" />
                 </Box>
               </>
             )}

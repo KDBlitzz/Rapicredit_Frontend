@@ -60,11 +60,6 @@ const ClientesPage: React.FC = () => {
   const getActividad = (id: string, original: boolean) =>
     actividadOverrides[id] ?? original;
 
-  const toggleActividad = (id: string, original: boolean) => {
-    const current = actividadOverrides[id] ?? original;
-    setActividadOverrides((prev) => ({ ...prev, [id]: !current }));
-  };
-
   const handleOpenViewer = (codigoCliente: string) => {
     setViewerId(codigoCliente);
     setViewerStep(0);
@@ -316,7 +311,7 @@ const ClientesPage: React.FC = () => {
           <IconButton size="small" onClick={handleCloseViewer} aria-label="Cerrar"><CloseIcon /></IconButton>
         </DialogTitle>
         <DialogContent dividers>
-          {viewerId ? <ClientViewer id={viewerId} step={viewerStep} onStepChange={setViewerStep} /> : null}
+          {viewerId ? <ClientViewer id={viewerId} step={viewerStep} /> : null}
         </DialogContent>
         <DialogActions>
           <Button startIcon={<ArrowBackIosNewIcon />} onClick={() => setViewerStep((s) => Math.max(0, s - 1))} disabled={viewerStep === 0}>Anterior</Button> 
@@ -329,9 +324,62 @@ const ClientesPage: React.FC = () => {
   );
 };
 
-function ClientViewer({ id, step, onStepChange }: { id: string; step: number; onStepChange: (n: number) => void }) {
+function ClientViewer({ id, step }: { id: string; step: number }) {
   const { data, loading, error } = useClienteDetalle(id);
   const steps = ['Información Personal', 'Dirección y Cónyuge', 'Financieros', 'Referencias y Negocio'];
+
+  const isHttpUrl = (value: string) => /^https?:\/\//i.test(String(value));
+
+  const renderImages = (items: string[], altPrefix: string) => {
+    const urls = (items || []).filter((v) => isHttpUrl(v));
+    const nonUrls = (items || []).filter((v) => !isHttpUrl(v));
+
+    if (urls.length === 0 && nonUrls.length === 0) {
+      return <Typography variant="body2">—</Typography>;
+    }
+
+    return (
+      <>
+        {urls.length > 0 && (
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+            {urls.map((u, idx) => (
+              <Box
+                key={`${altPrefix}-${idx}`}
+                component="a"
+                href={u}
+                target="_blank"
+                rel="noreferrer"
+                sx={{ display: 'inline-flex' }}
+              >
+                <Box
+                  component="img"
+                  src={u}
+                  alt={`${altPrefix}-${idx + 1}`}
+                  loading="lazy"
+                  sx={{
+                    width: 140,
+                    height: 140,
+                    objectFit: 'cover',
+                    borderRadius: 1,
+                  }}
+                />
+              </Box>
+            ))}
+          </Box>
+        )}
+
+        {nonUrls.length > 0 && (
+          <Box sx={{ mt: urls.length > 0 ? 1 : 0 }}>
+            {nonUrls.map((v, idx) => (
+              <Typography key={`${altPrefix}-text-${idx}`} variant="body2">
+                {v}
+              </Typography>
+            ))}
+          </Box>
+        )}
+      </>
+    );
+  };
 
   // Estilos para TextField en modo visor: sin hover/focus en el borde,
   // pero permitiendo selección de texto con el mouse.
@@ -370,26 +418,11 @@ function ClientViewer({ id, step, onStepChange }: { id: string; step: number; on
     return { nombre: '', parentesco: '', telefono: r.trim() };
   };
 
-  const fotosDocs: string[] = Array.isArray((data as any).fotosDocs)
-    ? (data as any).fotosDocs
-    : Array.isArray((data as any).documentosFotos)
-    ? (data as any).documentosFotos
-    : [];
-
-  const fotosNegocio: string[] = Array.isArray((data as any).fotosNegocio)
-    ? (data as any).fotosNegocio
-    : Array.isArray((data as any).negocioFotos)
-    ? (data as any).negocioFotos
-    : [];
-  const fotosDireccion: string[] = Array.isArray((data as any).fotosDireccion)
-    ? (data as any).fotosDireccion
-    : Array.isArray((data as any).direccionFotos)
-    ? (data as any).direccionFotos
-    : [];
-  const fotosDireccionConyuge: string[] = Array.isArray((data as any).fotosDireccionConyuge)
-    ? (data as any).fotosDireccionConyuge
-    : Array.isArray((data as any).conyugeDireccionFotos)
-    ? (data as any).conyugeDireccionFotos
+  const fotosDocs: string[] = Array.isArray(data.documentosFotos) ? data.documentosFotos : [];
+  const fotosNegocio: string[] = Array.isArray(data.negocioFotos) ? data.negocioFotos : [];
+  const fotosDireccion: string[] = Array.isArray(data.fotosDireccion) ? data.fotosDireccion : [];
+  const fotosDireccionConyuge: string[] = Array.isArray(data.fotosDireccionConyuge)
+    ? data.fotosDireccionConyuge
     : [];
 
   const formatDateOnly = (value: unknown) => {
@@ -417,7 +450,7 @@ function ClientViewer({ id, step, onStepChange }: { id: string; step: number; on
             <TextField label="Nombre completo" value={data.nombreCompleto || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
             <TextField label="Identidad" value={data.identidadCliente || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
             <TextField label="Nacionalidad" value={data.nacionalidad || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
-            <TextField label="RTN" value={(data as any).RTN || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
+            <TextField label="RTN" value={data.RTN || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
             <TextField label="Email" value={data.email || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
             <TextField label="Sexo" value={data.sexo || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
             <TextField label="Fecha de nacimiento" value={formatDateOnly(data.fechaNacimiento)} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
@@ -454,9 +487,9 @@ function ClientViewer({ id, step, onStepChange }: { id: string; step: number; on
         {step === 2 && (
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
             <TextField label="Límite de crédito" value={String(data.limiteCredito ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
-            <TextField label="Venta diaria" value={String((data as any).ventaDiaria ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
-            <TextField label="Capacidad de pago" value={String((data as any).capacidadPago ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
-            <TextField label="Parentesco del propietario" value={String((data as any).parentescoPropietario ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
+            <TextField label="Venta diaria" value={String(data.ventaDiaria ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
+            <TextField label="Capacidad de pago" value={String(data.capacidadPago ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
+            <TextField label="Parentesco del propietario" value={String(data.parentescoPropietario ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
             <TextField label="Estado de deuda" value={data.riesgoMora || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
             <TextField label="Cliente activo" value={data.actividad === false ? 'INACTIVO' : 'ACTIVO'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
           </Box>
@@ -486,48 +519,24 @@ function ClientViewer({ id, step, onStepChange }: { id: string; step: number; on
               <TextField label="Departamento" value={data.negocioDepartamento || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
               <TextField label="Municipio" value={data.negocioMunicipio || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
               <TextField label="Zona" value={data.negocioZonaResidencial || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
-              <TextField label="Parentesco del propietario" value={String((data as any).parentescoPropietario ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
-              <TextField label="Teléfono del pariente (negocio)" value={(data as any).negocioParentescoTelefono || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
-              <TextField label="Venta diaria" value={String((data as any).ventaDiaria ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
-              <TextField label="Capacidad de pago" value={String((data as any).capacidadPago ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
+              <TextField label="Parentesco del propietario" value={String(data.parentescoPropietario ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
+              <TextField label="Teléfono del pariente (negocio)" value={data.negocioParentescoTelefono || '—'} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
+              <TextField label="Venta diaria" value={String(data.ventaDiaria ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
+              <TextField label="Capacidad de pago" value={String(data.capacidadPago ?? '—')} InputProps={{ readOnly: true }} margin="normal" sx={viewerTextFieldSx} />
             </Box>
 
             <Box sx={{ gridColumn: '1 / -1' }}>
               <Typography variant="subtitle2">Fotografías de documentos</Typography>
-              {fotosDocs.length > 0 ? (
-                fotosDocs.map((f, idx) => (
-                  <Typography key={`doc-${idx}`} variant="body2">{f}</Typography>
-                ))
-              ) : (
-                <Typography variant="body2">—</Typography>
-              )}
+              {renderImages(fotosDocs, 'doc')}
 
               <Typography variant="subtitle2" sx={{ mt: 1 }}>Foto(s) de dirección</Typography>
-              {fotosDireccion.length > 0 ? (
-                fotosDireccion.map((f, idx) => (
-                  <Typography key={`dir-${idx}`} variant="body2">{f}</Typography>
-                ))
-              ) : (
-                <Typography variant="body2">—</Typography>
-              )}
+              {renderImages(fotosDireccion, 'dir')}
 
               <Typography variant="subtitle2" sx={{ mt: 1 }}>Foto(s) de dirección del cónyuge</Typography>
-              {fotosDireccionConyuge.length > 0 ? (
-                fotosDireccionConyuge.map((f, idx) => (
-                  <Typography key={`dirc-${idx}`} variant="body2">{f}</Typography>
-                ))
-              ) : (
-                <Typography variant="body2">—</Typography>
-              )}
+              {renderImages(fotosDireccionConyuge, 'dirc')}
 
               <Typography variant="subtitle2" sx={{ mt: 1 }}>Fotografías del negocio</Typography>
-              {fotosNegocio.length > 0 ? (
-                fotosNegocio.map((f, idx) => (
-                  <Typography key={`neg-${idx}`} variant="body2">{f}</Typography>
-                ))
-              ) : (
-                <Typography variant="body2">—</Typography>
-              )}
+              {renderImages(fotosNegocio, 'neg')}
             </Box>
           </Box>
         )}
