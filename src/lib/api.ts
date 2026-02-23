@@ -9,6 +9,12 @@ export interface ApiOptions extends RequestInit {
    * Normalmente NO lo uses: apiFetch obtiene token desde Firebase.
    */
   authToken?: string;
+
+  /**
+   * Si es true, evita hacer `console.error` cuando la API responde !ok.
+   * Útil cuando se prueban múltiples rutas candidatas (para no "ensuciar" consola con 404 esperados).
+   */
+  silent?: boolean;
 }
 
 const API_BASE_URL =
@@ -68,7 +74,9 @@ export async function apiFetch<T = unknown>(
       body = raw;
     }
 
-    console.error('API error:', res.status, res.statusText, body);
+    if (!options.silent) {
+      console.error('API error:', res.status, res.statusText, body);
+    }
 
     const msg =
       (body && body.message) ||

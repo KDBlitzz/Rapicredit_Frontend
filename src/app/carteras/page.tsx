@@ -21,9 +21,18 @@ import {
   TableCell,
   TableBody,
   CircularProgress,
+  Alert,
 } from "@mui/material";
 import { apiFetch } from "@/lib/api";
-import { useEmpleados, EstadoEmpleadoFiltro, Empleado } from "@/hooks/useEmpleados";
+import { useEmpleados, EstadoEmpleadoFiltro } from "@/hooks/useEmpleados";
+
+function getErrorMessage(err: unknown, fallback: string) {
+  return err instanceof Error ? err.message : fallback;
+}
+
+function asRecord(v: unknown): Record<string, unknown> {
+  return v && typeof v === "object" ? (v as Record<string, unknown>) : {};
+}
 
 // Tipos para la cartera por asesor
 type EstadoCliente = "ACTIVO" | "INACTIVO";
@@ -70,22 +79,35 @@ export default function CarterasPage() {
   const [busquedaAsesor, setBusquedaAsesor] = useState("");
   const { data: asesores, loading: loadingAsesores, error: errorAsesores } = useEmpleados({
     busqueda: busquedaAsesor,
-    estado: estadoAsesor,
+    // Cargamos TODOS para que Transferir siempre vea activos + inactivos.
+    // El filtro de estado se aplica solo al combo de visualización.
+    estado: "TODOS",
     rol: "ASESOR",
   });
 
+  const asesoresParaVisualizar = useMemo(() => {
+    if (estadoAsesor === "TODOS") return asesores;
+    const expectActivo = estadoAsesor === "ACTIVO";
+    return asesores.filter((a) => a.estado === expectActivo);
+  }, [asesores, estadoAsesor]);
+
   // Selección para ver cartera
   const [asesorSeleccionado, setAsesorSeleccionado] = useState<string>("");
+
+  const codigoAsesorSeleccionado = useMemo(() => {
+    if (!asesorSeleccionado) return "";
+    const emp = asesores.find((a) => a._id === asesorSeleccionado);
+    return emp?.codigoUsuario || asesorSeleccionado;
+  }, [asesores, asesorSeleccionado]);
 
   // Selección para reasignación en bloque
   const [fromAsesor, setFromAsesor] = useState<string>("");
   const [toAsesor, setToAsesor] = useState<string>("");
   const [includeInactivos, setIncludeInactivos] = useState<boolean>(true);
 
-  const selectedAdvisor: Empleado | undefined = useMemo(
-    () => asesores.find((a) => a._id === (asesorSeleccionado || fromAsesor)),
-    [asesores, asesorSeleccionado, fromAsesor]
-  );
+  const [transferLoading, setTransferLoading] = useState(false);
+  const [transferError, setTransferError] = useState<string | null>(null);
+  const [transferSuccess, setTransferSuccess] = useState<string | null>(null);
 
   // Cartera del asesor seleccionado
   const [cartera, setCartera] = useState<ClienteCartera[]>([]);
@@ -94,66 +116,119 @@ export default function CarterasPage() {
 
   useEffect(() => {
     const id = asesorSeleccionado;
+    const codigoAsesor = codigoAsesorSeleccionado;
+
     if (!id) {
       setCartera([]);
       return;
     }
 
+    let cancelled = false;
+
     const fetchCartera = async () => {
       setLoadingCartera(true);
       setErrorCartera(null);
+      setCartera([]);
       try {
-        // Intentamos varios endpoints posibles
-        const candidates = [
-          `/carteras/asesor/${id}`,
-          `/clientes?asesorId=${encodeURIComponent(id)}`,
+        // Usar endpoint del backend para obtener los clientes asignados al empleado/asesor.
+        // Backend: userRouter.get('/:codigoUsuario/clientes', ...)
+        // Montado normalmente bajo /empleados (según tu indicación), pero dejamos fallback por si está bajo /user(s).
+        const endpoints = [
+          `/empleados/${encodeURIComponent(codigoAsesor)}/clientes`,
+          `/users/${encodeURIComponent(codigoAsesor)}/clientes`,
+          `/user/${encodeURIComponent(codigoAsesor)}/clientes`,
         ];
-        let result: any = null;
-        let lastErr: any = null;
-        for (const ep of candidates) {
+
+        let result: unknown | null = null;
+        let lastErr: unknown | null = null;
+        for (const ep of endpoints) {
           try {
-            result = await apiFetch<any>(ep);
-            if (result) break;
-          } catch (e: any) {
-            lastErr = e;
-            const msg = String(e?.message || "").toLowerCase();
-            if (msg.includes("404") || msg.includes("not found") || msg.includes("cannot get")) {
-              continue;
-            }
+            result = await apiFetch<unknown>(ep, { silent: true });
             break;
+          } catch (e: unknown) {
+            lastErr = e;
+            const msg = getErrorMessage(e, "").toLowerCase();
+            // Si es 404, probamos la siguiente ruta candidata
+            if (msg.includes("404") || msg.includes("not found") || msg.includes("cannot")) continue;
+            // Otros errores (401/403/500) los mostramos tal cual
+            throw e;
           }
         }
-        if (!result) throw lastErr || new Error("No se pudo cargar cartera");
+
+        if (!result) {
+          const raw = getErrorMessage(lastErr, "No se pudo cargar cartera");
+          throw new Error(
+            `No se encontró la ruta para obtener clientes por empleado. Rutas probadas: ${endpoints.join(", ")}\n` +
+              `Detalle: ${raw}`
+          );
+        }
 
         // Mapeo flexible a ClienteCartera
-        const mapped: ClienteCartera[] = (Array.isArray(result) ? result : result?.clientes || []).map((c: any) => ({
-          id: String(c._id ?? c.id ?? ""),
-          nombreCompleto:
-            c.nombreCompleto || [c.nombre, c.apellido].filter(Boolean).join(" ") || c.razonSocial || "Cliente",
-          estadoActual: (c.actividad === false || c.estado === false) ? "INACTIVO" : "ACTIVO",
-          enMora: Boolean(c.enMora ?? c.mora ?? false),
-          vencido: Boolean(c.vencido ?? false),
-          castigado: Boolean(c.castigado ?? false),
-          diasMora: Number(c.diasMora ?? c.dias_de_mora ?? 0),
-          capitalDebe: Number(c.capitalDebe ?? c.capital_debe ?? c.saldoCapital ?? 0),
-          interesesDebe: Number(c.interesesDebe ?? c.interes_debe ?? c.saldoInteres ?? 0),
-          moraDebe: Number(c.moraDebe ?? c.saldoMora ?? 0),
-          tienePrestamoActivo: Boolean(c.tienePrestamoActivo ?? c.prestamoActivo ?? false),
-          ultimaFechaFinanciamiento: c.ultimaFechaFinanciamiento ?? c.lastFinanciamientoAt ?? null,
-        }));
+        const container = asRecord(result);
+        const rawList: unknown[] = Array.isArray(result)
+          ? (result as unknown[])
+          : Array.isArray(container["clientes"])
+          ? (container["clientes"] as unknown[])
+          : Array.isArray(container["data"])
+          ? (container["data"] as unknown[])
+          : [];
 
-        setCartera(mapped);
-      } catch (e: any) {
+        const mapped: ClienteCartera[] = rawList.map((c: unknown) => {
+          const rec = asRecord(c);
+
+          const id = String(rec["_id"] ?? rec["id"] ?? "");
+          const nombreCompleto =
+            (typeof rec["nombreCompleto"] === "string" && rec["nombreCompleto"]) ||
+            [rec["nombre"], rec["apellido"]].filter((x) => typeof x === "string" && x).join(" ") ||
+            (typeof rec["razonSocial"] === "string" ? rec["razonSocial"] : "") ||
+            "Cliente";
+
+          const actividad = rec["actividad"];
+          const estado = rec["estado"];
+          const activo = rec["activo"];
+          const estadoActual: EstadoCliente =
+            actividad === false || estado === false || activo === false ? "INACTIVO" : "ACTIVO";
+
+          return {
+            id,
+            nombreCompleto,
+            estadoActual,
+            enMora: Boolean((rec["enMora"] ?? rec["mora"]) ?? false),
+            vencido: Boolean(rec["vencido"] ?? false),
+            castigado: Boolean(rec["castigado"] ?? false),
+            diasMora: Number(rec["diasMora"] ?? rec["dias_de_mora"] ?? 0),
+            capitalDebe: Number(rec["capitalDebe"] ?? rec["capital_debe"] ?? rec["saldoCapital"] ?? 0),
+            interesesDebe: Number(
+              rec["interesesDebe"] ?? rec["interes_debe"] ?? rec["saldoInteres"] ?? 0,
+            ),
+            moraDebe: Number(rec["moraDebe"] ?? rec["saldoMora"] ?? 0),
+            tienePrestamoActivo: Boolean(
+              (rec["tienePrestamoActivo"] ?? rec["prestamoActivo"]) ?? false,
+            ),
+            ultimaFechaFinanciamiento:
+              (typeof rec["ultimaFechaFinanciamiento"] === "string" && rec["ultimaFechaFinanciamiento"]) ||
+              (typeof rec["lastFinanciamientoAt"] === "string" && rec["lastFinanciamientoAt"]) ||
+              null,
+          };
+        });
+
+        if (!cancelled) setCartera(mapped);
+      } catch (e: unknown) {
         console.error(e);
-        setErrorCartera(e?.message || "Error cargando cartera");
-        setCartera([]);
+        if (!cancelled) {
+          setErrorCartera(getErrorMessage(e, "Error cargando cartera"));
+          setCartera([]);
+        }
       } finally {
-        setLoadingCartera(false);
+        if (!cancelled) setLoadingCartera(false);
       }
     };
 
     fetchCartera();
-  }, [asesorSeleccionado]);
+    return () => {
+      cancelled = true;
+    };
+  }, [asesorSeleccionado, codigoAsesorSeleccionado]);
 
   const resumen = useMemo(() => {
     const total = cartera.length;
@@ -173,37 +248,74 @@ export default function CarterasPage() {
     return { total, activos, inactivos, enMora, vencidos, castigados, categorias };
   }, [cartera]);
 
-  const handleReassignAll = async () => {
+  const handleTransferirCartera = async () => {
     if (!fromAsesor || !toAsesor || fromAsesor === toAsesor) return;
+
+    setTransferError(null);
+    setTransferSuccess(null);
+    setTransferLoading(true);
+
     try {
-      const payload = { fromUsuarioId: fromAsesor, toUsuarioId: toAsesor, includeInactivos };
-      // Intentar endpoints comunes
-      const candidates = [
-        { path: "/carteras/reasignar", method: "POST" },
-        { path: "/clientes/reasignar", method: "POST" },
-      ];
-      let ok = false;
-      let lastErr: any = null;
-      for (const c of candidates) {
+      const fromEmp = asesores.find((a) => a._id === fromAsesor);
+      const toEmp = asesores.find((a) => a._id === toAsesor);
+
+      const codigoActualEmpleado = fromEmp?.codigoUsuario;
+      const codigoNuevoEmpleado = toEmp?.codigoUsuario;
+
+      if (!codigoActualEmpleado) {
+        throw new Error("El asesor origen no tiene 'codigoUsuario' disponible");
+      }
+      if (!codigoNuevoEmpleado) {
+        throw new Error("El asesor destino no tiene 'codigoUsuario' disponible");
+      }
+
+      // En tu backend esta ruta viene de un router tipo userRouter.put('/transferir', ...)
+      // pero el prefijo real puede variar según cómo se montó el router.
+      // Probamos algunas rutas comunes SIN spamear la consola con 404.
+      const endpoints = ["/user/transferir", "/users/transferir", "/empleados/transferir"];
+      let done = false;
+      let lastErr: unknown = null;
+      for (const ep of endpoints) {
         try {
-          await apiFetch(c.path, { method: c.method, body: JSON.stringify(payload) });
-          ok = true;
+          await apiFetch(ep, {
+            method: "PUT",
+            body: JSON.stringify({ codigoActualEmpleado, codigoNuevoEmpleado }),
+            silent: true,
+          });
+          done = true;
           break;
-        } catch (e: any) {
-          lastErr = e;
-          const msg = String(e?.message || "").toLowerCase();
-          if (msg.includes("404") || msg.includes("not found") || msg.includes("cannot")) continue;
+        } catch (err: unknown) {
+          lastErr = err;
+          const msg = getErrorMessage(err, "").toLowerCase();
+          if (msg.includes("404") || msg.includes("not found") || msg.includes("cannot")) {
+            continue;
+          }
           break;
         }
       }
-      if (!ok) throw lastErr || new Error("No se pudo reasignar la cartera");
-      // Actualizar vistas
+      if (!done) {
+        const raw = getErrorMessage(lastErr, "No se pudo transferir la cartera");
+        const isNotFound = raw.toLowerCase().includes("404") || raw.toLowerCase().includes("not found") || raw.toLowerCase().includes("cannot");
+        if (isNotFound) {
+          throw new Error(
+            `No se encontró la ruta de transferencia en el backend. Rutas probadas: ${endpoints.join(", ")}.\n` +
+              `Detalle: ${raw}`
+          );
+        }
+        throw lastErr ?? new Error("No se pudo transferir la cartera");
+      }
+
+      setTransferSuccess("Cartera transferida correctamente");
+
+      // Si el usuario estaba visualizando al asesor origen, cambiar a destino
       if (asesorSeleccionado === fromAsesor) {
         setAsesorSeleccionado(toAsesor);
       }
-    } catch (e: any) {
-      alert(e?.message || "Error en la reasignación");
+    } catch (e: unknown) {
       console.error(e);
+      setTransferError(getErrorMessage(e, "Error transfiriendo cartera"));
+    } finally {
+      setTransferLoading(false);
     }
   };
 
@@ -252,7 +364,7 @@ export default function CarterasPage() {
               >
                 {loadingAsesores && <MenuItem value=""><em>Cargando...</em></MenuItem>}
                 {errorAsesores && <MenuItem value=""><em>Error</em></MenuItem>}
-                {!loadingAsesores && asesores.map((a) => (
+                {!loadingAsesores && asesoresParaVisualizar.map((a) => (
                   <MenuItem key={a._id} value={a._id}>
                     {a.nombreCompleto} {a.estado ? "(Activo)" : "(Inactivo)"}
                   </MenuItem>
@@ -290,6 +402,8 @@ export default function CarterasPage() {
           <Stack direction="row" alignItems="center" spacing={1}><CircularProgress size={20} /> <Typography>Cargando cartera...</Typography></Stack>
         ) : errorCartera ? (
           <Typography color="error">{errorCartera}</Typography>
+        ) : cartera.length === 0 ? (
+          <Typography color="text.secondary">Este asesor no tiene clientes asignados</Typography>
         ) : (
           <Table size="small">
             <TableHead>
@@ -336,13 +450,21 @@ export default function CarterasPage() {
 
       {/* Reasignación de cartera en bloque */}
       <Paper sx={{ p: 2 }}>
-        <Typography variant="h6" sx={{ mb: 2 }}>Reasignar cartera</Typography>
+        <Typography variant="h6" sx={{ mb: 2 }}>Transferir cartera</Typography>
+
+        {transferError && <Alert severity="error" sx={{ mb: 2 }}>{transferError}</Alert>}
+        {transferSuccess && <Alert severity="success" sx={{ mb: 2 }}>{transferSuccess}</Alert>}
+
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, md: 4 }}>
             <FormControl fullWidth>
-              <InputLabel>Desde asesor</InputLabel>
-              <Select label="Desde asesor" value={fromAsesor} onChange={(e) => setFromAsesor(e.target.value)}>
-                {asesores.map((a) => (
+              <InputLabel>Desde asesor (inactivo)</InputLabel>
+              <Select
+                label="Desde asesor (inactivo)"
+                value={fromAsesor}
+                onChange={(e) => setFromAsesor(e.target.value)}
+              >
+                {asesores.filter((a) => !a.estado).map((a) => (
                   <MenuItem key={a._id} value={a._id}>
                     {a.nombreCompleto} {a.estado ? "(Activo)" : "(Inactivo)"}
                   </MenuItem>
@@ -352,9 +474,13 @@ export default function CarterasPage() {
           </Grid>
           <Grid size={{ xs: 12, md: 4 }}>
             <FormControl fullWidth>
-              <InputLabel>Hacia asesor</InputLabel>
-              <Select label="Hacia asesor" value={toAsesor} onChange={(e) => setToAsesor(e.target.value)}>
-                {asesores.map((a) => (
+              <InputLabel>Hacia asesor (activo)</InputLabel>
+              <Select
+                label="Hacia asesor (activo)"
+                value={toAsesor}
+                onChange={(e) => setToAsesor(e.target.value)}
+              >
+                {asesores.filter((a) => a.estado).map((a) => (
                   <MenuItem key={a._id} value={a._id}>
                     {a.nombreCompleto} {a.estado ? "(Activo)" : "(Inactivo)"}
                   </MenuItem>
@@ -367,16 +493,17 @@ export default function CarterasPage() {
               <Button
                 variant="contained"
                 color="primary"
-                disabled={!fromAsesor || !toAsesor || fromAsesor === toAsesor}
-                onClick={handleReassignAll}
+                disabled={transferLoading || !fromAsesor || !toAsesor || fromAsesor === toAsesor}
+                onClick={handleTransferirCartera}
               >
-                Reasignar toda la cartera
-              </Button>
-              <Button
-                variant={includeInactivos ? "contained" : "outlined"}
-                onClick={() => setIncludeInactivos(!includeInactivos)}
-              >
-                {includeInactivos ? "Incluir inactivos" : "Excluir inactivos"}
+                {transferLoading ? (
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <CircularProgress size={18} color="inherit" />
+                    <span>Transfiriendo...</span>
+                  </Stack>
+                ) : (
+                  "Transferir cartera"
+                )}
               </Button>
             </Stack>
           </Grid>
