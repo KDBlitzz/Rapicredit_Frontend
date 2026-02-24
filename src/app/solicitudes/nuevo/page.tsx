@@ -37,7 +37,7 @@ const NuevoSolicitudPage: React.FC = () => {
 
   const [form, setForm] = useState({
     capitalSolicitado: '',
-    plazoCuotas: '',
+    plazoCuotas: '1',
     finalidadCredito: '',
     fechaSolicitud: hoy,
     observaciones: '',
@@ -180,6 +180,13 @@ const NuevoSolicitudPage: React.FC = () => {
     if (!form.capitalSolicitado.trim() || Number(form.capitalSolicitado) <= 0) {
       setSnackbarSeverity('error');
       setSnackbarMsg('El capital solicitado debe ser mayor a cero.');
+      setSnackbarOpen(true);
+      return false;
+    }
+
+    if (!form.plazoCuotas.trim() || Number(form.plazoCuotas) < 1) {
+      setSnackbarSeverity('error');
+      setSnackbarMsg('El plazo debe ser al menos 1.');
       setSnackbarOpen(true);
       return false;
     }
@@ -412,14 +419,13 @@ const NuevoSolicitudPage: React.FC = () => {
                   fullWidth
                   size="small"
                   type="number"
-                  inputProps={{ inputMode: 'decimal', step: '0.01' }}
+                  inputProps={{ inputMode: 'numeric', step: '1000' }}
                   onKeyDown={(evt) => {
                     const allowed = ['Backspace','Tab','Enter','ArrowLeft','ArrowRight','Delete'];
                     if (evt.ctrlKey || evt.metaKey) return;
                     const key = evt.key;
                     const isNumber = /^[0-9]$/.test(key);
-                    const isDecimal = key === '.' || key === ',';
-                    if (!isNumber && !allowed.includes(key) && !isDecimal) {
+                    if (!isNumber && !allowed.includes(key)) {
                       evt.preventDefault();
                     }
                   }}
@@ -493,6 +499,34 @@ const NuevoSolicitudPage: React.FC = () => {
                       renderInput={(params) => (
                         <TextField {...params} label="Frecuencia de pago" placeholder="Selecciona frecuencia…" required />
                       )}
+                    />
+                  </Grid>
+
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      label="Plazo"
+                      name="plazoCuotas"
+                      value={form.plazoCuotas}
+                      onChange={handleChange}
+                      fullWidth
+                      size="small"
+                      type="number"
+                      inputProps={{ inputMode: 'numeric', step: '1', min: '1' }}
+                      onKeyDown={(evt) => {
+                        const allowed = ['Backspace','Tab','Enter','ArrowLeft','ArrowRight','Delete'];
+                        if (evt.ctrlKey || evt.metaKey) return;
+                        const key = evt.key;
+                        const isNumber = /^[0-9]$/.test(key);
+                        if (!isNumber && !allowed.includes(key)) {
+                          evt.preventDefault();
+                        }
+                      }}
+                      onBlur={(e) => {
+                        if (!e.target.value || Number(e.target.value) < 1) {
+                          setForm(prev => ({ ...prev, plazoCuotas: '1' }));
+                        }
+                      }}
+                      required
                     />
                   </Grid>
                 </Grid>

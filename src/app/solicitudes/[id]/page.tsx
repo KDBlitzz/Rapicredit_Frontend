@@ -94,7 +94,7 @@ const SolicitudDetallePage: React.FC = () => {
 
   const [form, setForm] = useState({
     capitalSolicitado: '',
-    plazoCuotas: '',
+    plazoCuotas: '1',
     finalidadCredito: '',
     observaciones: '',
     fechaSolicitud: '',
@@ -240,7 +240,7 @@ const SolicitudDetallePage: React.FC = () => {
 
     setForm({
       capitalSolicitado: data.capitalSolicitado != null ? String(data.capitalSolicitado) : '',
-      plazoCuotas: data.plazoCuotas != null ? String(data.plazoCuotas) : '',
+      plazoCuotas: data.plazoCuotas != null && data.plazoCuotas > 0 ? String(data.plazoCuotas) : '1',
       finalidadCredito: data.finalidadCredito ? String(data.finalidadCredito) : '',
       observaciones: data.observaciones ? String(data.observaciones) : '',
       fechaSolicitud: dateValue,
@@ -295,7 +295,7 @@ const SolicitudDetallePage: React.FC = () => {
       const dateValue = data.fechaSolicitud ? String(data.fechaSolicitud).slice(0, 10) : '';
       setForm({
         capitalSolicitado: data.capitalSolicitado != null ? String(data.capitalSolicitado) : '',
-        plazoCuotas: data.plazoCuotas != null ? String(data.plazoCuotas) : '',
+        plazoCuotas: data.plazoCuotas != null && data.plazoCuotas > 0 ? String(data.plazoCuotas) : '1',
         finalidadCredito: data.finalidadCredito ? String(data.finalidadCredito) : '',
         observaciones: data.observaciones ? String(data.observaciones) : '',
         fechaSolicitud: dateValue,
@@ -340,6 +340,24 @@ const SolicitudDetallePage: React.FC = () => {
         return;
       }
       payload.capitalSolicitado = n;
+    }
+
+    if (form.plazoCuotas.trim() !== '') {
+      const n = toFiniteNumber(form.plazoCuotas);
+      if (n == null || n < 1) {
+        setToastSeverity('error');
+        setToastMessage('El plazo debe ser al menos 1.');
+        setToastOpen(true);
+        return;
+      }
+      payload.plazoCuotas = n;
+    } else {
+      // Si está vacío, usar 1 por defecto
+      payload.plazoCuotas = 1;
+    }
+
+    if (form.finalidadCredito.trim() !== '') {
+      payload.finalidadCredito = form.finalidadCredito;
     }
 
     payload.observaciones = form.observaciones ?? '';
@@ -578,7 +596,16 @@ const SolicitudDetallePage: React.FC = () => {
                     name="capitalSolicitado"
                     value={form.capitalSolicitado}
                     onChange={onChangeForm}
-                    inputProps={{ inputMode: 'decimal', step: '0.01' }}
+                    inputProps={{ inputMode: 'numeric', step: '1000' }}
+                    onKeyDown={(evt) => {
+                      const allowed = ['Backspace','Tab','Enter','ArrowLeft','ArrowRight','Delete'];
+                      if (evt.ctrlKey || evt.metaKey) return;
+                      const key = evt.key;
+                      const isNumber = /^[0-9]$/.test(key);
+                      if (!isNumber && !allowed.includes(key)) {
+                        evt.preventDefault();
+                      }
+                    }}
                   />
                 ) : (
                   <>
@@ -661,6 +688,33 @@ const SolicitudDetallePage: React.FC = () => {
                         </MenuItem>
                       ))}
                     </TextField>
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      label="Plazo"
+                      name="plazoCuotas"
+                      value={form.plazoCuotas}
+                      onChange={onChangeForm}
+                      fullWidth
+                      size="small"
+                      type="number"
+                      inputProps={{ inputMode: 'numeric', step: '1', min: '1' }}
+                      onKeyDown={(evt) => {
+                        const allowed = ['Backspace','Tab','Enter','ArrowLeft','ArrowRight','Delete'];
+                        if (evt.ctrlKey || evt.metaKey) return;
+                        const key = evt.key;
+                        const isNumber = /^[0-9]$/.test(key);
+                        if (!isNumber && !allowed.includes(key)) {
+                          evt.preventDefault();
+                        }
+                      }}
+                      onBlur={(e) => {
+                        if (!e.target.value || Number(e.target.value) < 1) {
+                          setForm(prev => ({ ...prev, plazoCuotas: '1' }));
+                        }
+                      }}
+                      required
+                    />
                   </Grid>
                 </>
               )}
