@@ -47,6 +47,9 @@ const DashboardPage: React.FC = () => {
       ? `L. ${v.toLocaleString("es-HN", { minimumFractionDigits: 2 })}`
       : "L. 0.00";
 
+  const formatDate = (iso?: string) =>
+    iso ? new Date(iso).toLocaleDateString("es-HN") : "—";
+
   if (loading && !data) {
     return (
       <Box
@@ -88,6 +91,8 @@ const DashboardPage: React.FC = () => {
     vencenEn7Dias,
     prestamosRecientes,
     pagosHoy,
+    cantidadPrestamosNuevosMes,
+    prestamosNuevosMes,
   } = data;
 
   return (
@@ -163,7 +168,13 @@ const DashboardPage: React.FC = () => {
               Préstamos nuevos del mes
             </Typography>
             <Typography variant="h6" sx={{ mt: 0.5 }}>
-              {prestamosAll.loading ? "—" : prestamosNuevosDelMes}
+              {typeof cantidadPrestamosNuevosMes === "number" && !Number.isNaN(cantidadPrestamosNuevosMes)
+                ? cantidadPrestamosNuevosMes
+                : typeof prestamosNuevosMes === "number" && !Number.isNaN(prestamosNuevosMes)
+                ? prestamosNuevosMes
+                : prestamosAll.loading
+                ? "—"
+                : prestamosNuevosDelMes}
             </Typography>
             <Typography variant="caption" color="text.secondary">
               Con fecha de desembolso en el mes actual
@@ -224,7 +235,6 @@ const DashboardPage: React.FC = () => {
                     <TableCell>Saldo</TableCell>
                     <TableCell>Estado</TableCell>
                     <TableCell>Desembolso</TableCell>
-                    <TableCell></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -256,19 +266,14 @@ const DashboardPage: React.FC = () => {
                           />
                         </TableCell>
                         <TableCell>
-                          {new Date(p.fechaDesembolso).toLocaleDateString(
-                            "es-HN"
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Link href={`/prestamos/${p.id}`}>Ver</Link>
+                          {formatDate(p.fechaDesembolso)}
                         </TableCell>
                       </TableRow>
                     );
                   })}
                   {prestamosRecientes.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={7} align="center">
+                      <TableCell colSpan={6} align="center">
                         No hay préstamos recientes.
                       </TableCell>
                     </TableRow>
@@ -309,10 +314,12 @@ const DashboardPage: React.FC = () => {
                         <TableCell>{clienteLabel}</TableCell>
                         <TableCell>{formatMoney(p.monto)}</TableCell>
                         <TableCell>
-                          {new Date(p.fechaAbono).toLocaleTimeString("es-HN", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
+                          {p.fechaAbono
+                            ? new Date(p.fechaAbono).toLocaleTimeString("es-HN", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })
+                            : "—"}
                         </TableCell>
                       </TableRow>
                     );

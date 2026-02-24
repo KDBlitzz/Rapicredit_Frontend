@@ -105,7 +105,7 @@ const SolicitudesPage: React.FC = () => {
     return '';
   };
 
-  const canVerModuloSolicitudes = hasAnyPermiso(["f001", "F002"]);
+  const canVerModuloSolicitudes = hasAnyPermiso(["f001", "F002", "F010"]);
   const canCrearSolicitudes = hasPermiso("F002");
   const canGestionarFlujoSolicitudes = hasPermiso("F010"); // Aprobar/Rechazar crédito / flujo de revisión
   const canCalcularCuota = hasPermiso("F004");

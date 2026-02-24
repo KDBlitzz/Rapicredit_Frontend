@@ -2,8 +2,9 @@
 
 import * as React from "react";
 import { AppRouterCacheProvider } from "@mui/material-nextjs/v14-appRouter";
-import { ThemeProvider } from "@mui/material/styles";
+import { ThemeProvider, alpha } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
+import GlobalStyles from "@mui/material/GlobalStyles";
 import type { PaletteMode } from "@mui/material/styles";
 import { createAppTheme } from "../theme/theme";
 
@@ -75,6 +76,40 @@ export default function ThemeRegistry({
       <ColorModeContext.Provider value={colorMode}>
         <ThemeProvider theme={theme}>
           <CssBaseline />
+          <GlobalStyles
+            styles={(t) => {
+              const track = alpha(t.palette.background.paper, t.palette.mode === "light" ? 0.65 : 0.25);
+              const thumb = alpha(t.palette.primary.main, t.palette.mode === "light" ? 0.38 : 0.32);
+              const thumbHover = alpha(t.palette.primary.main, t.palette.mode === "light" ? 0.55 : 0.48);
+              const border = alpha(t.palette.background.paper, t.palette.mode === "light" ? 0.8 : 0.4);
+
+              return {
+                "*": {
+                  scrollbarWidth: "thin",
+                  scrollbarColor: `${thumb} ${track}`,
+                },
+                "*::-webkit-scrollbar": {
+                  width: 10,
+                  height: 10,
+                },
+                "*::-webkit-scrollbar-track": {
+                  backgroundColor: track,
+                  borderRadius: 999,
+                },
+                "*::-webkit-scrollbar-thumb": {
+                  backgroundColor: thumb,
+                  borderRadius: 999,
+                  border: `2px solid ${border}`,
+                },
+                "*::-webkit-scrollbar-thumb:hover": {
+                  backgroundColor: thumbHover,
+                },
+                "*::-webkit-scrollbar-corner": {
+                  backgroundColor: "transparent",
+                },
+              };
+            }}
+          />
           {children}
         </ThemeProvider>
       </ColorModeContext.Provider>

@@ -27,6 +27,7 @@ import {
 } from "@mui/material";
 import { useSolicitudes, EstadoSolicitudFiltro } from "../../../hooks/useSolicitudes";
 import { apiFetch } from "../../../lib/api";
+import { usePermisos } from "../../../hooks/usePermisos";
 
 type SolicitudDetalle = {
   codigoSolicitud?: string;
@@ -49,6 +50,10 @@ const estadosAccionFinales = ["APROBADA", "RECHAZADA"]; // no mostrar acciones s
 type SolicitudAccion = "APROBAR" | "RECHAZAR";
 
 const PreAprobacionPage: React.FC = () => {
+  const { empleado } = usePermisos();
+  const rolActual = (empleado?.rol || "").toLowerCase();
+  const isSupervisor = rolActual === "supervisor";
+
   const [busqueda, setBusqueda] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -189,6 +194,14 @@ const PreAprobacionPage: React.FC = () => {
   const runAction = async () => {
     if (!confirmAction || !targetSolicitudId || !targetSolicitudCodigo) return;
 
+    if (confirmAction === "APROBAR" && isSupervisor) {
+      setToastSeverity("error");
+      setToastMessage("El rol Supervisor no puede aprobar solicitudes.");
+      setToastOpen(true);
+      closeConfirm();
+      return;
+    }
+
     setActionLoading(true);
     try {
       if (confirmAction === "APROBAR") {
@@ -275,18 +288,20 @@ const PreAprobacionPage: React.FC = () => {
                   <TableCell>{renderEstadoChip(s.estadoSolicitud)}</TableCell>
                   <TableCell align="right">
                     <Box sx={{ display: "flex", gap: 1, justifyContent: "flex-end" }}>
-                      <Tooltip title={canActOn(s.estadoSolicitud) ? "Aprobar" : "No disponible"}>
-                        <span>
-                          <IconButton
-                            size="small"
-                            color="success"
-                            disabled={!canActOn(s.estadoSolicitud)}
-                            onClick={() => openConfirm("APROBAR", s.id, s.codigoSolicitud)}
-                          >
-                            <Box component="span" sx={{ fontSize: 16, lineHeight: 1 }}>✅</Box>
-                          </IconButton>
-                        </span>
-                      </Tooltip>
+                      {!isSupervisor ? (
+                        <Tooltip title={canActOn(s.estadoSolicitud) ? "Aprobar" : "No disponible"}>
+                          <span>
+                            <IconButton
+                              size="small"
+                              color="success"
+                              disabled={!canActOn(s.estadoSolicitud)}
+                              onClick={() => openConfirm("APROBAR", s.id, s.codigoSolicitud)}
+                            >
+                              <Box component="span" sx={{ fontSize: 16, lineHeight: 1 }}>✅</Box>
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                      ) : null}
 
                       <Tooltip title={canActOn(s.estadoSolicitud) ? "Rechazar" : "No disponible"}>
                         <span>

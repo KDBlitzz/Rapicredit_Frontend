@@ -23,7 +23,7 @@ export default function Topbar() {
   const { empleado } = useEmpleadoActual();
 
   const permisosActuales = (empleado?.permisos || []).map((p) => p.toUpperCase());
-  const canGestionarSolicitudes = permisosActuales.includes("F010");
+  const canCrearSolicitudes = permisosActuales.includes("F002");
 
   const showNuevaSolicitud = !pathname.startsWith("/prestamos") && !pathname.startsWith("/solicitudes");
 
@@ -75,10 +75,10 @@ export default function Topbar() {
             </IconButton>
           </Tooltip>
 
-          {showNuevaSolicitud && canGestionarSolicitudes ? (
+          {showNuevaSolicitud && canCrearSolicitudes ? (
             <Button
               component={Link}
-              href="/solicitudes"
+              href="/solicitudes/nuevo"
               size="small"
               sx={{
                 borderRadius: 999,
