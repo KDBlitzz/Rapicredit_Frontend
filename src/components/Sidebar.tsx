@@ -43,6 +43,7 @@ const navItems: NavSection[] = [
       // Créditos / préstamos y pagos
       { label: "Préstamos", href: "/prestamos", requiredPermisos: ["f001", "F002"] },
       { label: "Pagos", href: "/pagos", requiredPermisos: ["F005"] },
+      { label: "Cuadres", href: "/cuadres", requiredPermisos: ["F005", "F009"] },
       // Solicitudes de crédito (aprobación / gestión)
       // Ver módulo: F001/F002. Flujo de aprobación: F010.
       { label: "Solicitudes", href: "/solicitudes", requiredPermisos: ["F001", "F002", "F010"] },
