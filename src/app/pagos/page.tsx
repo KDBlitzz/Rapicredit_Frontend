@@ -30,10 +30,9 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import VisibilityIcon from '@mui/icons-material/Visibility';
-import { useAbonos, EstadoAbonFiltro } from '../../hooks/useAbonos';
+import { usePagos, EstadoPagoFiltro } from '../../hooks/usePagos';
 import { usePermisos } from '../../hooks/usePermisos';
 import { usePrestamoDetalle } from '../../hooks/usePrestamoDetalle';
-import { apiFetch } from '../../lib/api';
 
 const emptyForm = {
   codigoPrestamo: '',
@@ -48,16 +47,16 @@ type FormState = typeof emptyForm;
 
 export default function PagosPage() {
   const [busqueda, setBusqueda] = useState('');
-  const [estado, setEstado] = useState<EstadoAbonFiltro>('TODOS');
+  const [estado, setEstado] = useState<EstadoPagoFiltro>('TODOS');
   const [refreshKey, setRefreshKey] = useState(0);
-  const [dialogAbono, setDialogAbono] = useState<any>(null);
+  const [dialogPago, setDialogPago] = useState<any>(null);
   const [dialogNuevo, setDialogNuevo] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [snackbar, setSnackbar] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  const { data, loading, error } = useAbonos({ busqueda, estado }, { refreshKey });
+  const { data, loading, error } = usePagos({ busqueda, estado }, { refreshKey });
   const { hasAnyPermiso, hasPermiso, loading: loadingPermisos } = usePermisos();
   const { data: prestamoDetalle, loading: loadingDetalle } = usePrestamoDetalle(
     form.codigoPrestamo || ''
@@ -71,7 +70,7 @@ export default function PagosPage() {
   };
 
   const handleEstadoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setEstado(e.target.value as EstadoAbonFiltro);
+    setEstado(e.target.value as EstadoPagoFiltro);
   };
 
   const handleOpenNuevo = () => {
@@ -109,6 +108,20 @@ export default function PagosPage() {
     }
 
     setSaving(true);
+    
+    // Por ahora solo es un boceto, sin llamadas al backend
+    // TODO: Implementar la llamada al endpoint cuando esté disponible
+    
+    // Simulación de guardado exitoso
+    setTimeout(() => {
+      setSnackbar({ type: 'success', message: 'Pago registrado exitosamente (modo boceto)' });
+      handleCloseNuevo();
+      setRefreshKey((k) => k + 1);
+      setSaving(false);
+    }, 500);
+
+    // Para cuando se implemente el endpoint:
+    /*
     try {
       await apiFetch('/abonos', {
         method: 'POST',
@@ -122,15 +135,16 @@ export default function PagosPage() {
         }),
       });
 
-      setSnackbar({ type: 'success', message: 'Abono registrado exitosamente' });
+      setSnackbar({ type: 'success', message: 'Pago registrado exitosamente' });
       handleCloseNuevo();
       setRefreshKey((k) => k + 1);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'No se pudo registrar el abono';
+      const msg = e instanceof Error ? e.message : 'No se pudo registrar el pago';
       setSnackbar({ type: 'error', message: msg });
     } finally {
       setSaving(false);
     }
+    */
   };
 
   const formatMoney = (v?: number) =>
@@ -173,7 +187,7 @@ export default function PagosPage() {
       {/* Encabezado */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h5" sx={{ fontWeight: 600 }}>
-          Abonos y Pagos
+          Pagos
         </Typography>
         {canAplicarPago && (
           <Button
@@ -182,7 +196,7 @@ export default function PagosPage() {
             sx={{ borderRadius: 999 }}
             onClick={handleOpenNuevo}
           >
-            Registrar Abono
+            Registrar Pago
           </Button>
         )}
       </Box>
@@ -255,32 +269,32 @@ export default function PagosPage() {
                 <TableRow>
                   <TableCell colSpan={8} align="center" sx={{ py: 3 }}>
                     <Typography variant="body2" color="text.secondary">
-                      No hay abonos registrados
+                      No hay pagos registrados
                     </Typography>
                   </TableCell>
                 </TableRow>
               ) : (
-                data.map((abono) => (
-                  <TableRow key={abono.id} hover>
-                    <TableCell>{formatDate(abono.fecha)}</TableCell>
-                    <TableCell>{formatTime(abono.fecha)}</TableCell>
+                data.map((pago) => (
+                  <TableRow key={pago.id} hover>
+                    <TableCell>{formatDate(pago.fecha)}</TableCell>
+                    <TableCell>{formatTime(pago.fecha)}</TableCell>
                     <TableCell>
                       <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                        {abono.codigoPrestamo}
+                        {pago.codigoPrestamo}
                       </Typography>
                     </TableCell>
-                    <TableCell>{abono.clienteNombre}</TableCell>
+                    <TableCell>{pago.clienteNombre}</TableCell>
                     <TableCell align="right">
                       <Typography variant="body2" sx={{ fontWeight: 500, color: 'success.main' }}>
-                        {formatMoney(abono.monto)}
+                        {formatMoney(pago.monto)}
                       </Typography>
                     </TableCell>
-                    <TableCell>{abono.medioPago}</TableCell>
-                    <TableCell>{renderEstadoChip(abono.estadoAbono)}</TableCell>
+                    <TableCell>{pago.medioPago}</TableCell>
+                    <TableCell>{renderEstadoChip(pago.estadoPago)}</TableCell>
                     <TableCell align="center">
                       <IconButton
                         size="small"
-                        onClick={() => setDialogAbono(abono)}
+                        onClick={() => setDialogPago(pago)}
                         title="Ver detalles"
                       >
                         <VisibilityIcon fontSize="small" />
@@ -294,35 +308,35 @@ export default function PagosPage() {
         </TableContainer>
       </Paper>
 
-      {/* Dialog - Detalles del abono */}
+      {/* Dialog - Detalles del pago */}
       <Dialog
-        open={!!dialogAbono}
-        onClose={() => setDialogAbono(null)}
+        open={!!dialogPago}
+        onClose={() => setDialogPago(null)}
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Detalles del Abono</DialogTitle>
+        <DialogTitle>Detalles del Pago</DialogTitle>
         <DialogContent>
-          {dialogAbono && (
+          {dialogPago && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
               <Box>
                 <Typography variant="caption" color="text.secondary">
                   Préstamo
                 </Typography>
-                <Typography variant="body2">{dialogAbono.codigoPrestamo}</Typography>
+                <Typography variant="body2">{dialogPago.codigoPrestamo}</Typography>
               </Box>
               <Box>
                 <Typography variant="caption" color="text.secondary">
                   Cliente
                 </Typography>
-                <Typography variant="body2">{dialogAbono.clienteNombre}</Typography>
+                <Typography variant="body2">{dialogPago.clienteNombre}</Typography>
               </Box>
               <Box>
                 <Typography variant="caption" color="text.secondary">
                   Monto
                 </Typography>
                 <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                  {formatMoney(dialogAbono.monto)}
+                  {formatMoney(dialogPago.monto)}
                 </Typography>
               </Box>
               <Box>
@@ -330,48 +344,48 @@ export default function PagosPage() {
                   Fecha y Hora
                 </Typography>
                 <Typography variant="body2">
-                  {formatDate(dialogAbono.fecha)} {formatTime(dialogAbono.fecha)}
+                  {formatDate(dialogPago.fecha)} {formatTime(dialogPago.fecha)}
                 </Typography>
               </Box>
               <Box>
                 <Typography variant="caption" color="text.secondary">
                   Medio de Pago
                 </Typography>
-                <Typography variant="body2">{dialogAbono.medioPago}</Typography>
+                <Typography variant="body2">{dialogPago.medioPago}</Typography>
               </Box>
-              {dialogAbono.referencia && (
+              {dialogPago.referencia && (
                 <Box>
                   <Typography variant="caption" color="text.secondary">
                     Referencia / Recibo
                   </Typography>
-                  <Typography variant="body2">{dialogAbono.referencia}</Typography>
+                  <Typography variant="body2">{dialogPago.referencia}</Typography>
                 </Box>
               )}
               <Box>
                 <Typography variant="caption" color="text.secondary">
                   Estado
                 </Typography>
-                {renderEstadoChip(dialogAbono.estadoAbono)}
+                {renderEstadoChip(dialogPago.estadoPago)}
               </Box>
-              {dialogAbono.observaciones && (
+              {dialogPago.observaciones && (
                 <Box>
                   <Typography variant="caption" color="text.secondary">
                     Observaciones
                   </Typography>
-                  <Typography variant="body2">{dialogAbono.observaciones}</Typography>
+                  <Typography variant="body2">{dialogPago.observaciones}</Typography>
                 </Box>
               )}
             </Box>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDialogAbono(null)}>Cerrar</Button>
+          <Button onClick={() => setDialogPago(null)}>Cerrar</Button>
         </DialogActions>
       </Dialog>
 
-      {/* Dialog - Nuevo Abono */}
+      {/* Dialog - Nuevo Pago */}
       <Dialog open={dialogNuevo} onClose={handleCloseNuevo} maxWidth="md" fullWidth>
-        <DialogTitle>Registrar Nuevo Abono</DialogTitle>
+        <DialogTitle>Registrar Nuevo Pago</DialogTitle>
         <DialogContent>
           {formError && (
             <Alert severity="error" sx={{ mb: 2, mt: 2 }}>
@@ -384,7 +398,7 @@ export default function PagosPage() {
               {/* Formulario - Columna Izquierda */}
               <Grid size={{ xs: 12, md: 6 }}>
                 <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600 }}>
-                  Datos del Abono
+                  Datos del Pago
                 </Typography>
 
                 <Grid container spacing={2}>
@@ -597,7 +611,7 @@ export default function PagosPage() {
             onClick={handleSubmit}
             disabled={saving}
           >
-            {saving ? 'Guardando...' : 'Registrar Abono'}
+            {saving ? 'Guardando...' : 'Registrar Pago'}
           </Button>
         </DialogActions>
       </Dialog>
