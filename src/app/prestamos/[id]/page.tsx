@@ -20,6 +20,7 @@ import { usePrestamoDetalle } from "../../../hooks/usePrestamoDetalle";
 import { apiFetch } from "../../../lib/api";
 import { useTasasInteres, TasaInteres } from "../../../hooks/useTasasInteres";
 import { useFrecuenciasPago, FrecuenciaPago } from "../../../hooks/useFrecuenciasPago";
+import { usePermisos } from "../../../hooks/usePermisos";
 
 const PrestamoDetallePage: React.FC = () => {
   const params = useParams();
@@ -34,6 +35,10 @@ const PrestamoDetallePage: React.FC = () => {
 
   const [reloadKey, setReloadKey] = useState(0);
   const { data, loading, error } = usePrestamoDetalle(codigoPrestamo, reloadKey);
+
+  const { empleado } = usePermisos();
+  const rolActual = (empleado?.rol || "").toLowerCase();
+  const isGerente = rolActual === "gerente";
 
   const [editMode, setEditMode] = useState<boolean>(initialEditMode);
   const [saving, setSaving] = useState(false);
@@ -309,6 +314,8 @@ const PrestamoDetallePage: React.FC = () => {
     );
   }
 
+  const canViewContrato = isGerente && !!data.fechaDesembolso;
+
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: { xs: "flex-start", sm: "center" }, gap: 1 }}>
@@ -341,6 +348,16 @@ const PrestamoDetallePage: React.FC = () => {
           {data.cliente && (
             <Button size="small" variant="outlined" component={Link} href={`/clientes/${data.cliente.id}`}>
               Ver cliente
+            </Button>
+          )}
+          {canViewContrato && (
+            <Button
+              size="small"
+              variant="outlined"
+              component={Link}
+              href={`/prestamos/${encodeURIComponent(data.codigoPrestamo || "")}/documentos`}
+            >
+              Contrato y pagaré
             </Button>
           )}
           <Button size="small" variant="outlined" component={Link} href="/prestamos">
