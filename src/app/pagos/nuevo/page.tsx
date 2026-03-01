@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Box,
   Paper,
@@ -22,10 +22,15 @@ import Link from "next/link";
 import { apiFetch } from "../../../lib/api";
 import { usePermisos } from "../../../hooks/usePermisos";
 import { usePrestamoDetalle } from "../../../hooks/usePrestamoDetalle";
+import { usePrestamosAsignados } from "../../../hooks/usePrestamosAsignados";
 
 const NuevoPagoPage: React.FC = () => {
   const router = useRouter();
   const { hasPermiso, loading: loadingPermisos } = usePermisos();
+  const {
+    data: prestamosAsignados,
+    loading: loadingPrestamosAsignados,
+  } = usePrestamosAsignados();
   const [codigoPrestamo, setCodigoPrestamo] = useState("");
   
   const { data: prestamoDetalle, loading: loadingDetalle } = usePrestamoDetalle(
@@ -36,7 +41,7 @@ const NuevoPagoPage: React.FC = () => {
     codigoPrestamo: "",
     monto: "",
     fecha: new Date().toISOString().slice(0, 10),
-    medioPago: "EFECTIVO" as "EFECTIVO" | "TRANSFERENCIA" | "DEPOSITO",
+    medioPago: "EFECTIVO" as "EFECTIVO" | "TRANSFERENCIA" | "CREDITO",
     referencia: "",
     observaciones: "",
   });
@@ -49,6 +54,16 @@ const NuevoPagoPage: React.FC = () => {
   );
 
   const canAplicarPago = hasPermiso("F005");
+
+  useEffect(() => {
+    setForm((prev) => {
+      if (!prev.codigoPrestamo) return prev;
+      const existe = prestamosAsignados.some((p) => p.codigoPrestamo === prev.codigoPrestamo);
+      if (existe) return prev;
+      setCodigoPrestamo("");
+      return { ...prev, codigoPrestamo: "" };
+    });
+  }, [prestamosAsignados]);
 
   if (!loadingPermisos && !canAplicarPago) {
     return (
@@ -72,9 +87,17 @@ const NuevoPagoPage: React.FC = () => {
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
+
     if (name === "codigoPrestamo") {
       setCodigoPrestamo(value);
     }
+
+    if (name === "monto") {
+      const onlyDigits = value.replace(/\D/g, "");
+      setForm((prev) => ({ ...prev, monto: onlyDigits }));
+      return;
+    }
+
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
@@ -88,21 +111,37 @@ const NuevoPagoPage: React.FC = () => {
       return;
     }
 
+    const monto = Number(form.monto);
+    if (Number.isNaN(monto) || monto <= 0 || !Number.isInteger(monto) || monto % 100 !== 0) {
+      setSnackbarMsg("El monto debe ser un número entero en intervalos de 100 (100, 200, 300...)");
+      setSnackbarSeverity("error");
+      setSnackbarOpen(true);
+      return;
+    }
+
     setSaving(true);
     try {
-      await apiFetch("/abonos", {
+      const selected = prestamosAsignados.find((p) => p.codigoPrestamo === form.codigoPrestamo);
+      if (!selected?.id) {
+        setSnackbarMsg("Selecciona un préstamo válido para registrar el pago");
+        setSnackbarSeverity("error");
+        setSnackbarOpen(true);
+        return;
+      }
+
+      await apiFetch("/pagos", {
         method: "POST",
         body: JSON.stringify({
-          codigoPrestamo: form.codigoPrestamo,
-          monto: parseFloat(form.monto),
-          fecha: form.fecha,
-          medioPago: form.medioPago,
-          referencia: form.referencia || undefined,
+          financiamientoId: selected.id,
+          codigoFinanciamiento: form.codigoPrestamo,
+          monto,
+          fechaPago: form.fecha,
+          metodoPago: form.medioPago,
           observaciones: form.observaciones || undefined,
         }),
       });
 
-      setSnackbarMsg("Abono registrado exitosamente");
+      setSnackbarMsg("Pago registrado exitosamente");
       setSnackbarSeverity("success");
       setSnackbarOpen(true);
 
@@ -152,14 +191,27 @@ const NuevoPagoPage: React.FC = () => {
                 <Grid size={{ xs: 12 }}>
                   <TextField
                     fullWidth
+                    select
                     label="Código de Préstamo *"
                     name="codigoPrestamo"
                     value={form.codigoPrestamo}
                     onChange={handleChange}
                     size="small"
-                    disabled={saving}
-                    placeholder="Ej: PREST-001"
-                  />
+                    disabled={saving || loadingPrestamosAsignados || prestamosAsignados.length === 0}
+                    helperText={
+                      loadingPrestamosAsignados
+                        ? "Cargando préstamos asignados..."
+                        : prestamosAsignados.length === 0
+                          ? "No tienes préstamos asignados para registrar pagos."
+                          : "Selecciona un préstamo asignado al asesor actual."
+                    }
+                  >
+                    {prestamosAsignados.map((prestamo) => (
+                      <MenuItem key={prestamo.id} value={prestamo.codigoPrestamo}>
+                        {prestamo.codigoPrestamo} — {prestamo.clienteNombre}
+                      </MenuItem>
+                    ))}
+                  </TextField>
                 </Grid>
 
                 <Grid size={{ xs: 12 }}>
@@ -172,8 +224,9 @@ const NuevoPagoPage: React.FC = () => {
                     onChange={handleChange}
                     size="small"
                     disabled={saving}
-                    inputProps={{ step: "0.01", min: "0" }}
-                    placeholder="0.00"
+                    inputProps={{ step: "100", min: "100" }}
+                    placeholder="100"
+                    helperText="Solo enteros múltiplos de 100"
                   />
                 </Grid>
 
@@ -204,21 +257,8 @@ const NuevoPagoPage: React.FC = () => {
                   >
                     <MenuItem value="EFECTIVO">Efectivo</MenuItem>
                     <MenuItem value="TRANSFERENCIA">Transferencia</MenuItem>
-                    <MenuItem value="DEPOSITO">Depósito</MenuItem>
+                    <MenuItem value="CREDITO">Crédito</MenuItem>
                   </TextField>
-                </Grid>
-
-                <Grid size={{ xs: 12 }}>
-                  <TextField
-                    fullWidth
-                    label="Referencia / Recibo"
-                    name="referencia"
-                    value={form.referencia}
-                    onChange={handleChange}
-                    size="small"
-                    disabled={saving}
-                    placeholder="Ej: Recibo #12345"
-                  />
                 </Grid>
 
                 <Grid size={{ xs: 12 }}>
@@ -361,7 +401,7 @@ const NuevoPagoPage: React.FC = () => {
             ) : (
               <Paper sx={{ p: 3 }}>
                 <Typography variant="body2" color="text.secondary" align="center">
-                  Ingresa un código de préstamo para ver los detalles
+                  Selecciona un préstamo para ver los detalles
                 </Typography>
               </Paper>
             )}

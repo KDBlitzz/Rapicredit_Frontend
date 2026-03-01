@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Paper,
@@ -33,12 +33,14 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import { usePagos, EstadoPagoFiltro } from '../../hooks/usePagos';
 import { usePermisos } from '../../hooks/usePermisos';
 import { usePrestamoDetalle } from '../../hooks/usePrestamoDetalle';
+import { usePrestamosAsignados } from '../../hooks/usePrestamosAsignados';
+import { apiFetch } from '../../lib/api';
 
 const emptyForm = {
   codigoPrestamo: '',
   monto: '',
   fecha: new Date().toISOString().slice(0, 10),
-  medioPago: 'EFECTIVO' as 'EFECTIVO' | 'TRANSFERENCIA' | 'DEPOSITO',
+  medioPago: 'EFECTIVO' as 'EFECTIVO' | 'TRANSFERENCIA' | 'CREDITO',
   referencia: '',
   observaciones: '',
 };
@@ -56,7 +58,25 @@ export default function PagosPage() {
   const [saving, setSaving] = useState(false);
   const [snackbar, setSnackbar] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  const { data, loading, error } = usePagos({ busqueda, estado }, { refreshKey });
+  const {
+    data: prestamosAsignados,
+    loading: loadingPrestamosAsignados,
+    error: errorPrestamosAsignados,
+  } = usePrestamosAsignados({ refreshKey });
+
+  const allowedFinanciamientoIds = useMemo(
+    () => prestamosAsignados.map((p) => p.id),
+    [prestamosAsignados]
+  );
+  const allowedCodigosPrestamo = useMemo(
+    () => prestamosAsignados.map((p) => p.codigoPrestamo),
+    [prestamosAsignados]
+  );
+
+  const { data, loading, error } = usePagos(
+    { busqueda, estado },
+    { refreshKey, allowedFinanciamientoIds, allowedCodigosPrestamo, enforceAllowedFilter: true }
+  );
   const { hasAnyPermiso, hasPermiso, loading: loadingPermisos } = usePermisos();
   const { data: prestamoDetalle, loading: loadingDetalle } = usePrestamoDetalle(
     form.codigoPrestamo || ''
@@ -89,6 +109,13 @@ export default function PagosPage() {
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
+
+    if (name === 'monto') {
+      const onlyDigits = value.replace(/\D/g, '');
+      setForm((prev) => ({ ...prev, monto: onlyDigits }));
+      return;
+    }
+
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
@@ -102,35 +129,27 @@ export default function PagosPage() {
     }
 
     const monto = Number(form.monto);
-    if (Number.isNaN(monto) || monto <= 0) {
-      setFormError('El monto debe ser mayor que 0');
+    if (Number.isNaN(monto) || monto <= 0 || !Number.isInteger(monto) || monto % 100 !== 0) {
+      setFormError('El monto debe ser un número entero en intervalos de 100 (100, 200, 300...)');
       return;
     }
 
     setSaving(true);
-    
-    // Por ahora solo es un boceto, sin llamadas al backend
-    // TODO: Implementar la llamada al endpoint cuando esté disponible
-    
-    // Simulación de guardado exitoso
-    setTimeout(() => {
-      setSnackbar({ type: 'success', message: 'Pago registrado exitosamente (modo boceto)' });
-      handleCloseNuevo();
-      setRefreshKey((k) => k + 1);
-      setSaving(false);
-    }, 500);
-
-    // Para cuando se implemente el endpoint:
-    /*
     try {
-      await apiFetch('/abonos', {
+      const selected = prestamosAsignados.find((p) => p.codigoPrestamo === form.codigoPrestamo);
+      if (!selected?.id) {
+        setFormError('Selecciona un préstamo válido para registrar el pago');
+        return;
+      }
+
+      await apiFetch('/pagos', {
         method: 'POST',
         body: JSON.stringify({
-          codigoPrestamo: form.codigoPrestamo,
+          financiamientoId: selected.id,
+          codigoFinanciamiento: form.codigoPrestamo,
           monto,
-          fecha: form.fecha,
-          medioPago: form.medioPago,
-          referencia: form.referencia || undefined,
+          fechaPago: form.fecha,
+          metodoPago: form.medioPago,
           observaciones: form.observaciones || undefined,
         }),
       });
@@ -144,7 +163,6 @@ export default function PagosPage() {
     } finally {
       setSaving(false);
     }
-    */
   };
 
   const formatMoney = (v?: number) =>
@@ -168,6 +186,24 @@ export default function PagosPage() {
 
     return <Chip label={val} color={color} size="small" />;
   };
+
+  const formatMedioPago = (medio?: string) => {
+    const value = (medio || '').toUpperCase();
+    if (value === 'EFECTIVO') return 'Efectivo';
+    if (value === 'TRANSFERENCIA') return 'Transferencia';
+    if (value === 'CREDITO') return 'Crédito';
+    return medio || '-';
+  };
+
+  useEffect(() => {
+    if (!dialogNuevo) return;
+
+    setForm((prev) => {
+      if (!prev.codigoPrestamo) return prev;
+      const existe = prestamosAsignados.some((p) => p.codigoPrestamo === prev.codigoPrestamo);
+      return existe ? prev : { ...prev, codigoPrestamo: '' };
+    });
+  }, [dialogNuevo, prestamosAsignados]);
 
   if (!loadingPermisos && !canVerModuloPagos) {
     return (
@@ -232,6 +268,69 @@ export default function PagosPage() {
         </Grid>
       </Paper>
 
+      {/* Tabla de préstamos asignados al asesor actual */}
+      <Paper>
+        {errorPrestamosAsignados && (
+          <Alert severity="error" sx={{ m: 2 }}>
+            {errorPrestamosAsignados}
+          </Alert>
+        )}
+
+        <Box sx={{ px: 2, pt: 2, pb: 1 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+            Préstamos asignados
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Selecciona uno de estos préstamos al registrar un pago.
+          </Typography>
+        </Box>
+
+        <TableContainer>
+          <Table size="small">
+            <TableHead>
+              <TableRow sx={{ bgcolor: 'background.default' }}>
+                <TableCell sx={{ fontWeight: 600 }}>Código Préstamo</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Cliente</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Estado</TableCell>
+                <TableCell align="center" sx={{ fontWeight: 600 }}>
+                  Capital
+                </TableCell>
+                <TableCell align="center" sx={{ fontWeight: 600 }}>
+                  Cuota Fija
+                </TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {loadingPrestamosAsignados ? (
+                <TableRow>
+                  <TableCell colSpan={5} align="center" sx={{ py: 3 }}>
+                    <CircularProgress size={28} />
+                  </TableCell>
+                </TableRow>
+              ) : prestamosAsignados.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} align="center" sx={{ py: 3 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      No hay préstamos asignados para este asesor.
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                prestamosAsignados.map((prestamo) => (
+                  <TableRow key={prestamo.id} hover>
+                    <TableCell>{prestamo.codigoPrestamo}</TableCell>
+                    <TableCell>{prestamo.clienteNombre}</TableCell>
+                    <TableCell>{prestamo.estadoPrestamo || '—'}</TableCell>
+                    <TableCell align="center">{formatMoney(prestamo.capitalSolicitado)}</TableCell>
+                    <TableCell align="center">{formatMoney(prestamo.cuotaFija)}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Paper>
+
       {/* Tabla de abonos */}
       <Paper>
         {error && (
@@ -244,11 +343,12 @@ export default function PagosPage() {
           <Table>
             <TableHead>
               <TableRow sx={{ bgcolor: 'background.default' }}>
+                <TableCell sx={{ fontWeight: 600 }}>ID Pago</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Fecha</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Hora</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Préstamo</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Cliente</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 600 }}>
+                <TableCell align="center" sx={{ fontWeight: 600 }}>
                   Monto
                 </TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Medio de Pago</TableCell>
@@ -261,13 +361,13 @@ export default function PagosPage() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={8} align="center" sx={{ py: 3 }}>
+                  <TableCell colSpan={9} align="center" sx={{ py: 3 }}>
                     <CircularProgress size={40} />
                   </TableCell>
                 </TableRow>
               ) : data.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} align="center" sx={{ py: 3 }}>
+                  <TableCell colSpan={9} align="center" sx={{ py: 3 }}>
                     <Typography variant="body2" color="text.secondary">
                       No hay pagos registrados
                     </Typography>
@@ -276,6 +376,7 @@ export default function PagosPage() {
               ) : (
                 data.map((pago) => (
                   <TableRow key={pago.id} hover>
+                    <TableCell>{pago.id}</TableCell>
                     <TableCell>{formatDate(pago.fecha)}</TableCell>
                     <TableCell>{formatTime(pago.fecha)}</TableCell>
                     <TableCell>
@@ -284,12 +385,12 @@ export default function PagosPage() {
                       </Typography>
                     </TableCell>
                     <TableCell>{pago.clienteNombre}</TableCell>
-                    <TableCell align="right">
+                    <TableCell align="center">
                       <Typography variant="body2" sx={{ fontWeight: 500, color: 'success.main' }}>
                         {formatMoney(pago.monto)}
                       </Typography>
                     </TableCell>
-                    <TableCell>{pago.medioPago}</TableCell>
+                    <TableCell>{formatMedioPago(pago.medioPago)}</TableCell>
                     <TableCell>{renderEstadoChip(pago.estadoPago)}</TableCell>
                     <TableCell align="center">
                       <IconButton
@@ -351,7 +452,7 @@ export default function PagosPage() {
                 <Typography variant="caption" color="text.secondary">
                   Medio de Pago
                 </Typography>
-                <Typography variant="body2">{dialogPago.medioPago}</Typography>
+                <Typography variant="body2">{formatMedioPago(dialogPago.medioPago)}</Typography>
               </Box>
               {dialogPago.referencia && (
                 <Box>
@@ -405,14 +506,27 @@ export default function PagosPage() {
                   <Grid size={{ xs: 12 }}>
                     <TextField
                       fullWidth
+                      select
                       label="Código de Préstamo *"
                       name="codigoPrestamo"
                       value={form.codigoPrestamo}
                       onChange={handleFormChange}
                       size="small"
-                      disabled={saving}
-                      placeholder="Ej: PREST-001"
-                    />
+                      disabled={saving || loadingPrestamosAsignados || prestamosAsignados.length === 0}
+                      helperText={
+                        loadingPrestamosAsignados
+                          ? 'Cargando préstamos asignados...'
+                          : prestamosAsignados.length === 0
+                          ? 'No tienes préstamos asignados para registrar pagos.'
+                          : 'Selecciona un préstamo asignado al asesor actual.'
+                      }
+                    >
+                      {prestamosAsignados.map((prestamo) => (
+                        <MenuItem key={prestamo.id} value={prestamo.codigoPrestamo}>
+                          {prestamo.codigoPrestamo} — {prestamo.clienteNombre}
+                        </MenuItem>
+                      ))}
+                    </TextField>
                   </Grid>
 
                   <Grid size={{ xs: 12 }}>
@@ -425,8 +539,9 @@ export default function PagosPage() {
                       onChange={handleFormChange}
                       size="small"
                       disabled={saving}
-                      inputProps={{ step: '0.01', min: '0' }}
-                      placeholder="0.00"
+                      inputProps={{ step: '100', min: '100' }}
+                      placeholder="100"
+                      helperText="Solo enteros múltiplos de 100"
                     />
                   </Grid>
 
@@ -457,21 +572,8 @@ export default function PagosPage() {
                     >
                       <MenuItem value="EFECTIVO">Efectivo</MenuItem>
                       <MenuItem value="TRANSFERENCIA">Transferencia</MenuItem>
-                      <MenuItem value="DEPOSITO">Depósito</MenuItem>
+                      <MenuItem value="CREDITO">Crédito</MenuItem>
                     </TextField>
-                  </Grid>
-
-                  <Grid size={{ xs: 12 }}>
-                    <TextField
-                      fullWidth
-                      label="Referencia / Recibo"
-                      name="referencia"
-                      value={form.referencia}
-                      onChange={handleFormChange}
-                      size="small"
-                      disabled={saving}
-                      placeholder="Ej: Recibo #12345"
-                    />
                   </Grid>
 
                   <Grid size={{ xs: 12 }}>
@@ -593,7 +695,7 @@ export default function PagosPage() {
                   <Card variant="outlined">
                     <CardContent sx={{ textAlign: 'center', py: 4 }}>
                       <Typography variant="body2" color="text.secondary">
-                        Ingresa un código de préstamo para ver los detalles
+                          Selecciona un préstamo para ver los detalles
                       </Typography>
                     </CardContent>
                   </Card>
