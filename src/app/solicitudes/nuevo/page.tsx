@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Paper,
@@ -24,6 +24,7 @@ import { useEmpleados, Empleado } from '../../../hooks/useEmpleados';
 import { useTasasInteres, TasaInteres } from '../../../hooks/useTasasInteres';
 import { useFrecuenciasPago, FrecuenciaPago } from '../../../hooks/useFrecuenciasPago';
 import { useClienteDetalle } from '../../../hooks/useClienteDetalle';
+import { useEmpleadoActual } from '../../../hooks/useEmpleadoActual';
 
 type EstadoInicial = 'REGISTRADA';
 
@@ -34,6 +35,10 @@ type EstadoInicial = 'REGISTRADA';
 const NuevoSolicitudPage: React.FC = () => {
   const router = useRouter();
   const hoy = new Date().toISOString().slice(0, 10);
+
+  // Obtener empleado actual para verificar si es asesor
+  const { empleado: empleadoActual } = useEmpleadoActual();
+  const esAsesor = empleadoActual?.rol?.toLowerCase() === 'asesor';
 
   const [form, setForm] = useState({
     capitalSolicitado: '',
@@ -63,6 +68,24 @@ const NuevoSolicitudPage: React.FC = () => {
   const [selectedCobrador, setSelectedCobrador] = useState<Empleado | null>(null);
   const [selectedTasa, setSelectedTasa] = useState<TasaInteres | null>(null);
   const [selectedFrecuencia, setSelectedFrecuencia] = useState<FrecuenciaPago | null>(null);
+
+  // Si es asesor, precargar automáticamente como cobrador
+  useEffect(() => {
+    if (esAsesor && empleadoActual && !selectedCobrador) {
+      // Convertir el empleado actual al formato Empleado
+      const empleadoComoEmpleado: Empleado = {
+        _id: empleadoActual._id,
+        codigoUsuario: empleadoActual.codigoUsuario,
+        usuario: empleadoActual.usuario,
+        nombreCompleto: empleadoActual.nombreCompleto,
+        rol: empleadoActual.rol,
+        email: empleadoActual.email,
+        telefono: empleadoActual.telefono,
+        estado: empleadoActual.estado,
+      };
+      setSelectedCobrador(empleadoComoEmpleado);
+    }
+  }, [esAsesor, empleadoActual, selectedCobrador]);
 
   // Detalle del cliente seleccionado
   const selectedClienteCodigo = selectedCliente?.codigoCliente || '';
@@ -398,13 +421,25 @@ const NuevoSolicitudPage: React.FC = () => {
                   options={cobradores}
                   loading={loadingCobradores}
                   value={selectedCobrador as unknown}
-                  onChange={(_, val) => setSelectedCobrador(val as Empleado | null)}
+                  onChange={(_, val) => {
+                    // Si es asesor, no permitir cambiar el cobrador
+                    if (!esAsesor) {
+                      setSelectedCobrador(val as Empleado | null);
+                    }
+                  }}
+                  disabled={esAsesor}
                   getOptionLabel={(option) =>
                     typeof option === 'string' ? option : getCobradorLabel(option as Empleado)
                   }
                   isOptionEqualToValue={(opt, val) => (opt as any)._id === (val as any)._id}
                   renderInput={(params) => (
-                    <TextField {...params} label="Cobrador" placeholder="Buscar cobrador…" required />
+                    <TextField 
+                      {...params} 
+                      label="Cobrador" 
+                      placeholder={esAsesor ? "Asignado automáticamente" : "Buscar cobrador…"} 
+                      required 
+                      helperText={esAsesor ? "Como asesor, estás asignado automáticamente" : ""}
+                    />
                   )}
                 />
               </Grid>

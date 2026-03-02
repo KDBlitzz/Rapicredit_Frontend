@@ -9,6 +9,7 @@ export interface DashboardResumen {
   prestamosPagados: number;
   montoTotalColocado: number;
   vencenEn7Dias: number;
+  prestamosPendientesCobrarHoy: number;
   cantidadPrestamosNuevosMes?: number;
   prestamosNuevosMes?: number;
   distribucionEstados: {
@@ -40,6 +41,20 @@ export interface DashboardResumen {
       codigoCliente?: string;
       identidadCliente?: string;
     } | null;
+  }[];
+  prestamosVencenHoy: {
+    id: string;
+    codigo: string;
+    cliente: {
+      id: string;
+      codigoCliente?: string;
+      identidadCliente?: string;
+    } | null;
+    monto: number;
+    saldo: number;
+    cuotaPendiente: number;
+    estado: string;
+    fechaProximoPago: string;
   }[];
 }
 
@@ -119,17 +134,39 @@ function normalizeDashboardResumen(raw: unknown): DashboardResumen {
     ? vencenRaw.length
     : toNumber(vencenRaw);
 
+  const pendientesHoyRaw = payload["prestamosPendientesCobrarHoy"];
+  const prestamosPendientesCobrarHoy = Array.isArray(pendientesHoyRaw)
+    ? pendientesHoyRaw.length
+    : toNumber(pendientesHoyRaw);
+
+  const prestamosVencenHoy = toArray(payload["prestamosVencenHoy"]).map((item, idx) => {
+    const o = asRecord(item) ?? {};
+    const id = toString(o["id"] ?? o["_id"] ?? o["codigo"] ?? idx);
+    return {
+      id,
+      codigo: toString(o["codigo"] ?? o["codigoFinanciamiento"] ?? "—", "—"),
+      cliente: normalizeCliente(o["cliente"]),
+      monto: toNumber(o["monto"] ?? o["capitalSolicitado"] ?? 0, 0),
+      saldo: toNumber(o["saldo"] ?? 0, 0),
+      cuotaPendiente: toNumber(o["cuotaPendiente"] ?? o["montoCuota"] ?? 0, 0),
+      estado: toString(o["estado"] ?? o["estadoPrestamo"] ?? "—", "—"),
+      fechaProximoPago: toString(o["fechaProximoPago"] ?? o["fechaVencimiento"] ?? ""),
+    };
+  });
+
   return {
     prestamosActivos: toNumber(payload["prestamosActivos"]),
     prestamosEnMora: toNumber(payload["prestamosEnMora"]),
     prestamosPagados: toNumber(payload["prestamosPagados"]),
     montoTotalColocado: toNumber(payload["montoTotalColocado"]),
     vencenEn7Dias,
+    prestamosPendientesCobrarHoy,
     cantidadPrestamosNuevosMes: toNumber(payload["cantidadPrestamosNuevosMes"], 0),
     prestamosNuevosMes: toNumber(payload["prestamosNuevosMes"], 0),
     distribucionEstados,
     prestamosRecientes,
     pagosHoy,
+    prestamosVencenHoy,
   };
 }
 
