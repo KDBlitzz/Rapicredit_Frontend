@@ -89,8 +89,10 @@ const DashboardPage: React.FC = () => {
     prestamosPagados,
     montoTotalColocado,
     vencenEn7Dias,
+    prestamosPendientesCobrarHoy,
     prestamosRecientes,
     pagosHoy,
+    prestamosVencenHoy,
     cantidadPrestamosNuevosMes,
     prestamosNuevosMes,
   } = data;
@@ -197,18 +199,102 @@ const DashboardPage: React.FC = () => {
         </Grid>
       </Grid>
 
-      {/* Vencen en 7 días */}
-      <Paper sx={{ p: 2 }}>
-        <Typography variant="body2" color="text.secondary">
-          Préstamos que vencen en los próximos 7 días
-        </Typography>
-        <Box sx={{ display: "flex", alignItems: "baseline", gap: 1, mt: 0.5 }}>
-          <Typography variant="h6">{vencenEn7Dias}</Typography>
-          <Typography variant="caption" color="text.secondary">
-            créditos
-          </Typography>
-        </Box>
-      </Paper>
+      {/* Alertas importantes */}
+      <Grid container spacing={2}>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              Préstamos que vencen en los próximos 7 días
+            </Typography>
+            <Box sx={{ display: "flex", alignItems: "baseline", gap: 1, mt: 0.5 }}>
+              <Typography variant="h6">{vencenEn7Dias}</Typography>
+              <Typography variant="caption" color="text.secondary">
+                créditos
+              </Typography>
+            </Box>
+          </Paper>
+        </Grid>
+
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Paper sx={{ p: 2, bgcolor: "success.light", color: "success.contrastText" }}>
+            <Typography variant="body2" fontWeight="medium">
+              Préstamos pendientes a cobrar hoy
+            </Typography>
+            <Box sx={{ display: "flex", alignItems: "baseline", gap: 1, mt: 0.5 }}>
+              <Typography variant="h6">{prestamosPendientesCobrarHoy}</Typography>
+              <Typography variant="caption">
+                cuotas vencen hoy
+              </Typography>
+            </Box>
+          </Paper>
+        </Grid>
+      </Grid>
+
+      {/* Tabla de préstamos pendientes hoy */}
+      {prestamosVencenHoy && prestamosVencenHoy.length > 0 && (
+        <Paper sx={{ p: 2 }}>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              mb: 1,
+              alignItems: "center",
+            }}
+          >
+            <Typography variant="subtitle2" fontWeight="bold" color="success.dark">
+              Préstamos con cuota pendiente hoy
+            </Typography>
+            <ButtonLink href="/prestamos" label="Ver todos" />
+          </Box>
+          <TableContainer sx={{ maxHeight: 280 }}>
+            <Table size="small" stickyHeader>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Código</TableCell>
+                  <TableCell>Cliente</TableCell>
+                  <TableCell>Saldo</TableCell>
+                  <TableCell>Cuota pendiente</TableCell>
+                  <TableCell>Estado</TableCell>
+                  <TableCell>Fecha pago</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {prestamosVencenHoy.map((p) => {
+                  const clienteLabel =
+                    p.cliente?.codigoCliente ||
+                    p.cliente?.identidadCliente ||
+                    p.cliente?.id ||
+                    "—";
+
+                  return (
+                    <TableRow key={p.id} sx={{ bgcolor: "success.lighter" }}>
+                      <TableCell>{p.codigo}</TableCell>
+                      <TableCell>{clienteLabel}</TableCell>
+                      <TableCell>{formatMoney(p.saldo)}</TableCell>
+                      <TableCell>
+                        <Typography fontWeight="bold" color="success.dark">
+                          {formatMoney(p.cuotaPendiente)}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          label={p.estado}
+                          color="success"
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        {formatDate(p.fechaProximoPago)}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Paper>
+      )}
 
       <Grid container spacing={2}>
         {/* Préstamos recientes */}
