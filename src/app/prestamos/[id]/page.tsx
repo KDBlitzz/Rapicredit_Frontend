@@ -314,8 +314,6 @@ const PrestamoDetallePage: React.FC = () => {
     );
   }
 
-  const canViewContrato = isGerente && !!data.fechaDesembolso;
-
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: { xs: "flex-start", sm: "center" }, gap: 1 }}>
@@ -330,6 +328,16 @@ const PrestamoDetallePage: React.FC = () => {
         </Box>
 
         <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+          {isGerente && (data.estadoPrestamo || "").toUpperCase() === "VIGENTE" && (
+            <Button
+              size="small"
+              variant="outlined"
+              component={Link}
+              href={`/prestamos/${encodeURIComponent(data.codigoPrestamo)}/documentos`}
+            >
+              Contrato y pagaré
+            </Button>
+          )}
           {editMode ? (
             <>
               <Button size="small" variant="contained" onClick={onSave} disabled={saving}>
@@ -348,16 +356,6 @@ const PrestamoDetallePage: React.FC = () => {
           {data.cliente && (
             <Button size="small" variant="outlined" component={Link} href={`/clientes/${data.cliente.id}`}>
               Ver cliente
-            </Button>
-          )}
-          {canViewContrato && (
-            <Button
-              size="small"
-              variant="outlined"
-              component={Link}
-              href={`/prestamos/${encodeURIComponent(data.codigoPrestamo || "")}/documentos`}
-            >
-              Contrato y pagaré
             </Button>
           )}
           <Button size="small" variant="outlined" component={Link} href="/prestamos">
