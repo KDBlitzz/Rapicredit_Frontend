@@ -20,6 +20,7 @@ import { usePrestamoDetalle } from "../../../hooks/usePrestamoDetalle";
 import { apiFetch } from "../../../lib/api";
 import { useTasasInteres, TasaInteres } from "../../../hooks/useTasasInteres";
 import { useFrecuenciasPago, FrecuenciaPago } from "../../../hooks/useFrecuenciasPago";
+import { usePermisos } from "../../../hooks/usePermisos";
 
 const PrestamoDetallePage: React.FC = () => {
   const params = useParams();
@@ -34,6 +35,10 @@ const PrestamoDetallePage: React.FC = () => {
 
   const [reloadKey, setReloadKey] = useState(0);
   const { data, loading, error } = usePrestamoDetalle(codigoPrestamo, reloadKey);
+
+  const { empleado } = usePermisos();
+  const rolActual = (empleado?.rol || "").toLowerCase();
+  const isGerente = rolActual === "gerente";
 
   const [editMode, setEditMode] = useState<boolean>(initialEditMode);
   const [saving, setSaving] = useState(false);
@@ -323,6 +328,16 @@ const PrestamoDetallePage: React.FC = () => {
         </Box>
 
         <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+          {isGerente && (data.estadoPrestamo || "").toUpperCase() === "VIGENTE" && (
+            <Button
+              size="small"
+              variant="outlined"
+              component={Link}
+              href={`/prestamos/${encodeURIComponent(data.codigoPrestamo)}/documentos`}
+            >
+              Contrato y pagaré
+            </Button>
+          )}
           {editMode ? (
             <>
               <Button size="small" variant="contained" onClick={onSave} disabled={saving}>
