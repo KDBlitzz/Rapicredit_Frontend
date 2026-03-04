@@ -31,6 +31,16 @@ export interface CarteraResumen {
   montoOtorgadoTotal: number;
   saldoActualTotal: number;
   interesesCobradosTotal: number;
+  interesesNoDevengadosTotal: number;
+}
+
+export interface ResumenGlobalizadoEmpleado {
+  clientesTotales: number;
+  nuevos: number;
+  renovacionesMes: number;
+  renovacionesTotales: number;
+  interesesCobrados: number;
+  interesesNoDevengados: number;
 }
 
 export interface EstadisticasEmpleadoData {
@@ -45,6 +55,14 @@ export interface EstadisticasEmpleadoData {
   clientesEnMora: number;
   moraPorRangos: MoraRangoItem[];
   carteraActiva: CarteraResumen;
+  resumenGlobalizado: ResumenGlobalizadoEmpleado;
+  interesesNoDevengados: number;
+  filtroInteresesNoDevengados?: {
+    mes?: string | null;
+    fechaInicio?: string | null;
+    fechaFin?: string | null;
+    descripcion?: string | null;
+  };
   prestamos: PrestamoDetalleItem[];
 }
 
@@ -59,6 +77,7 @@ export function useEstadisticasEmpleado(
   codigoUsuario?: string,
   fechaInicio?: string,
   fechaFin?: string,
+  mes?: string,
 ) {
   const [data, setData] = useState<EstadisticasEmpleadoData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -78,6 +97,7 @@ export function useEstadisticasEmpleado(
       setError(null);
       try {
         const params = new URLSearchParams();
+        if (mes) params.append("mes", mes);
         if (fechaInicio) params.append("fechaInicio", fechaInicio);
         if (fechaFin) params.append("fechaFin", fechaFin);
         const query = params.toString();
@@ -110,6 +130,12 @@ export function useEstadisticasEmpleado(
           ? res.prestamos
           : (Array.isArray(res.detallesPrestamo) ? res.detallesPrestamo : []);
 
+        const interesesNoDevengados = toNumber(
+          res.interesesNoDevengados
+          ?? resumenGlobal.interesesNoDevengados
+          ?? 0
+        );
+
         const mapped: EstadisticasEmpleadoData = {
           asesor: res.asesor || res.empleado || null,
           periodo: res.periodo || { inicio: String(fechaInicio || ""), fin: String(fechaFin || "") },
@@ -132,7 +158,18 @@ export function useEstadisticasEmpleado(
             montoOtorgadoTotal: toNumber(res.carteraActiva?.montoOtorgadoTotal ?? 0),
             saldoActualTotal: toNumber(res.carteraActiva?.saldoActualTotal ?? 0),
             interesesCobradosTotal: toNumber(res.carteraActiva?.interesesCobradosTotal ?? resumenGlobal.interesesCobrados ?? 0),
+            interesesNoDevengadosTotal: toNumber(res.carteraActiva?.interesesNoDevengadosTotal ?? interesesNoDevengados),
           },
+          resumenGlobalizado: {
+            clientesTotales: toNumber(resumenGlobal.clientesTotales ?? res.clientesTotales ?? res.carteraClientesCount ?? 0),
+            nuevos: toNumber(resumenGlobal.nuevos ?? res.clientesNuevosMes ?? 0),
+            renovacionesMes: toNumber(resumenGlobal.renovacionesMes ?? res.renovacionesMes ?? 0),
+            renovacionesTotales: toNumber(resumenGlobal.renovacionesTotales ?? res.renovacionesTotales ?? 0),
+            interesesCobrados: toNumber(resumenGlobal.interesesCobrados ?? res.carteraActiva?.interesesCobradosTotal ?? 0),
+            interesesNoDevengados,
+          },
+          interesesNoDevengados,
+          filtroInteresesNoDevengados: res.filtroAplicado || res.filtroInteresesNoDevengados || undefined,
           prestamos: prestamosRaw.map((p: any) => {
             const clienteNombre = p.cliente?.nombre
               || p.cliente?.nombreCompleto
@@ -168,7 +205,7 @@ export function useEstadisticasEmpleado(
 
     load();
     return () => { cancelled = true; };
-  }, [codigoUsuario, fechaInicio, fechaFin]);
+  }, [codigoUsuario, fechaInicio, fechaFin, mes]);
 
   return { data, loading, error };
 }
