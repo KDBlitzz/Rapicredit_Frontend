@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Box,
   Paper,
@@ -36,6 +37,8 @@ import { usePrestamoDetalle } from '../../hooks/usePrestamoDetalle';
 import { usePrestamosAsignados } from '../../hooks/usePrestamosAsignados';
 import { apiFetch } from '../../lib/api';
 
+const COMPROBANTE_STORAGE_KEY = 'rapicredit:comprobanteAbono';
+
 const emptyForm = {
   codigoPrestamo: '',
   monto: '',
@@ -48,6 +51,7 @@ const emptyForm = {
 type FormState = typeof emptyForm;
 
 export default function PagosPage() {
+  const router = useRouter();
   const [busqueda, setBusqueda] = useState('');
   const [estado, setEstado] = useState<EstadoPagoFiltro>('TODOS');
   const [refreshKey, setRefreshKey] = useState(0);
@@ -77,7 +81,7 @@ export default function PagosPage() {
     { busqueda, estado },
     { refreshKey, allowedFinanciamientoIds, allowedCodigosPrestamo, enforceAllowedFilter: true }
   );
-  const { hasAnyPermiso, hasPermiso, loading: loadingPermisos } = usePermisos();
+  const { hasAnyPermiso, hasPermiso, loading: loadingPermisos, empleado } = usePermisos();
   const { data: prestamoDetalle, loading: loadingDetalle } = usePrestamoDetalle(
     form.codigoPrestamo || ''
   );
@@ -154,9 +158,48 @@ export default function PagosPage() {
         }),
       });
 
+      // Comprobante (por ahora: en duro / local)
+      try {
+        const clienteNombre =
+          prestamoDetalle?.cliente?.nombreCompleto ||
+          selected.clienteNombre ||
+          '—';
+        const asesorNombre = empleado?.nombreCompleto || empleado?.usuario || '—';
+        const saldoPendiente =
+          prestamoDetalle?.saldo ??
+          prestamoDetalle?.saldoActual ??
+          prestamoDetalle?.saldoPendiente ??
+          0;
+
+        const comprobante = {
+          recibo: String(Date.now()).slice(-5),
+          codigoPrestamo: form.codigoPrestamo,
+          fecha: form.fecha,
+          cliente: clienteNombre.toUpperCase(),
+          asesor: asesorNombre.toUpperCase(),
+          monto,
+          saldoPendiente,
+          cuotasPendientes: 0,
+          cuotasPagadas: [
+            {
+              numero: 1,
+              cuota: prestamoDetalle?.cuotaFija ?? 0,
+              pago: monto,
+              multa: 0,
+            },
+          ],
+        };
+
+        sessionStorage.setItem(COMPROBANTE_STORAGE_KEY, JSON.stringify(comprobante));
+      } catch {
+        // Ignorar
+      }
+
       setSnackbar({ type: 'success', message: 'Pago registrado exitosamente' });
       handleCloseNuevo();
       setRefreshKey((k) => k + 1);
+
+      router.push('/pagos/comprobante');
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'No se pudo registrar el pago';
       setSnackbar({ type: 'error', message: msg });
@@ -480,6 +523,40 @@ export default function PagosPage() {
           )}
         </DialogContent>
         <DialogActions>
+            {dialogPago ? (
+              <Button
+                variant="outlined"
+                onClick={() => {
+                  try {
+                    const asesorNombre = empleado?.nombreCompleto || empleado?.usuario || '—';
+                    const comprobante = {
+                      recibo: String(dialogPago.codigoPago || dialogPago.id || String(Date.now()).slice(-5)),
+                      codigoPrestamo: String(dialogPago.codigoPrestamo || ''),
+                      fecha: String(dialogPago.fecha || new Date().toISOString()),
+                      cliente: String(dialogPago.clienteNombre || '—').toUpperCase(),
+                      asesor: String(asesorNombre).toUpperCase(),
+                      monto: Number(dialogPago.monto || 0),
+                      saldoPendiente: 0,
+                      cuotasPendientes: 0,
+                      cuotasPagadas: [
+                        {
+                          numero: 1,
+                          cuota: 0,
+                          pago: Number(dialogPago.monto || 0),
+                          multa: 0,
+                        },
+                      ],
+                    };
+                    sessionStorage.setItem(COMPROBANTE_STORAGE_KEY, JSON.stringify(comprobante));
+                  } catch {
+                    // Ignorar
+                  }
+                  router.push('/pagos/comprobante');
+                }}
+              >
+                Comprobante
+              </Button>
+            ) : null}
           <Button onClick={() => setDialogPago(null)}>Cerrar</Button>
         </DialogActions>
       </Dialog>
