@@ -18,19 +18,21 @@ import {
   Chip,
   Tabs,
   Tab,
+  Alert,
+  CircularProgress,
 } from "@mui/material";
 import { useCobradores } from "../../hooks/useCobradores";
-import { CuadresFilters, TipoMovimientoCuadre, useCuadres } from "../../hooks/useCuadres";
+import { usePagosPorAsesor, usePagos, useCuadre, useMoraDetallada } from "../../hooks/useCaja";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
-const movimientosTabs: { value: TipoMovimientoCuadre | "RESUMEN"; label: string }[] = [
-  { value: "RESUMEN", label: "Resumen" },
-  { value: "COBRO", label: "Cobros" },
-  { value: "DESEMBOLSO", label: "Desembolsos" },
-  { value: "GASTO", label: "Gastos" },
+const tabs = [
+  { value: "RESUMEN", label: "Resumen General" },
+  { value: "PAGOS_ASESOR", label: "Pagos por Asesor" },
+  { value: "PAGOS_TODOS", label: "Todos los Pagos" },
+  { value: "MORA", label: "Mora Detallada" },
 ];
 
 export default function CuadresPage() {
@@ -39,16 +41,26 @@ export default function CuadresPage() {
   const [fechaInicio, setFechaInicio] = useState(hoy);
   const [fechaFin, setFechaFin] = useState(hoy);
   const [asesorId, setAsesorId] = useState<string | "TODOS">("TODOS");
-  const [tab, setTab] = useState<TipoMovimientoCuadre | "RESUMEN">("RESUMEN");
+  const [tab, setTab] = useState<"RESUMEN" | "PAGOS_ASESOR" | "PAGOS_TODOS" | "MORA">("RESUMEN");
 
   const { data: cobradores } = useCobradores({ busqueda: "", estado: "TODOS", zona: "" });
 
-  const filtrosCuadres: CuadresFilters = useMemo(
-    () => ({ fechaInicio, fechaFin, asesorId, tipo: tab === "RESUMEN" ? "TODOS" : tab }),
-    [fechaInicio, fechaFin, asesorId, tab]
-  );
+  // Hook para pagos por asesor específico
+  const cobradorIdActual = asesorId === "TODOS" ? undefined : (asesorId as string);
+  const { data: pagosPorAsesor, loading: loadingPagoAsesor, error: errorPagoAsesor } = 
+    usePagosPorAsesor(cobradorIdActual, fechaInicio, fechaFin);
 
-  const { data: registros, loading, error } = useCuadres(filtrosCuadres);
+  // Hook para todos los pagos
+  const { data: pagosTodos, loading: loadingPagosTodos, error: errorPagosTodos } = 
+    usePagos(fechaInicio, fechaFin);
+
+  // Hook para cuadre general
+  const { data: cuadreData, loading: loadingCuadre, error: errorCuadre } = 
+    useCuadre(fechaInicio, fechaFin);
+
+  // Hook para mora detallada
+  const { data: moraData, loading: loadingMora, error: errorMora } = 
+    useMoraDetallada(cobradorIdActual);
 
   const selectedAsesorNombre = useMemo(() => {
     if (asesorId === "TODOS") return "Todos los asesores";
@@ -58,7 +70,7 @@ export default function CuadresPage() {
 
   const handleBuscar = (e: React.FormEvent) => {
     e.preventDefault();
-    // El hook ya reacciona a cambios de filtros; aquí solo evitamos submit real.
+    // Los hooks ya reaccionan a cambios de filtros
   };
 
   const formatMoney = (v?: number) =>
@@ -66,80 +78,42 @@ export default function CuadresPage() {
       ? `L. ${v.toLocaleString("es-HN", { minimumFractionDigits: 2 })}`
       : "L. 0.00";
 
-  const resumenPorAsesor = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        asesorId?: string;
-        asesorNombre: string;
-        cobros: number;
-        totalCobros: number;
-        desembolsos: number;
-        totalDesembolsos: number;
-        gastos: number;
-        totalGastos: number;
-      }
-    >();
+  const formatDate = (d?: string) => {
+    if (!d) return "—";
+    const date = new Date(d);
+    return date.toLocaleDateString("es-HN");
+  };
 
-    for (const r of registros) {
-      const key = r.asesorId || "SIN_ASESOR";
-      const baseNombre = r.asesorNombre || "Sin asesor";
-      if (!map.has(key)) {
-        map.set(key, {
-          asesorId: r.asesorId,
-          asesorNombre: baseNombre,
-          cobros: 0,
-          totalCobros: 0,
-          desembolsos: 0,
-          totalDesembolsos: 0,
-          gastos: 0,
-          totalGastos: 0,
-        });
-      }
-      const agg = map.get(key)!;
-      if (r.tipo === "COBRO") {
-        agg.cobros += 1;
-        agg.totalCobros += r.monto;
-      } else if (r.tipo === "DESEMBOLSO") {
-        agg.desembolsos += 1;
-        agg.totalDesembolsos += r.monto;
-      } else if (r.tipo === "GASTO") {
-        agg.gastos += 1;
-        agg.totalGastos += r.monto;
-      }
-    }
+  // Estados de carga y error
+  const isLoading = 
+    (tab === "PAGOS_ASESOR" && loadingPagoAsesor) ||
+    (tab === "PAGOS_TODOS" && loadingPagosTodos) ||
+    (tab === "RESUMEN" && loadingCuadre) ||
+    (tab === "MORA" && loadingMora);
 
-    return Array.from(map.values());
-  }, [registros]);
+  const currentError = 
+    (tab === "PAGOS_ASESOR" && errorPagoAsesor) ||
+    (tab === "PAGOS_TODOS" && errorPagosTodos) ||
+    (tab === "RESUMEN" && errorCuadre) ||
+    (tab === "MORA" && errorMora);
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      {/* Encabezado y filtros principales */}
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          flexWrap: "wrap",
-          gap: 1,
-        }}
-      >
+      {/* Encabezado */}
+      <Box sx={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 1 }}>
         <Box>
-          <Typography variant="h6">Cuadre de caja</Typography>
-          <Typography variant="caption" color="text.secondary">
-            Registra desembolsos, gastos y cobros por asesor para cuadrar el efectivo
-            contra los depósitos del sistema.
+          <Typography variant="h5" fontWeight={600}>
+            Cuadre de Caja
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Gestión de pagos, cuadres y mora detallada
           </Typography>
         </Box>
 
         <Box
           component="form"
           onSubmit={handleBuscar}
-          sx={{
-            display: "flex",
-            gap: 1,
-            flexWrap: "wrap",
-            alignItems: "center",
-          }}
+          sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center" }}
         >
           <TextField
             type="date"
@@ -172,13 +146,13 @@ export default function CuadresPage() {
               </MenuItem>
             ))}
           </TextField>
-          <Button type="submit" variant="outlined" size="small" disabled={loading}>
-            Actualizar
+          <Button type="submit" variant="outlined" size="small" disabled={isLoading}>
+            {isLoading ? <CircularProgress size={20} /> : "Actualizar"}
           </Button>
         </Box>
       </Box>
 
-      {/* Tabs para tipo de vista */}
+      {/* Tabs */}
       <Paper sx={{ p: 1 }}>
         <Tabs
           value={tab}
@@ -187,396 +161,275 @@ export default function CuadresPage() {
           scrollButtons="auto"
           aria-label="Vistas de cuadre"
         >
-          {movimientosTabs.map((t) => (
+          {tabs.map((t) => (
             <Tab key={t.value} label={t.label} value={t.value} />
           ))}
         </Tabs>
       </Paper>
 
-      {loading && (
-        <Typography variant="caption" color="text.secondary">
-          Cargando registros de cuadre…
-        </Typography>
-      )}
-      {error && (
-        <Typography variant="caption" color="error">
-          {error}
-        </Typography>
+      {/* Error Messages */}
+      {currentError && (
+        <Alert severity="error">
+          {currentError}
+        </Alert>
       )}
 
-      {/* Panel RESUMEN: totales por asesor */}
+      {/* RESUMEN: Cuadre General */}
       {tab === "RESUMEN" && (
-        <Paper sx={{ p: 2 }}>
-          <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-            <Typography variant="subtitle2">Resumen por asesor</Typography>
-            <Chip
-              size="small"
-              label={`${selectedAsesorNombre} · ${fechaInicio} a ${fechaFin}`}
-            />
-          </Box>
-          <TableContainer>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Asesor</TableCell>
-                  <TableCell align="right">Cobros (efectivo)</TableCell>
-                  <TableCell align="right">Desembolsos</TableCell>
-                  <TableCell align="right">Gastos</TableCell>
-                  <TableCell align="right">Efectivo neto</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {resumenPorAsesor.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={5} align="center">
-                      Aún no hay datos. Esta tabla se conectará al backend de cuadres
-                      para mostrar cobros, desembolsos y gastos por asesor.
-                    </TableCell>
-                  </TableRow>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {isLoading ? (
+            <Box sx={{ display: "flex", justifyContent: "center", p: 3 }}>
+              <CircularProgress />
+            </Box>
+          ) : cuadreData ? (
+            <Paper sx={{ p: 2 }}>
+              <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
+                <Typography variant="subtitle2" fontWeight={600}>
+                  Resumen del Cuadre
+                </Typography>
+                <Chip size="small" label={`${formatDate(cuadreData.fecha)}`} />
+              </Box>
+              
+              <Grid container spacing={2}>
+                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Paper sx={{ p: 2, bgcolor: "primary.light", borderRadius: 1 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Total Pagos
+                    </Typography>
+                    <Typography variant="h6" fontWeight={600}>
+                      {formatMoney(cuadreData.totalPagos)}
+                    </Typography>
+                  </Paper>
+                </Grid>
+                
+                {cuadreData.totalDesembolsos !== undefined && (
+                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                    <Paper sx={{ p: 2, bgcolor: "warning.light", borderRadius: 1 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Desembolsos
+                      </Typography>
+                      <Typography variant="h6" fontWeight={600}>
+                        {formatMoney(cuadreData.totalDesembolsos)}
+                      </Typography>
+                    </Paper>
+                  </Grid>
                 )}
+                
+                {cuadreData.totalGastos !== undefined && (
+                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                    <Paper sx={{ p: 2, bgcolor: "error.light", borderRadius: 1 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Gastos
+                      </Typography>
+                      <Typography variant="h6" fontWeight={600}>
+                        {formatMoney(cuadreData.totalGastos)}
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                )}
+              </Grid>
 
-                {resumenPorAsesor.map((r) => {
-                  const efectivoNeto = r.totalCobros - r.totalDesembolsos - r.totalGastos;
-                  return (
-                    <TableRow key={r.asesorId || r.asesorNombre}>
-                      <TableCell>{r.asesorNombre}</TableCell>
-                      <TableCell align="right">{formatMoney(r.totalCobros)}</TableCell>
-                      <TableCell align="right">{formatMoney(r.totalDesembolsos)}</TableCell>
-                      <TableCell align="right">{formatMoney(r.totalGastos)}</TableCell>
-                      <TableCell align="right">{formatMoney(efectivoNeto)}</TableCell>
+              {cuadreData.detalleAdesores && cuadreData.detalleAdesores.length > 0 && (
+                <Box sx={{ mt: 3 }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+                    Desglose por Asesor
+                  </Typography>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow sx={{ bgcolor: "grey.100" }}>
+                          <TableCell>Asesor</TableCell>
+                          <TableCell align="right">Cantidad Pagos</TableCell>
+                          <TableCell align="right">Total Pagos</TableCell>
+                          <TableCell align="right">Promedio</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {cuadreData.detalleAdesores.map((d) => (
+                          <TableRow key={d.cobradorId}>
+                            <TableCell>{d.cobradorNombre}</TableCell>
+                            <TableCell align="right">{d.countPagos}</TableCell>
+                            <TableCell align="right">{formatMoney(d.totalPagos)}</TableCell>
+                            <TableCell align="right">
+                              {formatMoney(d.promedioPorPago)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Box>
+              )}
+            </Paper>
+          ) : (
+            <Alert severity="info">No hay datos de cuadre para este período</Alert>
+          )}
+        </Box>
+      )}
+
+      {/* PAGOS POR ASESOR */}
+      {tab === "PAGOS_ASESOR" && (
+        <Paper sx={{ p: 2 }}>
+          <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
+            <Typography variant="subtitle2" fontWeight={600}>
+              Pagos - {selectedAsesorNombre}
+            </Typography>
+            <Chip size="small" label={`${pagosPorAsesor.length} registros`} />
+          </Box>
+
+          {isLoading ? (
+            <Box sx={{ display: "flex", justifyContent: "center", p: 3 }}>
+              <CircularProgress />
+            </Box>
+          ) : pagosPorAsesor.length === 0 ? (
+            <Alert severity="info">
+              No hay pagos registrados para este filtro
+            </Alert>
+          ) : (
+            <TableContainer sx={{ maxHeight: 500 }}>
+              <Table stickyHeader size="small">
+                <TableHead>
+                  <TableRow sx={{ bgcolor: "grey.100" }}>
+                    <TableCell>Fecha</TableCell>
+                    <TableCell>Cliente</TableCell>
+                    <TableCell>Préstamo</TableCell>
+                    <TableCell align="right">Monto Principal</TableCell>
+                    <TableCell align="right">Interés</TableCell>
+                    <TableCell align="right">Mora</TableCell>
+                    <TableCell align="right">Total</TableCell>
+                    <TableCell>Estado</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {pagosPorAsesor.map((pago) => (
+                    <TableRow key={pago._id || pago.prestamoId}>
+                      <TableCell>{formatDate(pago.fecha)}</TableCell>
+                      <TableCell>{pago.clienteNombre || "—"}</TableCell>
+                      <TableCell>{pago.prestamoId.slice(0, 8)}</TableCell>
+                      <TableCell align="right">{formatMoney(pago.montoPrincipal)}</TableCell>
+                      <TableCell align="right">{formatMoney(pago.montoInteres)}</TableCell>
+                      <TableCell align="right">{formatMoney(pago.montoMora)}</TableCell>
+                      <TableCell align="right" fontWeight={600}>{formatMoney(pago.monto)}</TableCell>
+                      <TableCell>
+                        <Chip
+                          label={pago.estado || "Completado"}
+                          size="small"
+                          color={pago.estado === "Completado" ? "success" : "default"}
+                          variant="outlined"
+                        />
+                      </TableCell>
                     </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
         </Paper>
       )}
 
-      {/* Panel COBROS: vista de cobros por asesor */}
-      {tab === "COBRO" && (
-        <Grid container spacing={2}>
-          <Grid size={{ xs: 12, md: 6 }}>
-            <Paper sx={{ p: 2 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
-                Cobros registrados ({selectedAsesorNombre})
-              </Typography>
-              <TableContainer sx={{ maxHeight: 320 }}>
-                <Table size="small" stickyHeader>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Fecha</TableCell>
-                      <TableCell>Asesor</TableCell>
-                      <TableCell align="right">Monto</TableCell>
-                      <TableCell>Referencia</TableCell>
+      {/* TODOS LOS PAGOS */}
+      {tab === "PAGOS_TODOS" && (
+        <Paper sx={{ p: 2 }}>
+          <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
+            <Typography variant="subtitle2" fontWeight={600}>
+              Todos los Pagos
+            </Typography>
+            <Chip size="small" label={`${pagosTodos.length} registros`} />
+          </Box>
+
+          {isLoading ? (
+            <Box sx={{ display: "flex", justifyContent: "center", p: 3 }}>
+              <CircularProgress />
+            </Box>
+          ) : pagosTodos.length === 0 ? (
+            <Alert severity="info">
+              No hay pagos registrados para este período
+            </Alert>
+          ) : (
+            <TableContainer sx={{ maxHeight: 500 }}>
+              <Table stickyHeader size="small">
+                <TableHead>
+                  <TableRow sx={{ bgcolor: "grey.100" }}>
+                    <TableCell>Fecha</TableCell>
+                    <TableCell>Asesor</TableCell>
+                    <TableCell>Cliente</TableCell>
+                    <TableCell align="right">Monto</TableCell>
+                    <TableCell>Referencia</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {pagosTodos.map((pago) => (
+                    <TableRow key={pago._id || pago.prestamoId}>
+                      <TableCell>{formatDate(pago.fecha)}</TableCell>
+                      <TableCell>{pago.cobradorNombre || "—"}</TableCell>
+                      <TableCell>{pago.clienteNombre || "—"}</TableCell>
+                      <TableCell align="right" fontWeight={600}>{formatMoney(pago.monto)}</TableCell>
+                      <TableCell>{pago.referencia || "—"}</TableCell>
                     </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {registros.filter((r) => r.tipo === "COBRO").length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={4} align="center">
-                          Aquí se mostrarán todos los cobros en efectivo por asesor
-                          para el rango de fechas seleccionado.
-                        </TableCell>
-                      </TableRow>
-                    )}
-
-                    {registros
-                      .filter((r) => r.tipo === "COBRO")
-                      .map((r) => (
-                        <TableRow key={r.id}>
-                          <TableCell>{r.fecha.slice(0, 10)}</TableCell>
-                          <TableCell>{r.asesorNombre || "—"}</TableCell>
-                          <TableCell align="right">{formatMoney(r.monto)}</TableCell>
-                          <TableCell>{r.referencia || ""}</TableCell>
-                        </TableRow>
-                      ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </Paper>
-          </Grid>
-
-          <Grid size={{ xs: 12, md: 6 }}>
-            <Paper sx={{ p: 2, height: "100%" }}>
-              <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
-                Registrar cobro de efectivo
-              </Typography>
-              <Grid container spacing={1.5}>
-                <Grid size={{ xs: 12 }}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label="Préstamo / código cliente"
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label="Monto cobrado"
-                    type="number"
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label="Fecha"
-                    type="date"
-                    InputLabelProps={{ shrink: true }}
-                    defaultValue={hoy}
-                  />
-                </Grid>
-                <Grid size={{ xs: 12 }}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label="Referencia / recibo"
-                  />
-                </Grid>
-                <Grid size={{ xs: 12 }}>
-                  <TextField fullWidth size="small" select label="Origen del efectivo">
-                    <MenuItem value="EFECTIVO_RUTA">Efectivo en ruta</MenuItem>
-                    <MenuItem value="DEPOSITO_BANCO">Depósito en banco</MenuItem>
-                  </TextField>
-                </Grid>
-                <Grid size={{ xs: 12 }}>
-                  <Button variant="contained" sx={{ borderRadius: 999 }}>
-                    Registrar cobro
-                  </Button>
-                </Grid>
-              </Grid>
-            </Paper>
-          </Grid>
-        </Grid>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </Paper>
       )}
 
-      {/* Panel DESEMBOLSOS: registro de desembolsos por asesor */}
-      {tab === "DESEMBOLSO" && (
-        <Grid container spacing={2}>
-          <Grid size={{ xs: 12, md: 6 }}>
-            <Paper sx={{ p: 2 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
-                Desembolsos registrados ({selectedAsesorNombre})
-              </Typography>
-              <TableContainer sx={{ maxHeight: 320 }}>
-                <Table size="small" stickyHeader>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Fecha</TableCell>
-                      <TableCell>Asesor</TableCell>
-                      <TableCell align="right">Monto</TableCell>
-                      <TableCell>Referencia</TableCell>
+      {/* MORA DETALLADA */}
+      {tab === "MORA" && (
+        <Paper sx={{ p: 2 }}>
+          <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
+            <Typography variant="subtitle2" fontWeight={600}>
+              Mora Detallada - {selectedAsesorNombre}
+            </Typography>
+            <Chip size="small" label={`${moraData.length} registros`} />
+          </Box>
+
+          {isLoading ? (
+            <Box sx={{ display: "flex", justifyContent: "center", p: 3 }}>
+              <CircularProgress />
+            </Box>
+          ) : moraData.length === 0 ? (
+            <Alert severity="success">
+              ¡Excelente! No hay mora registrada para este filtro
+            </Alert>
+          ) : (
+            <TableContainer sx={{ maxHeight: 500 }}>
+              <Table stickyHeader size="small">
+                <TableHead>
+                  <TableRow sx={{ bgcolor: "grey.100" }}>
+                    <TableCell>Cliente</TableCell>
+                    <TableCell>Asesor</TableCell>
+                    <TableCell align="right">Cuotas Atrasadas</TableCell>
+                    <TableCell align="right">Total Mora</TableCell>
+                    <TableCell align="right">Días Atraso</TableCell>
+                    <TableCell>Estado</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {moraData.map((mora) => (
+                    <TableRow key={mora._id || mora.clienteId}>
+                      <TableCell>{mora.clienteNombre || "—"}</TableCell>
+                      <TableCell>{mora.cobradorNombre || "—"}</TableCell>
+                      <TableCell align="right">{mora.cuotasAtrasadas}</TableCell>
+                      <TableCell align="right" fontWeight={600} sx={{ color: "error.main" }}>
+                        {formatMoney(mora.totalMora)}
+                      </TableCell>
+                      <TableCell align="right">{mora.diasAtraso || "—"}</TableCell>
+                      <TableCell>
+                        <Chip
+                          label={mora.estadoPrestamo || "Activo"}
+                          size="small"
+                          color="error"
+                          variant="outlined"
+                        />
+                      </TableCell>
                     </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {registros.filter((r) => r.tipo === "DESEMBOLSO").length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={4} align="center">
-                          Aquí se verán los desembolsos entregados por cada asesor
-                          (efectivo que sale de caja).
-                        </TableCell>
-                      </TableRow>
-                    )}
-
-                    {registros
-                      .filter((r) => r.tipo === "DESEMBOLSO")
-                      .map((r) => (
-                        <TableRow key={r.id}>
-                          <TableCell>{r.fecha.slice(0, 10)}</TableCell>
-                          <TableCell>{r.asesorNombre || "—"}</TableCell>
-                          <TableCell align="right">{formatMoney(r.monto)}</TableCell>
-                          <TableCell>{r.referencia || ""}</TableCell>
-                        </TableRow>
-                      ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </Paper>
-          </Grid>
-
-          <Grid size={{ xs: 12, md: 6 }}>
-            <Paper sx={{ p: 2, height: "100%" }}>
-              <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
-                Registrar desembolso
-              </Typography>
-              <Grid container spacing={1.5}>
-                <Grid size={{ xs: 12 }}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label="Préstamo a desembolsar"
-                  />
-                </Grid>
-                <Grid size={{ xs: 12 }}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    select
-                    label="Asesor que entrega"
-                    value={asesorId}
-                    onChange={(e) => setAsesorId(e.target.value as string | "TODOS")}
-                  >
-                    <MenuItem value="TODOS">— Seleccionar asesor —</MenuItem>
-                    {cobradores.map((c) => (
-                      <MenuItem key={c._id} value={c._id}>
-                        {c.nombreCompleto}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label="Monto desembolsado"
-                    type="number"
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label="Fecha"
-                    type="date"
-                    InputLabelProps={{ shrink: true }}
-                    defaultValue={hoy}
-                  />
-                </Grid>
-                <Grid size={{ xs: 12 }}>
-                  <TextField fullWidth size="small" label="Referencia / recibo" />
-                </Grid>
-                <Grid size={{ xs: 12 }}>
-                  <Button variant="contained" sx={{ borderRadius: 999 }}>
-                    Registrar desembolso
-                  </Button>
-                </Grid>
-              </Grid>
-            </Paper>
-          </Grid>
-        </Grid>
-      )}
-
-      {/* Panel GASTOS: registro de gastos por asesor */}
-      {tab === "GASTO" && (
-        <Grid container spacing={2}>
-          <Grid size={{ xs: 12, md: 6 }}>
-            <Paper sx={{ p: 2 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
-                Gastos registrados ({selectedAsesorNombre})
-              </Typography>
-              <TableContainer sx={{ maxHeight: 320 }}>
-                <Table size="small" stickyHeader>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Fecha</TableCell>
-                      <TableCell>Asesor</TableCell>
-                      <TableCell>Categoría</TableCell>
-                      <TableCell align="right">Monto</TableCell>
-                      <TableCell>Detalle</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {registros.filter((r) => r.tipo === "GASTO").length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={5} align="center">
-                          Aquí verás todos los gastos cargados por asesor
-                          (gasolina, viáticos, otros) para cuadrar la ruta.
-                        </TableCell>
-                      </TableRow>
-                    )}
-
-                    {registros
-                      .filter((r) => r.tipo === "GASTO")
-                      .map((r) => (
-                        <TableRow key={r.id}>
-                          <TableCell>{r.fecha.slice(0, 10)}</TableCell>
-                          <TableCell>{r.asesorNombre || "—"}</TableCell>
-                          <TableCell>{r.categoriaGasto || "—"}</TableCell>
-                          <TableCell align="right">{formatMoney(r.monto)}</TableCell>
-                          <TableCell>{r.descripcion || ""}</TableCell>
-                        </TableRow>
-                      ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </Paper>
-          </Grid>
-
-          <Grid size={{ xs: 12, md: 6 }}>
-            <Paper sx={{ p: 2, height: "100%" }}>
-              <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
-                Registrar gasto de ruta
-              </Typography>
-              <Grid container spacing={1.5}>
-                <Grid size={{ xs: 12 }}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    select
-                    label="Asesor"
-                    value={asesorId}
-                    onChange={(e) => setAsesorId(e.target.value as string | "TODOS")}
-                  >
-                    <MenuItem value="TODOS">— Seleccionar asesor —</MenuItem>
-                    {cobradores.map((c) => (
-                      <MenuItem key={c._id} value={c._id}>
-                        {c.nombreCompleto}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label="Monto del gasto"
-                    type="number"
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label="Fecha"
-                    type="date"
-                    InputLabelProps={{ shrink: true }}
-                    defaultValue={hoy}
-                  />
-                </Grid>
-                <Grid size={{ xs: 12 }}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    select
-                    label="Categoría"
-                    defaultValue="GASOLINA"
-                  >
-                    <MenuItem value="GASOLINA">Gasolina</MenuItem>
-                    <MenuItem value="VIATICOS">Viáticos</MenuItem>
-                    <MenuItem value="ALIMENTACION">Alimentación</MenuItem>
-                    <MenuItem value="OTROS">Otros</MenuItem>
-                  </TextField>
-                </Grid>
-                <Grid size={{ xs: 12 }}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label="Detalle / comentario"
-                    multiline
-                    minRows={2}
-                  />
-                </Grid>
-                <Grid size={{ xs: 12 }}>
-                  <Button variant="contained" sx={{ borderRadius: 999 }}>
-                    Registrar gasto
-                  </Button>
-                </Grid>
-              </Grid>
-            </Paper>
-          </Grid>
-        </Grid>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </Paper>
       )}
     </Box>
   );

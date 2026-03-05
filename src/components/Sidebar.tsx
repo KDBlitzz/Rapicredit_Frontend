@@ -42,8 +42,8 @@ const navItems: NavSection[] = [
       { label: "Dashboard", href: "/dashboard" },
       // Créditos / préstamos y pagos
       { label: "Préstamos", href: "/prestamos", requiredPermisos: ["f001", "F002"] },
-      { label: "Pagos", href: "/pagos", requiredPermisos: ["F005"] },
-      { label: "Cuadres", href: "/cuadres", requiredPermisos: ["F005", "F009"] },
+      { label: "Pagos", href: "/pagos", requiredPermisos: ["F005", "PERM-CAJA-001", "PERM-CAJA-002"] },
+      { label: "Cuadres", href: "/cuadres", requiredPermisos: ["F005", "F009", "PERM-CAJA-004"] },
       // Solicitudes de crédito (aprobación / gestión)
       // Ver módulo: F001/F002. Flujo de aprobación: F010.
       { label: "Solicitudes", href: "/solicitudes", requiredPermisos: ["F001", "F002", "F010"] },
@@ -61,10 +61,10 @@ const navItems: NavSection[] = [
         label: "Empleados",
         href: "/empleados",
         requiredPermisos: ["S003", "S001"],
-        hiddenForRoles: ["asesor"], // Los asesores no deben ver Empleados
+        hiddenForRoles: ["asesor", "caja"], // Los asesores y cajeros no deben ver Empleados
       },
       // Carteras por usuario
-      { label: "Gestión de Carteras", href: "/carteras", requiredPermisos: ["S001"] },
+      { label: "Gestión de Carteras", href: "/carteras", requiredPermisos: ["S001"], hiddenForRoles: ["caja"] },
     ],
   },
   {
@@ -79,19 +79,21 @@ const navItems: NavSection[] = [
           { label: "Pago al SAR", href: "/reportes/pago-sar" },
           { label: "Trazabilidad de decisiones", href: "/reportes/trazabilidad-decisiones" },
         ],
+        hiddenForRoles: ["caja"],
       },
       {
         label: "Estadísticas Asesor",
         href: "/empleados/estadisticas",
         requiredPermisos: ["F008", "F009"],
+        hiddenForRoles: ["caja"],
       },
     ],
   },
   {
     section: "Sistema",
-    // Configuración solo para seguridad avanzada (S001/S002). Asesor (S003) no la ve.
+    // Configuración solo para seguridad avanzada (S001/S002). Asesor (S003) y Caja no la ven.
     items: [
-      { label: "Configuración", href: "/configuracion", requiredPermisos: ["S001", "S002"] },
+      { label: "Configuración", href: "/configuracion", requiredPermisos: ["S001", "S002"], hiddenForRoles: ["caja"] },
       { label: "Cerrar sesión", action: "logout" },
     ],
   },
