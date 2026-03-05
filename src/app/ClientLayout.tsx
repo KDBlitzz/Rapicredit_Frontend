@@ -14,7 +14,8 @@ export default function ClientLayout({ children }: Props) {
   const pathname = usePathname();
 
   const noLayoutRoutes = ["/login"];
-  if (noLayoutRoutes.includes(pathname)) return <>{children}</>;
+  const isComprobanteAbono = /^\/pagos(?:\/[^/]+)?\/comprobante\/?$/.test(pathname);
+  if (noLayoutRoutes.includes(pathname) || isComprobanteAbono) return <>{children}</>;
 
   return (
     <Box

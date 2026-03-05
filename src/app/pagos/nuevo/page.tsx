@@ -24,9 +24,11 @@ import { usePermisos } from "../../../hooks/usePermisos";
 import { usePrestamoDetalle } from "../../../hooks/usePrestamoDetalle";
 import { usePrestamosAsignados } from "../../../hooks/usePrestamosAsignados";
 
+const COMPROBANTE_STORAGE_KEY = "rapicredit:comprobanteAbono";
+
 const NuevoPagoPage: React.FC = () => {
   const router = useRouter();
-  const { hasPermiso, loading: loadingPermisos } = usePermisos();
+  const { hasPermiso, loading: loadingPermisos, empleado } = usePermisos();
   const {
     data: prestamosAsignados,
     loading: loadingPrestamosAsignados,
@@ -141,13 +143,48 @@ const NuevoPagoPage: React.FC = () => {
         }),
       });
 
+      // Comprobante (por ahora: en duro / local). No depende de que el backend devuelva un ID.
+      try {
+        const clienteNombre =
+          prestamoDetalle?.cliente?.nombreCompleto ||
+          selected.clienteNombre ||
+          "—";
+        const asesorNombre = empleado?.nombreCompleto || empleado?.usuario || "—";
+        const saldoPendiente =
+          prestamoDetalle?.saldo ??
+          prestamoDetalle?.saldoActual ??
+          prestamoDetalle?.saldoPendiente ??
+          0;
+
+        const comprobante = {
+          recibo: String(Date.now()).slice(-5),
+          codigoPrestamo: form.codigoPrestamo,
+          fecha: form.fecha,
+          cliente: clienteNombre.toUpperCase(),
+          asesor: asesorNombre.toUpperCase(),
+          monto,
+          saldoPendiente,
+          cuotasPendientes: 0,
+          cuotasPagadas: [
+            {
+              numero: 1,
+              cuota: prestamoDetalle?.cuotaFija ?? 0,
+              pago: monto,
+              multa: 0,
+            },
+          ],
+        };
+
+        sessionStorage.setItem(COMPROBANTE_STORAGE_KEY, JSON.stringify(comprobante));
+      } catch {
+        // Ignorar errores de storage (ej: navegador restringido)
+      }
+
       setSnackbarMsg("Pago registrado exitosamente");
       setSnackbarSeverity("success");
       setSnackbarOpen(true);
 
-      setTimeout(() => {
-        router.push("/pagos");
-      }, 1500);
+      router.push("/pagos/comprobante");
     } catch (e: unknown) {
       const msg =
         e instanceof Error ? e.message : "No se pudo registrar el abono";

@@ -20,6 +20,10 @@ export interface PrestamoDetalle {
 
   totalIntereses?: number;
   totalPagado?: number;
+  saldo?: number;
+  saldoCapital?: number;
+  saldoActual?: number;
+  saldoPendiente?: number;
   observaciones?: string;
   activo?: boolean;
 
@@ -64,12 +68,20 @@ export function usePrestamoDetalle(id: string, reloadKey: number = 0) {
     let cancelled = false;
 
     async function load() {
+      const safeId = String(id || "").trim();
+      if (!safeId) {
+        setData(null);
+        setError(null);
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       setError(null);
 
       try {
         // En esta app la ruta usa el código (ej: /prestamos/P-2026-001)
-        const res = await apiFetch<unknown>(`/prestamos/${encodeURIComponent(id)}`);
+        const res = await apiFetch<unknown>(`/prestamos/${encodeURIComponent(safeId)}`);
 
         if (cancelled || !res) return;
 
@@ -95,7 +107,7 @@ export function usePrestamoDetalle(id: string, reloadKey: number = 0) {
           : asString(getNested(res, ["clienteId", "_id"]) ?? getNested(res, ["clienteId"])) ?? undefined;
 
         const detalle: PrestamoDetalle = {
-          id: String(getNested(res, ["_id"]) ?? getNested(res, ["id"]) ?? id),
+          id: String(getNested(res, ["_id"]) ?? getNested(res, ["id"]) ?? safeId),
           codigoPrestamo: String(getNested(res, ["codigoPrestamo"]) ?? ""),
           solicitudId: asString(getNested(res, ["solicitudId", "_id"]) ?? getNested(res, ["solicitudId"])) ?? undefined,
           clienteId,
@@ -118,6 +130,10 @@ export function usePrestamoDetalle(id: string, reloadKey: number = 0) {
           fechaVencimiento: asString(getNested(res, ["fechaVencimiento"])) ?? undefined,
           totalIntereses: asNumber(getNested(res, ["totalIntereses"])) ?? undefined,
           totalPagado: asNumber(getNested(res, ["totalPagado"])) ?? undefined,
+          saldo: asNumber(getNested(res, ["saldo"])) ?? asNumber(getNested(res, ["saldoActual"])) ?? asNumber(getNested(res, ["saldoPendiente"])) ?? undefined,
+          saldoCapital: asNumber(getNested(res, ["saldoCapital"])) ?? undefined,
+          saldoActual: asNumber(getNested(res, ["saldoActual"])) ?? undefined,
+          saldoPendiente: asNumber(getNested(res, ["saldoPendiente"])) ?? undefined,
           observaciones: asString(getNested(res, ["observaciones"])) ?? undefined,
           activo: (getNested(res, ["activo"]) as boolean | undefined) ?? undefined,
           cliente,
