@@ -309,7 +309,7 @@ export default function CuadresPage() {
                       <TableCell align="right">{formatMoney(pago.montoPrincipal)}</TableCell>
                       <TableCell align="right">{formatMoney(pago.montoInteres)}</TableCell>
                       <TableCell align="right">{formatMoney(pago.montoMora)}</TableCell>
-                      <TableCell align="right" fontWeight={600}>{formatMoney(pago.monto)}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600 }}>{formatMoney(pago.monto)}</TableCell>
                       <TableCell>
                         <Chip
                           label={pago.estado || "Completado"}
@@ -363,7 +363,7 @@ export default function CuadresPage() {
                       <TableCell>{formatDate(pago.fecha)}</TableCell>
                       <TableCell>{pago.cobradorNombre || "—"}</TableCell>
                       <TableCell>{pago.clienteNombre || "—"}</TableCell>
-                      <TableCell align="right" fontWeight={600}>{formatMoney(pago.monto)}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600 }}>{formatMoney(pago.monto)}</TableCell>
                       <TableCell>{pago.referencia || "—"}</TableCell>
                     </TableRow>
                   ))}
@@ -411,7 +411,7 @@ export default function CuadresPage() {
                       <TableCell>{mora.clienteNombre || "—"}</TableCell>
                       <TableCell>{mora.cobradorNombre || "—"}</TableCell>
                       <TableCell align="right">{mora.cuotasAtrasadas}</TableCell>
-                      <TableCell align="right" fontWeight={600} sx={{ color: "error.main" }}>
+                      <TableCell align="right" sx={{ fontWeight: 600, color: "error.main" }}>
                         {formatMoney(mora.totalMora)}
                       </TableCell>
                       <TableCell align="right">{mora.diasAtraso || "—"}</TableCell>
