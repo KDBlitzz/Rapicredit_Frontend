@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api';
 
-export type EstadoSolicitudFiltro = 'TODAS' | 'REGISTRADA' | 'EN_REVISION' | 'APROBADA' | 'RECHAZADA';
+export type EstadoSolicitudFiltro = 'TODAS' | 'REGISTRADA' | 'PRE-APROBADA' | 'PRE-RECHAZADA' | 'APROBADA' | 'RECHAZADA';
 
 export interface SolicitudResumen {
   id: string;

@@ -49,7 +49,7 @@ const estadosAccionFinales = ["APROBADA", "RECHAZADA"]; // no mostrar acciones s
 
 type SolicitudAccion = "APROBAR" | "RECHAZAR";
 
-const PreAprobacionPage: React.FC = () => {
+const RevisionPage: React.FC = () => {
   const { empleado } = usePermisos();
   const rolActual = (empleado?.rol || "").toLowerCase();
   const isSupervisor = rolActual === "supervisor";
@@ -73,9 +73,14 @@ const PreAprobacionPage: React.FC = () => {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detailData, setDetailData] = useState<SolicitudDetalle | null>(null);
 
-  const { data, loading, error: loadError } = useSolicitudes(
-    { busqueda, estado: "EN_REVISION" satisfies EstadoSolicitudFiltro },
+  const { data: allData, loading, error: loadError } = useSolicitudes(
+    { busqueda, estado: "TODAS" satisfies EstadoSolicitudFiltro },
     { refreshKey }
+  );
+
+  // Filtrar localmente solo PRE-APROBADA y PRE-RECHAZADA
+  const data = allData.filter(
+    (s) => s.estadoSolicitud.toUpperCase() === "PRE-APROBADA" || s.estadoSolicitud.toUpperCase() === "PRE-RECHAZADA"
   );
 
   const canActOn = (estadoActual?: string) => {
@@ -89,7 +94,8 @@ const PreAprobacionPage: React.FC = () => {
     const val = estado.toUpperCase();
     let color: "default" | "success" | "warning" | "error" | "info" = "info";
     if (val === "REGISTRADA") color = "info";
-    else if (val === "EN_REVISION") color = "warning";
+    else if (val === "PRE-APROBADA") color = "warning";
+    else if (val === "PRE-RECHAZADA") color = "warning";
     else if (val === "APROBADA") color = "success";
     else if (val === "RECHAZADA") color = "error";
     return <Chip size="small" label={val} color={color} variant="outlined" />;
@@ -232,7 +238,7 @@ const PreAprobacionPage: React.FC = () => {
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      <Typography variant="h6">Pre-aprobación de solicitudes</Typography>
+      <Typography variant="h6">Revisión de solicitudes</Typography>
 
       <Grid container spacing={1}>
         <Grid size={{ xs: 12, sm: 4, md: 4 }}>
@@ -445,4 +451,4 @@ const PreAprobacionPage: React.FC = () => {
   );
 };
 
-export default PreAprobacionPage;
+export default RevisionPage;
