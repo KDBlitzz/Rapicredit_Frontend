@@ -12,6 +12,7 @@ export interface PrestamoDetalle {
   tasaInteresNombre?: string;
   frecuenciaPago?: string;
   capitalSolicitado: number;
+  saldoCapital?: number;
   cuotaFija: number;
   plazoCuotas: number;
   estadoPrestamo: string;
@@ -21,11 +22,15 @@ export interface PrestamoDetalle {
   totalIntereses?: number;
   totalPagado?: number;
   saldo?: number;
-  saldoCapital?: number;
   saldoActual?: number;
   saldoPendiente?: number;
   observaciones?: string;
   activo?: boolean;
+
+  metodoInteresCorriente?: string;
+  configuracionFinancieraId?: string;
+  configuracionFinancieraVersion?: number;
+  amortizacionPreview?: unknown[];
 
   cliente: {
     id: string;
@@ -123,6 +128,7 @@ export function usePrestamoDetalle(id: string, reloadKey: number = 0) {
           })(),
           frecuenciaPago: asString(getNested(res, ["frecuenciaPago"])) ?? undefined,
           capitalSolicitado: asNumber(getNested(res, ["capitalSolicitado"])) ?? 0,
+          saldoCapital: asNumber(getNested(res, ["saldoCapital"])) ?? undefined,
           cuotaFija: asNumber(getNested(res, ["cuotaFija"])) ?? 0,
           plazoCuotas: asNumber(getNested(res, ["plazoCuotas"])) ?? 0,
           estadoPrestamo: String(getNested(res, ["estadoPrestamo"]) ?? ""),
@@ -131,11 +137,19 @@ export function usePrestamoDetalle(id: string, reloadKey: number = 0) {
           totalIntereses: asNumber(getNested(res, ["totalIntereses"])) ?? undefined,
           totalPagado: asNumber(getNested(res, ["totalPagado"])) ?? undefined,
           saldo: asNumber(getNested(res, ["saldo"])) ?? asNumber(getNested(res, ["saldoActual"])) ?? asNumber(getNested(res, ["saldoPendiente"])) ?? undefined,
-          saldoCapital: asNumber(getNested(res, ["saldoCapital"])) ?? undefined,
           saldoActual: asNumber(getNested(res, ["saldoActual"])) ?? undefined,
           saldoPendiente: asNumber(getNested(res, ["saldoPendiente"])) ?? undefined,
           observaciones: asString(getNested(res, ["observaciones"])) ?? undefined,
           activo: (getNested(res, ["activo"]) as boolean | undefined) ?? undefined,
+          metodoInteresCorriente: asString(getNested(res, ["metodoInteresCorriente"])) ?? undefined,
+          configuracionFinancieraId: asString(
+            getNested(res, ["configuracionFinancieraId", "_id"]) ?? getNested(res, ["configuracionFinancieraId"])
+          ) ?? undefined,
+          configuracionFinancieraVersion: asNumber(getNested(res, ["configuracionFinancieraVersion"])) ?? undefined,
+          amortizacionPreview: (() => {
+            const raw = getNested(res, ["amortizacionPreview"]);
+            return Array.isArray(raw) ? raw : undefined;
+          })(),
           cliente,
         };
 

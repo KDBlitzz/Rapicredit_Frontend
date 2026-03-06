@@ -36,11 +36,13 @@ export type EstadoPrestamoFiltro =
   | "VIGENTE"
   | "PENDIENTE"
   | "CERRADO"
-  | "RECHAZADO";
+  | "RECHAZADO"
+  | "MORA";
 
 export interface PrestamoResumen {
   id: string;
   codigoPrestamo: string;
+  solicitudId?: string;
   clienteId?: string;
   clienteCodigo?: string;
   clienteNombre: string;
@@ -48,10 +50,16 @@ export interface PrestamoResumen {
   estadoPrestamo: string;
   frecuenciaPago?: string;
   capitalSolicitado: number;
+  saldoCapital?: number;
   cuotaFija: number;
   plazoCuotas: number;
   fechaDesembolso?: string;
   fechaVencimiento?: string;
+  totalIntereses?: number;
+  totalPagado?: number;
+  metodoInteresCorriente?: string;
+  configuracionFinancieraId?: string;
+  configuracionFinancieraVersion?: number;
 }
 
 export interface PrestamosFilters {
@@ -155,9 +163,20 @@ export function usePrestamos(filters: PrestamosFilters, options: UsePrestamosOpt
           const fechaDesembolso = asString(getNested(p, ["fechaDesembolso"])) ?? undefined;
           const fechaVencimiento = asString(getNested(p, ["fechaVencimiento"])) ?? undefined;
 
+          const solicitudId = asString(getNested(p, ["solicitudId", "_id"]) ?? getNested(p, ["solicitudId"])) ?? undefined;
+          const saldoCapital = asNumber(getNested(p, ["saldoCapital"])) ?? undefined;
+          const totalIntereses = asNumber(getNested(p, ["totalIntereses"])) ?? undefined;
+          const totalPagado = asNumber(getNested(p, ["totalPagado"])) ?? undefined;
+          const metodoInteresCorriente = asString(getNested(p, ["metodoInteresCorriente"])) ?? undefined;
+          const configuracionFinancieraId = asString(
+            getNested(p, ["configuracionFinancieraId", "_id"]) ?? getNested(p, ["configuracionFinancieraId"])
+          ) ?? undefined;
+          const configuracionFinancieraVersion = asNumber(getNested(p, ["configuracionFinancieraVersion"])) ?? undefined;
+
           return {
             id,
             codigoPrestamo,
+            solicitudId,
             clienteId,
             clienteCodigo,
             clienteNombre,
@@ -165,10 +184,16 @@ export function usePrestamos(filters: PrestamosFilters, options: UsePrestamosOpt
             estadoPrestamo,
             frecuenciaPago,
             capitalSolicitado,
+            saldoCapital,
             cuotaFija,
             plazoCuotas,
             fechaDesembolso,
             fechaVencimiento,
+            totalIntereses,
+            totalPagado,
+            metodoInteresCorriente,
+            configuracionFinancieraId,
+            configuracionFinancieraVersion,
           };
         });
 

@@ -1,153 +1,79 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect } from "react";
 import {
   Box,
   Paper,
   Typography,
-  Grid,
-  TextField,
-  MenuItem,
   Button,
-  Snackbar,
   Alert,
 } from "@mui/material";
 import { useRouter } from "next/navigation";
-import { apiFetch } from "../../../lib/api";
-
-type FrecuenciaPago = "MENSUAL" | "QUINCENAL" | "SEMANAL" | "DIARIO";
+import Link from "next/link";
 
 const NuevoPrestamoPage: React.FC = () => {
   const router = useRouter();
 
-  const hoy = new Date().toISOString().slice(0, 10);
+  useEffect(() => {
+    // Redirigir automáticamente después de 3 segundos
+    const timeout = setTimeout(() => {
+      router.push("/solicitudes");
+    }, 3000);
 
-  const [form, setForm] = useState({
-    clienteRef: "", // código o identificación del cliente
-    producto: "",
-    capitalInicial: "",
-    plazoMeses: "",
-    frecuenciaPago: "MENSUAL" as FrecuenciaPago,
-    tasaInteresAnual: "24",
-    fechaDesembolso: hoy,
-    fechaPrimerPago: "",
-    cobrador: "",
-    observaciones: "",
-  });
+    return () => clearTimeout(timeout);
+  }, [router]);
 
-  const [saving, setSaving] = useState(false);
-  const [snackbarOpen, setSnackbarOpen] = useState(false);
-  const [snackbarMsg, setSnackbarMsg] = useState("");
-  const [snackbarSeverity, setSnackbarSeverity] = useState<"success" | "error">(
-    "success"
+  return (
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 2, maxWidth: 600, mx: "auto", mt: 4 }}>
+      <Paper sx={{ p: 3 }}>
+        <Typography variant="h5" gutterBottom>
+          Crear Préstamo
+        </Typography>
+
+        <Alert severity="info" sx={{ mt: 2, mb: 3 }}>
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            <strong>Información importante:</strong>
+          </Typography>
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            Los préstamos ahora se crean automáticamente al <strong>aprobar una solicitud</strong>.
+          </Typography>
+          <Typography variant="body2">
+            Para crear un nuevo préstamo, primero debe registrar una solicitud de crédito.
+          </Typography>
+        </Alert>
+
+        <Box sx={{ display: "flex", gap: 2, justifyContent: "center", mt: 3 }}>
+          <Button
+            variant="contained"
+            component={Link}
+            href="/solicitudes/nuevo"
+          >
+            Crear Nueva Solicitud
+          </Button>
+          <Button
+            variant="outlined"
+            component={Link}
+            href="/solicitudes"
+          >
+            Ver Solicitudes
+          </Button>
+          <Button
+            variant="text"
+            onClick={() => router.back()}
+          >
+            Volver
+          </Button>
+        </Box>
+
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", textAlign: "center", mt: 3 }}>
+          Redirigiendo a solicitudes en 3 segundos...
+        </Typography>
+      </Paper>
+    </Box>
   );
+};
 
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const validate = () => {
-    if (!form.clienteRef.trim()) {
-      setSnackbarSeverity("error");
-      setSnackbarMsg("Debes especificar el cliente (código o identidad).");
-      setSnackbarOpen(true);
-      return false;
-    }
-
-    if (!form.capitalInicial.trim() || Number(form.capitalInicial) <= 0) {
-      setSnackbarSeverity("error");
-      setSnackbarMsg("El monto del préstamo debe ser mayor a cero.");
-      setSnackbarOpen(true);
-      return false;
-    }
-
-    if (!form.plazoMeses.trim() || Number(form.plazoMeses) <= 0) {
-      setSnackbarSeverity("error");
-      setSnackbarMsg("El plazo en meses debe ser mayor a cero.");
-      setSnackbarOpen(true);
-      return false;
-    }
-
-    const tasa = Number(form.tasaInteresAnual);
-    if (isNaN(tasa) || tasa < 0) {
-      setSnackbarSeverity("error");
-      setSnackbarMsg("La tasa de interés debe ser un número válido.");
-      setSnackbarOpen(true);
-      return false;
-    }
-
-    return true;
-  };
-
-  // Cálculo de cuota estimada (anualidad simple)
-  const cuotaEstimada = useMemo(() => {
-    const capital = Number(form.capitalInicial);
-    const plazoMeses = Number(form.plazoMeses);
-    const tasaAnual = Number(form.tasaInteresAnual);
-
-    if (!capital || !plazoMeses) return null;
-
-    let pagosPorMes = 1;
-    if (form.frecuenciaPago === "QUINCENAL") pagosPorMes = 2;
-    if (form.frecuenciaPago === "SEMANAL") pagosPorMes = 4;
-    if (form.frecuenciaPago === "DIARIO") pagosPorMes = 30; // aproximado
-
-    const n = plazoMeses * pagosPorMes;
-    if (n <= 0) return null;
-
-    const tasaPeriodica = tasaAnual / 100 / 12 / pagosPorMes; // i por periodo
-
-    if (tasaPeriodica <= 0) {
-      // sin interés
-      return capital / n;
-    }
-
-    const i = tasaPeriodica;
-    const cuota = capital * (i / (1 - Math.pow(1 + i, -n)));
-
-    return cuota;
-  }, [
-    form.capitalInicial,
-    form.plazoMeses,
-    form.tasaInteresAnual,
-    form.frecuenciaPago,
-  ]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!validate()) return;
-
-    setSaving(true);
-
-    try {
-      // Armamos el payload que el backend deberá recibir
-      const payload = {
-        clienteRef: form.clienteRef, // luego puedes cambiar a clienteId real
-        producto: form.producto,
-        capitalInicial: Number(form.capitalInicial),
-        plazoMeses: Number(form.plazoMeses),
-        frecuenciaPago: form.frecuenciaPago,
-        tasaInteresAnual: Number(form.tasaInteresAnual),
-        fechaDesembolso: form.fechaDesembolso,
-        fechaPrimerPago: form.fechaPrimerPago || null,
-        cobradorRef: form.cobrador || null,
-        observaciones: form.observaciones || null,
-      };
-
-      await apiFetch("/financiamientos", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-
-      setSnackbarSeverity("success");
-      setSnackbarMsg("Préstamo registrado correctamente.");
-      setSnackbarOpen(true);
-      router.push("/prestamos");
-    } catch (err: any) {
-      console.error(err);
+export default NuevoPrestamoPage;
       setSnackbarSeverity("error");
       setSnackbarMsg("Error al registrar el préstamo.");
       setSnackbarOpen(true);
