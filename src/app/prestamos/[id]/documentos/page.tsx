@@ -32,40 +32,179 @@ const PrestamoDocumentosPage: React.FC = () => {
 			? `L. ${v.toLocaleString("es-HN", { minimumFractionDigits: 2 })}`
 			: "L. 0.00";
 
-	const formatDate = (iso?: string) =>
-		iso ? new Date(iso).toLocaleDateString("es-HN") : "-";
-
 	const handleGenerarPdf = async () => {
 		if (!data || generating) return;
 		setGenerating(true);
 		try {
-			const jsPDFModule = await import("jspdf");
-			const JsPdfCtor = (jsPDFModule as any).jsPDF || (jsPDFModule as any).default || (jsPDFModule as any);
-			const doc = new JsPdfCtor({ unit: "mm", format: "letter" });
+			const { jsPDF } = await import("jspdf");
+			const doc = new jsPDF({ unit: "mm", format: "letter" });
+			doc.setFont("times", "normal");
+			doc.setLineWidth(0.2);
 
-			const lineHeight = 6;
-			let y = 20;
+			const pageWidth = doc.internal.pageSize.getWidth();
+			const pageHeight = doc.internal.pageSize.getHeight();
+			const marginX = 22;
+			const marginTop = 18;
+			const marginBottom = 18;
+			const contentWidth = pageWidth - marginX * 2;
+			const bottomY = pageHeight - marginBottom;
+
+			const bodyFontSize = 10;
+			const titleFontSize = 11;
+			const lineHeight = 4.8;
+			const paragraphGap = 2;
+
+			let y = marginTop;
+
+			const newPage = () => {
+				doc.addPage();
+				y = marginTop;
+			};
+
+			const ensureLine = () => {
+				if (y + lineHeight > bottomY) newPage();
+			};
+
+			const wrapByWords = (text: string, firstWidth: number, nextWidth: number): string[] => {
+				doc.setFont("times", "normal");
+				doc.setFontSize(bodyFontSize);
+				const words = String(text)
+					.replace(/\s+/g, " ")
+					.trim()
+					.split(" ")
+					.filter(Boolean);
+				const lines: string[] = [];
+				let idx = 0;
+				let maxWidth = Math.max(10, firstWidth);
+				while (idx < words.length) {
+					let line = words[idx] ?? "";
+					idx += 1;
+					while (idx < words.length) {
+						const test = `${line} ${words[idx]}`;
+						if (doc.getTextWidth(test) <= maxWidth) {
+							line = test;
+							idx += 1;
+						} else {
+							break;
+						}
+					}
+					lines.push(line);
+					maxWidth = Math.max(10, nextWidth);
+				}
+				return lines.length ? lines : [""];
+			};
 
 			const addTitle = (text: string) => {
-				doc.setFontSize(14);
-				const lines = (doc as any).splitTextToSize(text, 170);
-				if (y + lines.length * lineHeight > 270) {
-					doc.addPage();
-					y = 20;
+				doc.setFont("times", "bold");
+				doc.setFontSize(titleFontSize);
+				const lines = doc.splitTextToSize(text, contentWidth);
+				for (const line of lines) {
+					ensureLine();
+					doc.text(line, pageWidth / 2, y, { align: "center" });
+					y += lineHeight;
 				}
-				doc.text(lines, 20, y);
-				y += lines.length * lineHeight + 4;
+				y += 1;
 			};
 
 			const addParagraph = (text: string) => {
-				doc.setFontSize(11);
-				const lines = (doc as any).splitTextToSize(text, 170);
-				if (y + lines.length * lineHeight > 270) {
-					doc.addPage();
-					y = 20;
+				const clauseMatch = String(text).match(/^([A-ZÁÉÍÓÚÑ ]{3,}):\s*(.*)$/);
+				if (clauseMatch) {
+					const labelText = `${clauseMatch[1]}: `;
+					const bodyText = clauseMatch[2] ?? "";
+
+					doc.setFont("times", "bold");
+					doc.setFontSize(bodyFontSize);
+					const labelWidth = doc.getTextWidth(labelText);
+					doc.setFont("times", "normal");
+					doc.setFontSize(bodyFontSize);
+					const lines = wrapByWords(bodyText, contentWidth - labelWidth, contentWidth);
+
+					ensureLine();
+					doc.setFont("times", "bold");
+					doc.text(labelText, marginX, y);
+					doc.setFont("times", "normal");
+					doc.text(lines[0] ?? "", marginX + labelWidth, y);
+					y += lineHeight;
+
+					for (let i = 1; i < lines.length; i += 1) {
+						ensureLine();
+						doc.text(lines[i] ?? "", marginX, y);
+						y += lineHeight;
+					}
+					y += paragraphGap;
+					return;
 				}
-				doc.text(lines, 20, y);
-				y += lines.length * lineHeight + 2;
+
+				doc.setFont("times", "normal");
+				doc.setFontSize(bodyFontSize);
+				const lines = doc.splitTextToSize(String(text), contentWidth);
+				for (const line of lines) {
+					ensureLine();
+					doc.text(line, marginX, y);
+					y += lineHeight;
+				}
+				y += paragraphGap;
+			};
+
+			const addFirmasContrato = () => {
+				const needed = 40;
+				if (y + needed > bottomY) newPage();
+
+				doc.setFont("times", "normal");
+				doc.setFontSize(bodyFontSize);
+
+				const lineW = 70;
+				const leftX = marginX + 10;
+				const rightX = pageWidth - marginX - 10 - lineW;
+				const midX = pageWidth / 2;
+
+				doc.line(leftX, y + 2, leftX + lineW, y + 2);
+				doc.line(rightX, y + 2, rightX + lineW, y + 2);
+				y += lineHeight + 1;
+
+				ensureLine();
+				doc.text("EL PRESTATARIO", leftX + 10, y);
+				doc.text("FIADOR SOLIDARIO", rightX + 10, y);
+				y += lineHeight;
+
+				ensureLine();
+				doc.text("ID:", leftX, y);
+				doc.text("ID:", rightX, y);
+				y += lineHeight;
+
+				y += 10;
+				if (y + lineHeight * 2 > bottomY) newPage();
+				doc.line(midX - 40, y + 2, midX + 40, y + 2);
+				y += lineHeight + 1;
+				ensureLine();
+				doc.text("GERENTE GENERAL", midX, y, { align: "center" });
+				y += lineHeight + paragraphGap;
+			};
+
+			const addFirmasPagare = () => {
+				const needed = 28;
+				if (y + needed > bottomY) newPage();
+
+				doc.setFont("times", "normal");
+				doc.setFontSize(bodyFontSize);
+
+				const lineW = 70;
+				const leftX = marginX + 10;
+				const rightX = pageWidth - marginX - 10 - lineW;
+
+				doc.line(leftX, y + 2, leftX + lineW, y + 2);
+				doc.line(rightX, y + 2, rightX + lineW, y + 2);
+				y += lineHeight + 1;
+
+				ensureLine();
+				doc.text("EL PRESTATARIO", leftX + 10, y);
+				doc.text("FIADOR SOLIDARIO", rightX + 10, y);
+				y += lineHeight;
+
+				ensureLine();
+				doc.text("ID:", leftX, y);
+				doc.text("ID:", rightX, y);
+				y += lineHeight + paragraphGap;
 			};
 
 			const nombreCliente = data.cliente?.nombreCompleto || "________________";
@@ -73,20 +212,9 @@ const PrestamoDocumentosPage: React.FC = () => {
 			const monto = data.capitalSolicitado ?? 0;
 			const montoStr = monto.toLocaleString("es-HN", { minimumFractionDigits: 2 });
 
-			// Portada
-			addTitle(`CONTRATO DE PRESTAMO CON GARANTIA MOBILIARIA SIN DESPLAZAMINETO`);
-			addParagraph(`POR L. ${montoStr}`);
-			addParagraph(`Cliente: ${nombreCliente}`);
-			addParagraph(`Número de préstamo: ${data.codigoPrestamo || ""}`);
-			addParagraph(`Plazo (cuotas): ${data.plazoCuotas}`);
-			addParagraph(`Tasa de interés: ${data.tasaInteresNombre || data.tasaInteresId || ""}`);
-			addParagraph(`Fecha desembolso: ${formatDate(data.fechaDesembolso)}`);
-			addParagraph(`Fecha vencimiento: ${formatDate(data.fechaVencimiento)}`);
-
-			// Página de contrato completo
-			doc.addPage();
-			y = 20;
+			// CONTRATO
 			addTitle("CONTRATO DE PRESTAMO CON GARANTIA MOBILIARIA SIN DESPLAZAMINETO");
+			addParagraph(`POR L. ${montoStr}`);
 
 			addParagraph(
 				`La Sociedad Mercantil denominada “CREDITO RAPIDO, SOCIEDAD DE RESPONSABILIDAD LIMITADA DE CAPITAL VARIABLE” o su abreviatura “RAPICREDIT, S DE R. L DE C.V”, representada por MARVIN EDGARDO HERNANANDEZ ESPAÑA, con documento nacional de identificación número 1804- 1998-01355, del domicilio de El Progreso, Yoro, con facultades suficientes para suscribir el presente contrato, en adelante se denominara “RAPICREDIT, S DE R. L DE C.V”, y el (la) señor (a) ${nombreCliente}, quien actúa en su condición personal y que en lo sucesivo se denominara EL PRESTATARIO, con documento nacional de identificación número ${identidadCliente}, mayor de edad, soltero, hondureño, y del domicilio ____________________, de la ciudad de __________, Departamento de __________, quien declara que en esta misma fecha recibe de “RAPICREDIT, S DE R. L DE C.V”, la cantidad de ${montoStr} LEMPIRAS (L. ${montoStr}), de acuerdo a las modalidades, plazos y condiciones que contiene este documento:`
@@ -204,14 +332,11 @@ const PrestamoDocumentosPage: React.FC = () => {
 				"VIGESIMO NOVENO: ACEPTACION. “RAPICREDIT, S DE R. L DE C.V”, y EL PRESTATARIO y FIADORES SOLIDARIOS manifiestan estar de acuerdo con todas y cada una de las cláusulas de este contrato y aceptan la totalidad de su contenido, comprometiéndose a su fiel cumplimiento, firmado para constancia con copias como sean en número las partes, en El Progreso departamento de Yoro a los _____ (  ) días del mes de __________ del año (202_). El cliente acepta y es consciente de haber recibido de parte de “RAPICREDIT, S DE R. L DE C.V”, la información completa y correspondiente a las deducciones consignadas en este contrato de préstamo en moneda nacional, así como la información sobre el debido proceso para interponer reclamos."
 			);
 
-			addParagraph("EL PRESTATARIO		FIADOR SOLIDARIO");
-			addParagraph("ID:		ID:");
-			addParagraph("GERENTE GENERAL");
+			addFirmasContrato();
 
 			// Página de PAGARE
-			doc.addPage();
-			y = 20;
-			addTitle("PAGARE SIN PROTESTO");
+			newPage();
+			addTitle(`PAGARE SIN PROTESTO POR L. ${montoStr}`);
 
 			addParagraph(
 				`Yo, ${nombreCliente}, soltero, mayor de edad con nacionalidad hondureña, vecino(a) de ____________________, Municipio de __________, Departamento de __________, en tránsito por esta ciudad, con Documento Nacional de Identificación número ${identidadCliente} denominado EL DEUDOR, por el presente documento manifestó que DEBO y PAGARE incondicionalmente a “RAPICREDIT, S DE R. L DE C.V”; representada por el señor MARVIN EDGARDO HERNANDEZ ESPAÑA su Gerente General, con documento nacional de identificación número dieciocho cero cuatro espacio un mil novecientos noventa y ocho espacio cero uno trescientos cincuenta y cinco (1804 1998 01355), la cantidad de ${montoStr} Lempiras (L. ${montoStr}.00) conforme al contrato privado de préstamo suscrito y al plan de pago firmado que especifica las fechas de cada cuota.`
@@ -229,8 +354,7 @@ const PrestamoDocumentosPage: React.FC = () => {
 				`Y junto a las partes contratantes de “RAPICREDIT, S DE R. L DE C.V”, firmamos este PAGARE SIN PROTESTO, en la ciudad de El Progreso a los _____ días de __________ del 20__.`
 			);
 
-			addParagraph("EL PRESTATARIO		FIADOR SOLIDARIO");
-			addParagraph("ID:		ID:");
+			addFirmasPagare();
 
 			doc.save(`Contrato_${data.codigoPrestamo || "prestamo"}.pdf`);
 		} catch (err) {
