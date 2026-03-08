@@ -14,6 +14,12 @@ import {
   MenuItem,
   Snackbar,
   Alert,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
 } from "@mui/material";
 import Link from "next/link";
 import { usePrestamoDetalle } from "../../../hooks/usePrestamoDetalle";
@@ -69,6 +75,49 @@ const PrestamoDetallePage: React.FC = () => {
   const [toastMessage, setToastMessage] = useState("");
   const [toastSeverity, setToastSeverity] = useState<"success" | "error" | "info" | "warning">("success");
 
+  type UnknownRecord = Record<string, unknown>;
+  const isRecord = (v: unknown): v is UnknownRecord => typeof v === "object" && v !== null;
+  const asNumber = (v: unknown): number | undefined => {
+    if (typeof v === "number") return Number.isFinite(v) ? v : undefined;
+    if (typeof v === "string" && v.trim() !== "") {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : undefined;
+    }
+    return undefined;
+  };
+
+  const amortizacionRows = useMemo(() => {
+    const raw = Array.isArray(data?.amortizacionPreview) ? data.amortizacionPreview : [];
+
+    return raw
+      .map((item, index) => {
+        if (!isRecord(item)) return null;
+
+        const cuotaNumero =
+          asNumber(item.numeroCuota) ??
+          asNumber(item.cuotaNumero) ??
+          asNumber(item.nroCuota) ??
+          index + 1;
+
+        const interes = asNumber(item.interes) ?? 0;
+        const capital = asNumber(item.capital) ?? 0;
+        const cuota = asNumber(item.cuota) ?? capital + interes;
+        const saldo = asNumber(item.saldoCapital) ?? asNumber(item.saldo) ?? 0;
+
+        return {
+          id: String(item._id ?? item.id ?? `cuota-${cuotaNumero}`),
+          cuotaNumero,
+          fechaProgramada: typeof item.fechaProgramada === "string" ? item.fechaProgramada : undefined,
+          interes,
+          capital,
+          cuota,
+          saldo,
+        };
+      })
+      .filter((x): x is { id: string; cuotaNumero: number; fechaProgramada?: string; interes: number; capital: number; cuota: number; saldo: number } => x !== null)
+      .sort((a, b) => a.cuotaNumero - b.cuotaNumero);
+  }, [data?.amortizacionPreview]);
+
   const formatMoney = (v?: number) =>
     v != null
       ? `L. ${v.toLocaleString("es-HN", { minimumFractionDigits: 2 })}`
@@ -76,6 +125,16 @@ const PrestamoDetallePage: React.FC = () => {
 
   const formatDate = (iso?: string) =>
     iso ? new Date(iso).toLocaleDateString("es-HN") : "-";
+
+  const tasaInteresLabel = useMemo(() => {
+    const porcentaje = selectedTasa?.porcentajeInteres ?? data?.tasaInteresAnual;
+    const nombre = selectedTasa?.nombre ?? data?.tasaInteresNombre;
+
+    if (nombre && porcentaje != null) return `${nombre} (${porcentaje}%)`;
+    if (nombre) return nombre;
+    if (porcentaje != null) return `${porcentaje}%`;
+    return "—";
+  }, [selectedTasa, data]);
 
   const renderEstadoChip = (estado?: string) => {
     const val = (estado || "").toUpperCase();
@@ -388,6 +447,20 @@ const PrestamoDetallePage: React.FC = () => {
                   </>
                 )}
               </Grid>
+
+              {!editMode && (
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <Typography variant="caption" color="text.secondary">Tasa de interés</Typography>
+                  <Typography>{tasaInteresLabel}</Typography>
+                </Grid>
+              )}
+
+              {!editMode && (
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <Typography variant="caption" color="text.secondary">Frecuencia de pago</Typography>
+                  <Typography>{data.frecuenciaPago || "—"}</Typography>
+                </Grid>
+              )}
               <Grid size={{ xs: 6 }}>
                 <Typography variant="caption" color="text.secondary">Cuota fija</Typography>
                 <Typography>{formatMoney(data.cuotaFija)}</Typography>
@@ -581,6 +654,47 @@ const PrestamoDetallePage: React.FC = () => {
           </Paper>
         </Grid>
       </Grid>
+
+      <Paper sx={{ p: 2 }}>
+        <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+          Tabla de amortización
+        </Typography>
+
+        <TableContainer>
+          <Table size="small" stickyHeader>
+            <TableHead>
+              <TableRow>
+                <TableCell>Cuota</TableCell>
+                <TableCell>Fecha</TableCell>
+                <TableCell>Interés</TableCell>
+                <TableCell>Capital</TableCell>
+                <TableCell>Cuota</TableCell>
+                <TableCell>Saldo</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {amortizacionRows.map((row) => (
+                <TableRow key={row.id}>
+                  <TableCell>{row.cuotaNumero}</TableCell>
+                  <TableCell>{formatDate(row.fechaProgramada)}</TableCell>
+                  <TableCell>{formatMoney(row.interes)}</TableCell>
+                  <TableCell>{formatMoney(row.capital)}</TableCell>
+                  <TableCell>{formatMoney(row.cuota)}</TableCell>
+                  <TableCell>{formatMoney(row.saldo)}</TableCell>
+                </TableRow>
+              ))}
+
+              {amortizacionRows.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} align="center">
+                    No hay cuotas de amortización para este préstamo.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Paper>
 
       <Snackbar
         open={toastOpen}

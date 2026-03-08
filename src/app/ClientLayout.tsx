@@ -1,10 +1,11 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useEffect } from "react";
 import { Box } from "@mui/material";
 import Sidebar from "../components/Sidebar";
 import Topbar from "../components/Topbar";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEmpleadoActual } from "../hooks/useEmpleadoActual";
 
 type Props = {
   children: ReactNode;
@@ -12,6 +13,23 @@ type Props = {
 
 export default function ClientLayout({ children }: Props) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { empleado, loading } = useEmpleadoActual();
+
+  const rolActual = (empleado?.rol || "").toLowerCase();
+  const isCaja = rolActual === "caja";
+  const cajaPathPermitido = pathname.startsWith("/cuadres");
+
+  useEffect(() => {
+    if (loading) return;
+    if (isCaja && !cajaPathPermitido) {
+      router.replace("/cuadres");
+    }
+  }, [cajaPathPermitido, isCaja, loading, router]);
+
+  if (!loading && isCaja && !cajaPathPermitido) {
+    return null;
+  }
 
   const noLayoutRoutes = ["/login"];
   const isComprobanteAbono = /^\/pagos(?:\/[^/]+)?\/comprobante\/?$/.test(pathname);

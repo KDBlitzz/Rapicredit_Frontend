@@ -171,7 +171,7 @@ const NuevoEmpleadoPage: React.FC = () => {
     'C002', // Ver perfil de cliente
     'C003', // Gestionar clientes
     // Créditos (subset amplio)
-    'f001', // Ver/Buscar créditos (nota: puede venir en minúscula)
+    'F001', // Ver/Buscar créditos (nota: puede venir en minúscula)
     'F002', // Gestionar créditos
     'F003', // Ver el perfil de un crédito
     'F004', // Calcular cuota de crédito
@@ -199,7 +199,7 @@ const NuevoEmpleadoPage: React.FC = () => {
     'C001', // Ver/Buscar cliente
     'C002', // Ver perfil de cliente
     // Créditos
-    'f001', // Ver/Buscar créditos
+    'F001', // Ver/Buscar créditos
     'F002', // Gestionar créditos
     'F003', // Ver el perfil de un crédito
     'F004', // Calcular cuota de crédito
@@ -210,6 +210,14 @@ const NuevoEmpleadoPage: React.FC = () => {
     'F009', // Transacción aplicar pago
     // Seguridad
     'S003', // Actualizar y editar permisos de mis usuarios (si no corresponde para asesor, se puede quitar)
+  ];
+
+  // Cajer@: permisos limitados a operaciones de caja
+  const cajaDefaults: string[] = [
+    'PERM-CAJA-001', // Ver pagos por asesor
+    'PERM-CAJA-002', // Ver pagos de todos los asesores
+    'PERM-CAJA-003', // Ver mora detallada
+    'PERM-CAJA-004', // Realizar cuadre de caja
   ];
 
   const applyRoleDefaults = (role: string) => {
@@ -226,6 +234,8 @@ const NuevoEmpleadoPage: React.FC = () => {
       setFormData((prev) => ({ ...prev, rol: role, permisos: supervisorDefaults }));
     } else if (r === 'asesor') {
       setFormData((prev) => ({ ...prev, rol: role, permisos: asesorDefaults }));
+    } else if (r === 'caja') {
+      setFormData((prev) => ({ ...prev, rol: role, permisos: cajaDefaults }));
     }
   };
 
@@ -423,6 +433,7 @@ const NuevoEmpleadoPage: React.FC = () => {
                 <MenuItem value="Asesor">Asesor</MenuItem>
                 <MenuItem value="Supervisor">Supervisor</MenuItem>
                 <MenuItem value="Gerente">Gerente</MenuItem>
+                <MenuItem value="Caja">Caja</MenuItem>
               </TextField>
             </Grid>
             {/* Permisos colocados inmediatamente debajo del rol para cohesión visual en mobile */}

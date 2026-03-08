@@ -88,8 +88,11 @@ export default function LoginPage() {
 
       showTemporaryMessage(setSuccessMessage, "¡Ingreso exitoso!", 800);
 
+      const rolActual = String(found["rol"] || "").trim().toLowerCase();
+      const destinoInicio = rolActual === "caja" ? "/cuadres" : "/dashboard";
+
       //  navegación suave (evita carreras y recargas)
-      router.push("/dashboard");
+      router.push(destinoInicio);
     } catch (err: unknown) {
       console.error("LOGIN FAIL:", err);
       const errorObj = err as { code?: unknown; message?: unknown };

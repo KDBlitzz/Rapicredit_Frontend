@@ -98,6 +98,7 @@ const PrestamosPage: React.FC = () => {
 
     if (val === "VIGENTE") color = "success";
     else if (val === "PENDIENTE") color = "warning";
+    else if (val === "MORA") color = "error";
     else if (val === "CERRADO") color = "default";
     else if (val === "RECHAZADO") color = "error";
 
@@ -148,6 +149,7 @@ const PrestamosPage: React.FC = () => {
             <MenuItem value="TODOS">Todos</MenuItem>
             <MenuItem value="VIGENTE">Vigentes</MenuItem>
             <MenuItem value="PENDIENTE">Pendientes</MenuItem>
+            <MenuItem value="MORA">En Mora</MenuItem>
             <MenuItem value="CERRADO">Cerrados</MenuItem>
             <MenuItem value="RECHAZADO">Rechazados</MenuItem>
           </TextField>
@@ -159,12 +161,12 @@ const PrestamosPage: React.FC = () => {
         >
           {canGestionarPrestamos && (
             <Button
-              variant="contained"
-              sx={{ borderRadius: 999, mt: { xs: 1, md: 0 } }}
+              variant="outlined"
+              sx={{ mt: { xs: 1, md: 0 } }}
               component={Link}
-              href="/solicitudes/nuevo"
+              href="/solicitudes"
             >
-              + Nueva solicitud
+              Ir a Solicitudes
             </Button>
           )}
         </Grid>

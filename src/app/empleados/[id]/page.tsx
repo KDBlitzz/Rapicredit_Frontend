@@ -166,6 +166,8 @@ const EmpleadoDetallePage: React.FC = () => {
         ? 'Supervisor'
         : rawRol.toLowerCase() === 'asesor'
         ? 'Asesor'
+        : rawRol.toLowerCase() === 'caja'
+        ? 'Caja'
         : rawRol
       : '';
 
@@ -200,6 +202,12 @@ const EmpleadoDetallePage: React.FC = () => {
       'f001','F002','F003','F004','F005','F006','F007','F008','F009',
       'S003',
     ];
+    const cajaDefaults: string[] = [
+      'PERM-CAJA-001', // Ver pagos por asesor
+      'PERM-CAJA-002', // Ver pagos de todos los asesores
+      'PERM-CAJA-003', // Ver mora detallada
+      'PERM-CAJA-004', // Realizar cuadre de caja
+    ];
 
     if (r === 'gerente') {
       setFormData((prev) => ({
@@ -218,6 +226,12 @@ const EmpleadoDetallePage: React.FC = () => {
         ...prev,
         rol: role,
         permisos: asesorDefaults,
+      }));
+    } else if (r === 'caja') {
+      setFormData((prev) => ({
+        ...prev,
+        rol: role,
+        permisos: cajaDefaults,
       }));
     }
   };
@@ -446,6 +460,7 @@ const EmpleadoDetallePage: React.FC = () => {
               <MenuItem value="Asesor">Asesor</MenuItem>
               <MenuItem value="Supervisor">Supervisor</MenuItem>
               <MenuItem value="Gerente">Gerente</MenuItem>
+              <MenuItem value="Caja">Caja</MenuItem>
             </TextField>
           </Grid>
           <Grid size={{ xs: 12, md: 6 }}>

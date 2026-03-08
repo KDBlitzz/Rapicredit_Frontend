@@ -32,7 +32,7 @@ import { useSolicitudes, EstadoSolicitudFiltro } from '../../hooks/useSolicitude
 import { apiFetch } from '../../lib/api';
 import { usePermisos } from "../../hooks/usePermisos";
 
-type SolicitudAccion = 'REVISION';
+type SolicitudAccion = 'PRE_APROBAR' | 'PRE_RECHAZAR';
 
 const SolicitudesPage: React.FC = () => {
   const router = useRouter();
@@ -76,7 +76,8 @@ const SolicitudesPage: React.FC = () => {
     let color: 'default' | 'success' | 'warning' | 'error' | 'info' = 'info';
 
     if (val === 'REGISTRADA') color = 'info';
-    else if (val === 'EN_REVISION') color = 'warning';
+    else if (val === 'PRE-APROBADA') color = 'warning';
+    else if (val === 'PRE-RECHAZADA') color = 'warning';
     else if (val === 'APROBADA') color = 'success';
     else if (val === 'RECHAZADA') color = 'error';
 
@@ -101,7 +102,8 @@ const SolicitudesPage: React.FC = () => {
   };
 
   const getConfirmMessage = (a: SolicitudAccion | null) => {
-    if (a === 'REVISION') return '¿Mandar esta solicitud a revisión?';
+    if (a === 'PRE_APROBAR') return '¿Pre-aprobar esta solicitud?';
+    if (a === 'PRE_RECHAZAR') return '¿Pre-rechazar esta solicitud?';
     return '';
   };
 
@@ -128,10 +130,13 @@ const SolicitudesPage: React.FC = () => {
 
     setActionLoading(true);
     try {
-      if (confirmAction === 'REVISION') {
-        await apiFetch(`/solicitudes/${encodeURIComponent(targetSolicitudCodigo)}/status`, {
-          method: 'PATCH',
-          body: JSON.stringify({ estadoSolicitud: 'EN_REVISION' }),
+      if (confirmAction === 'PRE_APROBAR') {
+        await apiFetch(`/solicitudes/preaprobar/${encodeURIComponent(targetSolicitudCodigo)}`, {
+          method: 'PUT',
+        });
+      } else if (confirmAction === 'PRE_RECHAZAR') {
+        await apiFetch(`/solicitudes/prerechazar/${encodeURIComponent(targetSolicitudCodigo)}`, {
+          method: 'PUT',
         });
       }
 
@@ -191,7 +196,7 @@ const SolicitudesPage: React.FC = () => {
               component={Link}
               href="/solicitudes/aprobacion"
             >
-              Pre-aprobación
+              Revisión
             </Button>
           )}
         </Grid>
@@ -282,18 +287,36 @@ const SolicitudesPage: React.FC = () => {
                         </Tooltip>
 
                         {canGestionarFlujoSolicitudes && (
-                          <Tooltip title="Mandar a revisión">
-                            <span>
-                              <IconButton
-                                size="small"
-                                color="warning"
-                                onClick={() => openConfirm('REVISION', s.id, s.codigoSolicitud)}
-                                disabled={actionLoading}
-                              >
-                                <Box component="span" sx={{ fontSize: 16, lineHeight: 1 }}>📌</Box>
-                              </IconButton>
-                            </span>
-                          </Tooltip>
+                          <>
+                            <Tooltip title="Pre-aprobar solicitud">
+                              <span>
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  color="success"
+                                  onClick={() => openConfirm('PRE_APROBAR', s.id, s.codigoSolicitud)}
+                                  disabled={actionLoading}
+                                  sx={{ minWidth: '40px', fontSize: '0.75rem' }}
+                                >
+                                  Pre-Aprobar
+                                </Button>
+                              </span>
+                            </Tooltip>
+                            <Tooltip title="Pre-rechazar solicitud">
+                              <span>
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  color="error"
+                                  onClick={() => openConfirm('PRE_RECHAZAR', s.id, s.codigoSolicitud)}
+                                  disabled={actionLoading}
+                                  sx={{ minWidth: '40px', fontSize: '0.75rem' }}
+                                >
+                                  Pre-Rechazar
+                                </Button>
+                              </span>
+                            </Tooltip>
+                          </>
                         )}
                       </Box>
                     </TableCell>
@@ -331,7 +354,7 @@ const SolicitudesPage: React.FC = () => {
             onClick={runAction}
             variant="contained"
             disabled={actionLoading}
-            color="warning"
+            color={confirmAction === 'PRE_APROBAR' ? 'success' : 'error'}
           >
             {actionLoading ? 'Procesando…' : 'Confirmar'}
           </Button>
