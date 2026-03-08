@@ -57,6 +57,11 @@ const NuevoPagoPage: React.FC = () => {
 
   const canAplicarPago = hasPermiso("F005");
 
+  // Log para verificar que el archivo actualizado se cargó
+  console.log("🔵 NuevoPagoPage cargado - versión con logs de depuración");
+  console.log("👤 Empleado actual:", empleado);
+  console.log("📝 Préstamos asignados:", prestamosAsignados);
+
   useEffect(() => {
     setForm((prev) => {
       if (!prev.codigoPrestamo) return prev;
@@ -106,43 +111,86 @@ const NuevoPagoPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("🚀 handleSubmit iniciado");
+    console.log("📋 Form data:", form);
 
     if (!form.codigoPrestamo || !form.monto || !form.fecha) {
+      console.log("❌ Validación 1 FALLÓ: Campos requeridos faltantes");
       setSnackbarMsg("Por favor completa los campos requeridos");
       setSnackbarSeverity("error");
       setSnackbarOpen(true);
       return;
     }
+    console.log("✅ Validación 1 OK: Campos requeridos presentes");
 
     const monto = Number(form.monto);
     if (Number.isNaN(monto) || monto < 0) {
+      console.log("❌ Validación 2 FALLÓ: Monto inválido o negativo", monto);
       setSnackbarMsg("El monto no puede ser negativo");
       setSnackbarSeverity("error");
       setSnackbarOpen(true);
       return;
     }
+    console.log("✅ Validación 2 OK: Monto válido", monto);
 
     setSaving(true);
     try {
       const selected = prestamosAsignados.find((p) => p.codigoPrestamo === form.codigoPrestamo);
+      console.log("🔍 Préstamo seleccionado:", selected);
       if (!selected?.id) {
+        console.log("❌ Validación 3 FALLÓ: Préstamo no encontrado o sin ID");
         setSnackbarMsg("Selecciona un préstamo válido para registrar el pago");
         setSnackbarSeverity("error");
         setSnackbarOpen(true);
         return;
       }
+      console.log("✅ Validación 3 OK: Préstamo encontrado con ID", selected.id);
 
-      await apiFetch("/pagos", {
+      console.log("🔍 prestamoDetalle completo:", prestamoDetalle);
+      const clienteId = prestamoDetalle?.cliente?.id || prestamoDetalle?.clienteId;
+      console.log("🔍 clienteId extraído:", clienteId);
+      if (!clienteId) {
+        console.log("❌ Validación 4 FALLÓ: ClienteId no encontrado");
+        setSnackbarMsg("No se pudo determinar el cliente del préstamo seleccionado");
+        setSnackbarSeverity("error");
+        setSnackbarOpen(true);
+        return;
+      }
+      console.log("✅ Validación 4 OK: ClienteId encontrado", clienteId);
+
+      console.log("🔍 empleado completo:", empleado);
+      const cobradorId = empleado?._id;
+      console.log("🔍 cobradorId extraído:", cobradorId);
+      if (!cobradorId) {
+        console.log("❌ Validación 5 FALLÓ: CobradorId no encontrado");
+        setSnackbarMsg("No se pudo determinar el cobrador actual para registrar el pago");
+        setSnackbarSeverity("error");
+        setSnackbarOpen(true);
+        return;
+      }
+      console.log("✅ Validación 5 OK: CobradorId encontrado", cobradorId);
+
+      const payload = {
+        prestamoId: selected.id,
+        clienteId,
+        cobradorId,
+        montoPago: monto,
+        fechaPago: form.fecha,
+        metodoPago: form.medioPago,
+        observaciones: form.observaciones || undefined,
+      };
+
+      console.log("🔥 TODAS LAS VALIDACIONES PASARON");
+      console.log("📦 Payload construido:", payload);
+      console.log("📡 URL completa:", `/prestamos/id/${selected.id}/aplicar-pago`);
+      
+      console.log("⏳ Iniciando apiFetch...");
+      await apiFetch(`/prestamos/id/${selected.id}/aplicar-pago`, {
         method: "POST",
-        body: JSON.stringify({
-          financiamientoId: selected.id,
-          codigoFinanciamiento: form.codigoPrestamo,
-          monto,
-          fechaPago: form.fecha,
-          metodoPago: form.medioPago,
-          observaciones: form.observaciones || undefined,
-        }),
+        body: JSON.stringify(payload),
       });
+      console.log("✅ apiFetch completado exitosamente");
+      
 
       // Comprobante (por ahora: en duro / local). No depende de que el backend devuelva un ID.
       try {
@@ -187,12 +235,14 @@ const NuevoPagoPage: React.FC = () => {
 
       router.push("/pagos/comprobante");
     } catch (e: unknown) {
+      console.log("💥 ERROR capturado en handleSubmit:", e);
       const msg =
         e instanceof Error ? e.message : "No se pudo registrar el abono";
       setSnackbarMsg(msg);
       setSnackbarSeverity("error");
       setSnackbarOpen(true);
     } finally {
+      console.log("🏁 handleSubmit finalizado");
       setSaving(false);
     }
   };

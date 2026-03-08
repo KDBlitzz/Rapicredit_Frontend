@@ -147,12 +147,25 @@ export default function PagosPage() {
         return;
       }
 
-      await apiFetch('/pagos', {
+      const clienteId = prestamoDetalle?.cliente?.id || prestamoDetalle?.clienteId;
+      if (!clienteId) {
+        setFormError('No se pudo determinar el cliente del préstamo seleccionado');
+        return;
+      }
+
+      const cobradorId = empleado?._id;
+      if (!cobradorId) {
+        setFormError('No se pudo determinar el cobrador actual para registrar el pago');
+        return;
+      }
+
+      await apiFetch(`/prestamos/id/${selected.id}/aplicar-pago`, {
         method: 'POST',
         body: JSON.stringify({
-          financiamientoId: selected.id,
-          codigoFinanciamiento: form.codigoPrestamo,
-          monto,
+          prestamoId: selected.id,
+          clienteId,
+          cobradorId,
+          montoPago: monto,
           fechaPago: form.fecha,
           metodoPago: form.medioPago,
           observaciones: form.observaciones || undefined,
