@@ -95,8 +95,9 @@ const NuevoPagoPage: React.FC = () => {
     }
 
     if (name === "monto") {
-      const onlyDigits = value.replace(/\D/g, "");
-      setForm((prev) => ({ ...prev, monto: onlyDigits }));
+      const normalized = value.replace(",", ".");
+      if (normalized !== "" && !/^\d*\.?\d{0,2}$/.test(normalized)) return;
+      setForm((prev) => ({ ...prev, monto: normalized }));
       return;
     }
 
@@ -114,8 +115,8 @@ const NuevoPagoPage: React.FC = () => {
     }
 
     const monto = Number(form.monto);
-    if (Number.isNaN(monto) || monto <= 0 || !Number.isInteger(monto) || monto % 100 !== 0) {
-      setSnackbarMsg("El monto debe ser un número entero en intervalos de 100 (100, 200, 300...)");
+    if (Number.isNaN(monto) || monto < 0) {
+      setSnackbarMsg("El monto no puede ser negativo");
       setSnackbarSeverity("error");
       setSnackbarOpen(true);
       return;
@@ -261,9 +262,9 @@ const NuevoPagoPage: React.FC = () => {
                     onChange={handleChange}
                     size="small"
                     disabled={saving}
-                    inputProps={{ step: "100", min: "100" }}
-                    placeholder="100"
-                    helperText="Solo enteros múltiplos de 100"
+                    inputProps={{ step: "0.01", min: "0" }}
+                    placeholder="0.00"
+                    helperText="Permite decimales. No se permiten montos negativos."
                   />
                 </Grid>
 

@@ -10,6 +10,8 @@ export interface PrestamoDetalle {
   clienteId?: string;
   tasaInteresId?: string;
   tasaInteresNombre?: string;
+  tasaInteresAnual?: number;
+  tasaMoraAnual?: number;
   frecuenciaPago?: string;
   capitalSolicitado: number;
   saldoCapital?: number;
@@ -126,6 +128,8 @@ export function usePrestamoDetalle(id: string, reloadKey: number = 0) {
             if (!isRecord(raw)) return undefined;
             return asString(raw["nombre"]) ?? undefined;
           })(),
+          tasaInteresAnual: asNumber(getNested(res, ["tasaInteresAnual"])) ?? undefined,
+          tasaMoraAnual: asNumber(getNested(res, ["tasaMoraAnual"])) ?? undefined,
           frecuenciaPago: asString(getNested(res, ["frecuenciaPago"])) ?? undefined,
           capitalSolicitado: asNumber(getNested(res, ["capitalSolicitado"])) ?? 0,
           saldoCapital: asNumber(getNested(res, ["saldoCapital"])) ?? undefined,

@@ -171,7 +171,7 @@ const NuevoEmpleadoPage: React.FC = () => {
     'C002', // Ver perfil de cliente
     'C003', // Gestionar clientes
     // Créditos (subset amplio)
-    'f001', // Ver/Buscar créditos (nota: puede venir en minúscula)
+    'F001', // Ver/Buscar créditos (nota: puede venir en minúscula)
     'F002', // Gestionar créditos
     'F003', // Ver el perfil de un crédito
     'F004', // Calcular cuota de crédito
@@ -199,7 +199,7 @@ const NuevoEmpleadoPage: React.FC = () => {
     'C001', // Ver/Buscar cliente
     'C002', // Ver perfil de cliente
     // Créditos
-    'f001', // Ver/Buscar créditos
+    'F001', // Ver/Buscar créditos
     'F002', // Gestionar créditos
     'F003', // Ver el perfil de un crédito
     'F004', // Calcular cuota de crédito

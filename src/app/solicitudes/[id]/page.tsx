@@ -66,6 +66,7 @@ interface SolicitudDetalle {
   frecuenciaPago?: string | null;
   tasaInteresId?: string | null;
   tasaInteresNombre?: string | null;
+  tasaInteresPorcentaje?: number | null;
   fotosNegocio?: string[] | null;
   datosNegocio?: UnknownRecord | null;
 }
@@ -138,6 +139,16 @@ const SolicitudDetallePage: React.FC = () => {
     );
   };
 
+  const tasaInteresLabel = useMemo(() => {
+    const nombre = selectedTasa?.nombre ?? data?.tasaInteresNombre;
+    const porcentaje = selectedTasa?.porcentajeInteres ?? data?.tasaInteresPorcentaje;
+
+    if (nombre && porcentaje != null) return `${nombre} (${porcentaje}%)`;
+    if (nombre) return nombre;
+    if (porcentaje != null) return `${porcentaje}%`;
+    return '—';
+  }, [selectedTasa, data]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -189,6 +200,14 @@ const SolicitudDetallePage: React.FC = () => {
             if (!isRecord(raw)) return null;
             return asString(raw['nombre']) ?? null;
           })(),
+          tasaInteresPorcentaje:
+            asNumber(res['tasaInteres']) ??
+            asNumber(res['tasaInteresAnual']) ??
+            (() => {
+              const raw = res['tasaInteresId'] ?? res['tasInteresId'];
+              if (!isRecord(raw)) return null;
+              return asNumber(raw['porcentajeInteres']) ?? null;
+            })(),
           datosNegocio: isRecord(res['datosNegocio']) ? (res['datosNegocio'] as UnknownRecord) : null,
           fotosNegocio: (() => {
             const dn = res['datosNegocio'];
@@ -617,6 +636,22 @@ const SolicitudDetallePage: React.FC = () => {
                 )}
               </Grid>
               <Grid size={{ xs: 12 }}>
+                              {!editMode && (
+                                <Grid size={{ xs: 12, sm: 6 }}>
+                                  <Typography variant="caption" color="text.secondary">
+                                    Tasa de interés
+                                  </Typography>
+                                  <Typography>{tasaInteresLabel}</Typography>
+                                </Grid>
+                              )}
+                              {!editMode && (
+                                <Grid size={{ xs: 12, sm: 6 }}>
+                                  <Typography variant="caption" color="text.secondary">
+                                    Frecuencia de pago
+                                  </Typography>
+                                  <Typography>{data.frecuenciaPago || '—'}</Typography>
+                                </Grid>
+                              )}
                 <Typography variant="caption" color="text.secondary">
                   Observaciones
                 </Typography>
