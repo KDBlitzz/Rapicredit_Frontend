@@ -18,10 +18,18 @@ import {
 import Link from "next/link";
 import { useDashboard } from "../../hooks/useDashboard";
 import { usePrestamos } from "../../hooks/usePrestamos";
+import { useEmpleadoActual } from "../../hooks/useEmpleadoActual";
 
 const DashboardPage: React.FC = () => {
   const { data, loading, error } = useDashboard();
   const prestamosAll = usePrestamos({ busqueda: "", estado: "TODOS" });
+  const { empleado } = useEmpleadoActual();
+
+  const rolActual = (empleado?.rol || "").toLowerCase();
+  const isGerenteOSupervisor =
+    rolActual.includes("gerente") || rolActual.includes("supervisor");
+  const isAsesorRestringido =
+    rolActual.includes("asesor") && !isGerenteOSupervisor;
 
   const { prestamosNuevosDelMes, prestamosCuota20 } = useMemo(() => {
     const now = new Date();
@@ -95,6 +103,8 @@ const DashboardPage: React.FC = () => {
     prestamosVencenHoy,
     cantidadPrestamosNuevosMes,
     prestamosNuevosMes,
+    cantidadRenovacionesMes,
+    renovacionesMes,
   } = data;
 
   return (
@@ -150,19 +160,41 @@ const DashboardPage: React.FC = () => {
           </Paper>
         </Grid>
 
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="body2" color="text.secondary">
-              Monto total colocado
-            </Typography>
-            <Typography variant="h6" sx={{ mt: 0.5 }}>
-              {formatMoney(montoTotalColocado)}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Suma de capital inicial en cartera
-            </Typography>
-          </Paper>
-        </Grid>
+        {!isAsesorRestringido && (
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <Paper sx={{ p: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                Monto total colocado
+              </Typography>
+              <Typography variant="h6" sx={{ mt: 0.5 }}>
+                {formatMoney(montoTotalColocado)}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Suma de capital inicial en cartera
+              </Typography>
+            </Paper>
+          </Grid>
+        )}
+
+        {isAsesorRestringido && (
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <Paper sx={{ p: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                Renovaciones del mes
+              </Typography>
+              <Typography variant="h6" sx={{ mt: 0.5 }}>
+                {typeof cantidadRenovacionesMes === "number" && !Number.isNaN(cantidadRenovacionesMes)
+                  ? cantidadRenovacionesMes
+                  : typeof renovacionesMes === "number" && !Number.isNaN(renovacionesMes)
+                  ? renovacionesMes
+                  : 0}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Total de renovaciones registradas en el mes actual
+              </Typography>
+            </Paper>
+          </Grid>
+        )}
 
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Paper sx={{ p: 2 }}>

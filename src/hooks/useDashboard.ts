@@ -12,6 +12,8 @@ export interface DashboardResumen {
   prestamosPendientesCobrarHoy: number;
   cantidadPrestamosNuevosMes?: number;
   prestamosNuevosMes?: number;
+  cantidadRenovacionesMes?: number;
+  renovacionesMes?: number;
   distribucionEstados: {
     VIGENTE: number;
     EN_MORA: number;
@@ -163,6 +165,10 @@ function normalizeDashboardResumen(raw: unknown): DashboardResumen {
     prestamosPendientesCobrarHoy,
     cantidadPrestamosNuevosMes: toNumber(payload["cantidadPrestamosNuevosMes"], 0),
     prestamosNuevosMes: toNumber(payload["prestamosNuevosMes"], 0),
+    cantidadRenovacionesMes: toNumber(payload["cantidadRenovacionesMes"], 0),
+    renovacionesMes: Array.isArray(payload["renovacionesMes"])
+      ? payload["renovacionesMes"].length
+      : toNumber(payload["renovacionesMes"], 0),
     distribucionEstados,
     prestamosRecientes,
     pagosHoy,
