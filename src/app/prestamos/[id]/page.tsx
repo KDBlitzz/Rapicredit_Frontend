@@ -114,7 +114,17 @@ const PrestamoDetallePage: React.FC = () => {
           saldo,
         };
       })
-      .filter((x): x is { id: string; cuotaNumero: number; fechaProgramada?: string; interes: number; capital: number; cuota: number; saldo: number } => x !== null)
+      .filter(
+        (x): x is {
+          id: string;
+          cuotaNumero: number;
+          fechaProgramada: string | undefined;
+          interes: number;
+          capital: number;
+          cuota: number;
+          saldo: number;
+        } => x !== null
+      )
       .sort((a, b) => a.cuotaNumero - b.cuotaNumero);
   }, [data?.amortizacionPreview]);
 
