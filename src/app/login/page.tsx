@@ -6,13 +6,12 @@ import {
   Button, Stack, Alert, IconButton, InputAdornment, Link
 } from "@mui/material";
 import { Visibility, VisibilityOff } from "@mui/icons-material";
-import { signInWithEmailAndPassword, signOut } from "firebase/auth";
-import { auth } from "../../lib/firebase";
 import { useRouter } from "next/navigation";
-import { apiFetch } from "../../lib/api";
+import { useAuth } from "../../context/AuthContext";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { login, logout } = useAuth();
 
   const [user, setUser] = useState("");
   const [pass, setPass] = useState("");
@@ -36,59 +35,20 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      await signInWithEmailAndPassword(auth, user.trim(), pass);
+      const empleado = await login(user.trim(), pass);
 
-      //  fuerza token refresh inmediato
-      await auth.currentUser?.getIdToken(true);
-
-      // Validación de estado del empleado (bloquear INACTIVO)
-      const firebaseUser = auth.currentUser;
-      if (!firebaseUser) {
-        throw new Error("No se pudo completar el inicio de sesión");
-      }
-
-      const raw = await apiFetch<unknown>("/empleados/");
-      const list: unknown[] = (() => {
-        if (Array.isArray(raw)) return raw;
-        if (raw && typeof raw === "object") {
-          const obj = raw as Record<string, unknown>;
-          const users = obj["users"];
-          if (Array.isArray(users)) return users;
+      // Si el backend incluye estado y viene inactivo, bloqueamos.
+      if (Object.prototype.hasOwnProperty.call(empleado, "estado")) {
+        const estadoVal = (empleado as any).estado;
+        if (estadoVal === false) {
+          await logout();
+          throw new Error("Empleado inactivo");
         }
-        return [];
-      })();
-
-      const found = list.find((e) => {
-        if (!e || typeof e !== "object") return false;
-        const rec = e as Record<string, unknown>;
-        const uid = typeof rec["uid"] === "string" ? rec["uid"] : undefined;
-        const email = typeof rec["email"] === "string" ? rec["email"] : undefined;
-        if (uid && uid === firebaseUser.uid) return true;
-        if (email && firebaseUser.email && email.toLowerCase() === firebaseUser.email.toLowerCase()) return true;
-        return false;
-      }) as Record<string, unknown> | undefined;
-
-      if (!found) {
-        await signOut(auth);
-        throw new Error("No se encontró información del empleado");
-      }
-
-      const estadoVal = found["estado"];
-      const isActivo =
-        typeof estadoVal === "boolean"
-          ? estadoVal === true
-          : typeof estadoVal === "string"
-          ? estadoVal.trim().toUpperCase() === "ACTIVO"
-          : false;
-
-      if (!isActivo) {
-        await signOut(auth);
-        throw new Error("Empleado inactivo");
       }
 
       showTemporaryMessage(setSuccessMessage, "¡Ingreso exitoso!", 800);
 
-      const rolActual = String(found["rol"] || "").trim().toLowerCase();
+      const rolActual = String((empleado as any).rol || "").trim().toLowerCase();
       const destinoInicio = rolActual === "caja" ? "/cuadres" : "/dashboard";
 
       //  navegación suave (evita carreras y recargas)
@@ -111,7 +71,7 @@ export default function LoginPage() {
         return;
       }
 
-      showTemporaryMessage(setErrorMessage, "Credenciales incorrectas");
+      showTemporaryMessage(setErrorMessage, rawMsg || "No se pudo iniciar sesión");
     } finally {
       setLoading(false);
     }

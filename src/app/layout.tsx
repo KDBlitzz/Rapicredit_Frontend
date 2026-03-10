@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import ClientLayout from "./ClientLayout";
 import ThemeRegistry from "./ThemeRegistry";
+import { AuthProvider } from "../context/AuthContext";
 
 export const metadata: Metadata = {
   title: "RapiCredit · Panel de administración",
@@ -17,7 +18,9 @@ export default function RootLayout({
     <html lang="es">
       <body>
         <ThemeRegistry>
-          <ClientLayout>{children}</ClientLayout>
+          <AuthProvider>
+            <ClientLayout>{children}</ClientLayout>
+          </AuthProvider>
         </ThemeRegistry>
       </body>
     </html>

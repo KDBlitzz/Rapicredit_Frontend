@@ -21,9 +21,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import ExpandLess from "@mui/icons-material/ExpandLess";
 import ExpandMore from "@mui/icons-material/ExpandMore";
-import { signOut } from "firebase/auth";
-import { auth } from "../lib/firebase";
 import { useEmpleadoActual } from "../hooks/useEmpleadoActual";
+import { useAuth } from "../context/AuthContext";
 
 type NavSubItem = {
   label: string;
@@ -105,6 +104,7 @@ export default function Sidebar() {
   const [openSubmenu, setOpenSubmenu] = useState<string | null>(null);
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const { empleado } = useEmpleadoActual();
+  const { logout } = useAuth();
 
   const permisosActuales = (empleado?.permisos || []).map((p) => p.toUpperCase());
   const rolActual = (empleado?.rol || "").toLowerCase();
@@ -155,7 +155,7 @@ export default function Sidebar() {
   const handleConfirmLogout = async () => {
     setLogoutDialogOpen(false);
     try {
-      await signOut(auth);
+      await logout();
     } finally {
       router.replace("/login");
     }

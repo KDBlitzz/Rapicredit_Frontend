@@ -14,26 +14,42 @@ type Props = {
 export default function ClientLayout({ children }: Props) {
   const pathname = usePathname();
   const router = useRouter();
-  const { empleado, loading } = useEmpleadoActual();
+  const { empleado, loading, firebaseUser } = useEmpleadoActual();
+
+  const noLayoutRoutes = ["/login"];
+  const isComprobanteAbono = /^\/pagos(?:\/[^/]+)?\/comprobante\/?$/.test(pathname);
+  const isPublicRoute = noLayoutRoutes.includes(pathname) || isComprobanteAbono;
+
+  useEffect(() => {
+    if (isPublicRoute) return;
+    if (loading) return;
+    if (!firebaseUser) {
+      router.replace("/login");
+    }
+  }, [firebaseUser, isPublicRoute, loading, router]);
 
   const rolActual = (empleado?.rol || "").toLowerCase();
   const isCaja = rolActual === "caja";
   const cajaPathPermitido = pathname.startsWith("/cuadres");
 
   useEffect(() => {
+    if (isPublicRoute) return;
     if (loading) return;
     if (isCaja && !cajaPathPermitido) {
       router.replace("/cuadres");
     }
-  }, [cajaPathPermitido, isCaja, loading, router]);
+  }, [cajaPathPermitido, isCaja, isPublicRoute, loading, router]);
+
+  if (isPublicRoute) return <>{children}</>;
+
+  // Mientras redirigimos a /login
+  if (!loading && !firebaseUser) return null;
 
   if (!loading && isCaja && !cajaPathPermitido) {
     return null;
   }
 
-  const noLayoutRoutes = ["/login"];
-  const isComprobanteAbono = /^\/pagos(?:\/[^/]+)?\/comprobante\/?$/.test(pathname);
-  if (noLayoutRoutes.includes(pathname) || isComprobanteAbono) return <>{children}</>;
+  if (loading) return null;
 
   return (
     <Box

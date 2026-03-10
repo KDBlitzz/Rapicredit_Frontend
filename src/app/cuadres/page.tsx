@@ -22,7 +22,7 @@ import {
   Alert,
   CircularProgress,
 } from "@mui/material";
-import { useCobradores } from "../../hooks/useCobradores";
+import { alpha } from "@mui/material/styles";
 import {
   usePagosPorAsesor,
   usePagos,
@@ -31,10 +31,17 @@ import {
   useGastosCaja,
   useDesembolsosCaja,
 } from "../../hooks/useCaja";
-import { apiFetch } from "../../lib/api";
+import { empleadosApi, type EmpleadoMongo } from "../../services/empleadosApi";
+import { gastosApi } from "../../services/gastosApi";
+import { parseDateInput, toOffsetISOString } from "../../lib/dateRange";
+import { useEmpleadoActual } from "../../hooks/useEmpleadoActual";
 
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 const tabs = [
@@ -79,7 +86,56 @@ export default function CuadresPage() {
     referencia: "",
   });
 
-  const { data: cobradores } = useCobradores({ busqueda: "", estado: "TODOS", zona: "" });
+  const { empleado: empleadoActual } = useEmpleadoActual();
+
+  const [asesores, setAsesores] = useState<EmpleadoMongo[]>([]);
+  const [loadingAsesores, setLoadingAsesores] = useState(false);
+  const [errorAsesores, setErrorAsesores] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      setLoadingAsesores(true);
+      setErrorAsesores(null);
+      try {
+        const res = await empleadosApi.list({ includeInactivos: false });
+        const users = Array.isArray(res.users) ? res.users : [];
+
+        const byRol = users.filter((u) => {
+          const rol = String(u.rol || "").trim().toLowerCase();
+          return rol === "asesor" || rol === "cobrador";
+        });
+        const finalList = byRol.length ? byRol : users;
+
+        finalList.sort((a, b) =>
+          String(a.nombreCompleto || a.usuario || a.codigoUsuario || "").localeCompare(
+            String(b.nombreCompleto || b.usuario || b.codigoUsuario || ""),
+            "es"
+          )
+        );
+
+        if (!cancelled) setAsesores(finalList);
+      } catch (err: unknown) {
+        if (!cancelled) {
+          setAsesores([]);
+          setErrorAsesores(err instanceof Error ? err.message : "Error cargando asesores");
+        }
+      } finally {
+        if (!cancelled) setLoadingAsesores(false);
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectedAsesor = useMemo(() => {
+    if (asesorId === "TODOS") return null;
+    return asesores.find((a) => a._id === asesorId) || null;
+  }, [asesorId, asesores]);
 
   // Hook para pagos por asesor específico
   const cobradorIdActual = asesorId === "TODOS" ? undefined : (asesorId as string);
@@ -95,15 +151,17 @@ export default function CuadresPage() {
     useCuadre(fechaInicio, fechaFin, refreshKey);
 
   // Hooks para gastos y desembolsos
+  const codigoCobradorIdActual = asesorId === "TODOS" ? undefined : (selectedAsesor?.codigoUsuario || undefined);
+
   const { data: gastosData, loading: loadingGastos, error: errorGastos } = useGastosCaja(
-    cobradorIdActual,
+    codigoCobradorIdActual,
     fechaInicio,
     fechaFin,
     refreshKey
   );
 
   const { data: desembolsosData, loading: loadingDesembolsos, error: errorDesembolsos } = useDesembolsosCaja(
-    cobradorIdActual,
+    codigoCobradorIdActual,
     fechaInicio,
     fechaFin,
     refreshKey
@@ -113,13 +171,11 @@ export default function CuadresPage() {
   const { data: moraData, loading: loadingMora, error: errorMora } = 
     useMoraDetallada(cobradorIdActual, undefined, refreshKey);
 
-  const moraRows = useMemo(() => (Array.isArray(moraData) ? moraData : []), [moraData]);
-
   const selectedAsesorNombre = useMemo(() => {
     if (asesorId === "TODOS") return "Todos los asesores";
-    const a = cobradores.find((c) => c._id === asesorId);
-    return a ? a.nombreCompleto : "Asesor";
-  }, [asesorId, cobradores]);
+    const a = asesores.find((c) => c._id === asesorId);
+    return a?.nombreCompleto || a?.usuario || a?.codigoUsuario || "Asesor";
+  }, [asesorId, asesores]);
 
   useEffect(() => {
     if (asesorId === "TODOS") return;
@@ -138,41 +194,8 @@ export default function CuadresPage() {
   const resolveAsesorNombre = (id?: string, nombre?: string) => {
     if (nombre) return nombre;
     if (!id) return "—";
-    const a = cobradores.find((c) => c._id === id);
-    return a?.nombreCompleto || "—";
-  };
-
-  const isRouteMissingLike = (err: unknown): boolean => {
-    const msg = err instanceof Error ? err.message : String(err);
-    return (
-      /\b404\b/i.test(msg) ||
-      /\b405\b/i.test(msg) ||
-      /not\s*found/i.test(msg) ||
-      /cannot\s+(get|post|put|delete)/i.test(msg)
-    );
-  };
-
-  type PostCandidate = { path: string; body: unknown };
-
-  const postFirstAvailable = async (candidates: PostCandidate[]) => {
-    let lastErr: unknown = null;
-    for (const c of candidates) {
-      try {
-        await apiFetch(c.path, {
-          method: "POST",
-          body: JSON.stringify(c.body),
-          silent: true,
-        });
-        return;
-      } catch (e: unknown) {
-        lastErr = e;
-        if (isRouteMissingLike(e)) continue;
-        throw e;
-      }
-    }
-    throw lastErr instanceof Error
-      ? lastErr
-      : new Error("No se encontró una ruta válida para registrar");
+    const a = asesores.find((c) => c._id === id);
+    return a?.nombreCompleto || a?.usuario || a?.codigoUsuario || "—";
   };
 
   const handleSubmitDesembolso = async (e: React.FormEvent) => {
@@ -195,31 +218,27 @@ export default function CuadresPage() {
 
     setSavingDesembolso(true);
     try {
-      const payload = {
-        cobradorId: desembolsoForm.asesorId,
-        fecha: desembolsoForm.fecha,
-        monto,
-        descripcion: desembolsoForm.descripcion || undefined,
-        referencia: desembolsoForm.referencia || undefined,
-      };
+      const codigoRegistradoPor = empleadoActual?.codigoUsuario;
+      if (!codigoRegistradoPor) {
+        throw new Error("No se pudo identificar el usuario logueado");
+      }
 
-      const payloadMovimiento = {
-        tipo: "DESEMBOLSO",
-        cobradorId: desembolsoForm.asesorId,
-        asesorId: desembolsoForm.asesorId,
-        fecha: desembolsoForm.fecha,
-        monto,
-        descripcion: desembolsoForm.descripcion || undefined,
-        referencia: desembolsoForm.referencia || undefined,
-      };
+      const asesor = asesores.find((a) => a._id === desembolsoForm.asesorId) || null;
+      const codigoCobradorId = asesor?.codigoUsuario;
+      if (!codigoCobradorId) {
+        throw new Error("El asesor seleccionado no tiene codigoUsuario");
+      }
 
-      await postFirstAvailable([
-        { path: "/caja/desembolsos", body: payload },
-        { path: "/caja/desembolso", body: payload },
-        { path: "/cuadres/desembolsos", body: payload },
-        { path: "/caja/movimientos", body: payloadMovimiento },
-        { path: "/cuadres/movimientos", body: payloadMovimiento },
-      ]);
+      await gastosApi.create({
+        codigoGasto: `DES-${Date.now()}`,
+        fechaGasto: toOffsetISOString(parseDateInput(desembolsoForm.fecha)),
+        tipoGasto: "DESEMBOLSO",
+        descripcion: (desembolsoForm.descripcion || "").trim() || undefined,
+        monto,
+        codigoCobradorId,
+        codigoPrestamo: (desembolsoForm.referencia || "").trim() || undefined,
+        codigoRegistradoPor,
+      });
 
       setSnackbarMsg("Desembolso registrado");
       setSnackbarSeverity("success");
@@ -256,35 +275,33 @@ export default function CuadresPage() {
 
     setSavingGasto(true);
     try {
-      const payload = {
-        cobradorId: gastoForm.asesorId,
-        fecha: gastoForm.fecha,
-        monto,
-        categoria: gastoForm.categoria || undefined,
-        descripcion: gastoForm.descripcion || undefined,
-        referencia: gastoForm.referencia || undefined,
-        origen: gastoForm.origen || undefined,
-      };
+      const codigoRegistradoPor = empleadoActual?.codigoUsuario;
+      if (!codigoRegistradoPor) {
+        throw new Error("No se pudo identificar el usuario logueado");
+      }
 
-      const payloadMovimiento = {
-        tipo: "GASTO",
-        cobradorId: gastoForm.asesorId,
-        asesorId: gastoForm.asesorId,
-        fecha: gastoForm.fecha,
-        monto,
-        categoria: gastoForm.categoria || undefined,
-        categoriaGasto: gastoForm.categoria || undefined,
-        descripcion: gastoForm.descripcion || undefined,
-        referencia: gastoForm.referencia || undefined,
-        origen: gastoForm.origen || undefined,
-      };
+      const asesor = asesores.find((a) => a._id === gastoForm.asesorId) || null;
+      const codigoCobradorId = asesor?.codigoUsuario;
+      if (!codigoCobradorId) {
+        throw new Error("El asesor seleccionado no tiene codigoUsuario");
+      }
 
-      await postFirstAvailable([
-        { path: "/caja/gastos", body: payload },
-        { path: "/cuadres/gastos", body: payload },
-        { path: "/caja/movimientos", body: payloadMovimiento },
-        { path: "/cuadres/movimientos", body: payloadMovimiento },
-      ]);
+      const tipoGasto = (gastoForm.categoria || "").trim() || "GASTO";
+      const descripcionParts = [
+        (gastoForm.descripcion || "").trim(),
+        gastoForm.origen ? `Origen: ${gastoForm.origen}` : "",
+      ].filter(Boolean);
+
+      await gastosApi.create({
+        codigoGasto: `GAS-${Date.now()}`,
+        fechaGasto: toOffsetISOString(parseDateInput(gastoForm.fecha)),
+        tipoGasto,
+        descripcion: descripcionParts.join(" | ") || undefined,
+        monto,
+        codigoCobradorId,
+        codigoPrestamo: (gastoForm.referencia || "").trim() || undefined,
+        codigoRegistradoPor,
+      });
 
       setSnackbarMsg("Gasto registrado");
       setSnackbarSeverity("success");
@@ -312,26 +329,152 @@ export default function CuadresPage() {
     return date.toLocaleDateString("es-HN");
   };
 
-  const cobrosData = useMemo(() => {
-    const raw = (asesorId === "TODOS" ? pagosTodos : pagosPorAsesor) as unknown;
-    return Array.isArray(raw) ? (raw as typeof pagosTodos) : [];
-  }, [asesorId, pagosTodos, pagosPorAsesor]);
+  const resolveAsesorNombrePorCodigoUsuario = (codigoUsuario?: string) => {
+    if (!codigoUsuario) return "—";
+    const a = asesores.find((x) => x.codigoUsuario === codigoUsuario);
+    return a?.nombreCompleto || a?.usuario || a?.codigoUsuario || codigoUsuario;
+  };
+
+  const getPagoCobradorId = (pago: any): string | undefined => {
+    const raw = pago?.cobradorId;
+    if (!raw) return undefined;
+    if (typeof raw === "string") return raw;
+    if (typeof raw === "object") {
+      const rec = raw as Record<string, unknown>;
+      const id = rec["_id"] ?? rec["id"];
+      return id != null ? String(id) : undefined;
+    }
+    return undefined;
+  };
+
+  const getPagoCobradorNombre = (pago: any): string | undefined => {
+    const raw = pago?.cobradorId;
+    if (!raw) return undefined;
+    if (typeof raw === "object") {
+      const rec = raw as Record<string, unknown>;
+      const n = rec["nombreCompleto"] ?? rec["usuario"] ?? rec["codigoUsuario"];
+      if (typeof n === "string" && n.trim()) return n;
+    }
+    const id = getPagoCobradorId(pago);
+    return id ? resolveAsesorNombre(id) : undefined;
+  };
+
+  const getPagoClienteLabel = (pago: any): string => {
+    const raw = pago?.clienteId;
+    if (!raw) return "—";
+    if (typeof raw === "string") return raw;
+    if (typeof raw === "object") {
+      const rec = raw as Record<string, unknown>;
+      const codigo = typeof rec["codigoCliente"] === "string" ? rec["codigoCliente"] : "";
+      const identidad = typeof rec["identidadCliente"] === "string" ? rec["identidadCliente"] : "";
+      return [codigo, identidad].filter(Boolean).join(" · ") || "—";
+    }
+    return "—";
+  };
+
+  const getPagoPrestamoLabel = (pago: any): string => {
+    const raw = pago?.prestamoId;
+    if (!raw) return "—";
+    if (typeof raw === "string") return raw;
+    if (typeof raw === "object") {
+      const rec = raw as Record<string, unknown>;
+      const codigo = rec["codigoPrestamo"];
+      if (typeof codigo === "string" && codigo.trim()) return codigo;
+    }
+    return "—";
+  };
+
+  const cobrosResp = asesorId === "TODOS" ? pagosTodos : pagosPorAsesor;
+  const cobrosData = useMemo(() => cobrosResp?.pagos ?? [], [cobrosResp]);
   const cobrosLoading = asesorId === "TODOS" ? loadingPagosTodos : loadingPagoAsesor;
   const cobrosError = asesorId === "TODOS" ? errorPagosTodos : errorPagoAsesor;
-  const totalCobros = useMemo(() => cobrosData.reduce((acc, p) => acc + (p.monto || 0), 0), [cobrosData]);
 
-  const totalGastos = useMemo(() => gastosData.reduce((acc, g) => acc + (g.monto || 0), 0), [gastosData]);
+  const totalCobros = useMemo(
+    () =>
+      cobrosData.reduce(
+        (acc, p) => acc + (typeof p.montoPago === "number" ? p.montoPago : 0),
+        0
+      ),
+    [cobrosData]
+  );
+
+  const totalGastos = useMemo(
+    () => gastosData.reduce((acc, g) => acc + (typeof g.monto === "number" ? g.monto : 0), 0),
+    [gastosData]
+  );
   const totalDesembolsos = useMemo(
-    () => desembolsosData.reduce((acc, d) => acc + (d.monto || 0), 0),
+    () => desembolsosData.reduce((acc, d) => acc + (typeof d.monto === "number" ? d.monto : 0), 0),
     [desembolsosData]
   );
 
-  const efectivoNeto = useMemo(() => {
-    if (!cuadreData) return 0;
-    const desemb = cuadreData.totalDesembolsos ?? 0;
-    const gastos = cuadreData.totalGastos ?? 0;
-    return (cuadreData.totalPagos ?? 0) - desemb - gastos;
-  }, [cuadreData]);
+  const cuadreTotales = useMemo(() => {
+    if (!cuadreData) return null;
+    if (asesorId === "TODOS") return cuadreData.totales;
+    const row = cuadreData.porAsesor.find((r) => r.cobradorId === asesorId || r.asesor?.id === asesorId);
+    if (!row) return null;
+    return {
+      cantidadPagos: row.cantidadPagos,
+      totalMonto: row.totalMonto,
+      totalMora: row.totalMora,
+      totalInteres: row.totalInteres,
+      totalCapital: row.totalCapital,
+    };
+  }, [asesorId, cuadreData]);
+
+  const cuadrePorAsesor = useMemo(() => {
+    if (!cuadreData) return [];
+    if (asesorId === "TODOS") return cuadreData.porAsesor;
+    return cuadreData.porAsesor.filter((r) => r.cobradorId === asesorId || r.asesor?.id === asesorId);
+  }, [asesorId, cuadreData]);
+
+  const cuadrePorMetodo = useMemo(() => {
+    if (!cuadreData) return [];
+    if (asesorId !== "TODOS") return [];
+    return cuadreData.porMetodo;
+  }, [asesorId, cuadreData]);
+
+  const moraDetalleRows = useMemo(() => {
+    const groups = moraData?.porAsesor ?? [];
+    const rows: Array<{
+      key: string;
+      asesorNombre: string;
+      cliente: string;
+      codigoPrestamo: string;
+      fechaVencimiento?: string;
+      saldoCapital?: number;
+      moraPlan?: number;
+      moraCobrada?: number;
+      totalPago?: number;
+      ultimoPago?: string | null;
+      depositoAnticipado?: number;
+      haPagado?: boolean;
+    }> = [];
+
+    for (const g of groups) {
+      const asesorNombre = g.asesor?.nombreCompleto || g.asesor?.usuario || g.asesor?.codigoUsuario || "—";
+      for (const d of g.detalle || []) {
+        const clienteCodigo = d.cliente?.codigoCliente || "";
+        const clienteId = d.cliente?.identidadCliente || "";
+        const cliente = [clienteCodigo, clienteId].filter(Boolean).join(" · ") || "—";
+        rows.push({
+          key: `${d.prestamoId}-${clienteCodigo}-${d.fechaVencimiento}`,
+          asesorNombre,
+          cliente,
+          codigoPrestamo: d.codigoPrestamo,
+          fechaVencimiento: d.fechaVencimiento,
+          saldoCapital: d.saldoCapital,
+          moraPlan: d.totalMoraPlan,
+          moraCobrada: d.totalMoraCobrada,
+          totalPago: d.totalPago,
+          ultimoPago: d.ultimoPago,
+          depositoAnticipado: d.depositoAnticipado,
+          haPagado: d.haPagado,
+        });
+      }
+    }
+
+    return rows;
+  }, [moraData]);
 
   // Estados de carga y error
   const isLoading =
@@ -391,9 +534,9 @@ export default function CuadresPage() {
             sx={{ minWidth: 160 }}
           >
             <MenuItem value="TODOS">Todos los asesores</MenuItem>
-            {cobradores.map((c) => (
+            {asesores.map((c) => (
               <MenuItem key={c._id} value={c._id}>
-                {c.nombreCompleto}
+                {c.nombreCompleto || c.usuario || c.codigoUsuario || c._id}
               </MenuItem>
             ))}
           </TextField>
@@ -438,60 +581,154 @@ export default function CuadresPage() {
                 <Typography variant="subtitle2" fontWeight={600}>
                   Resumen del Cuadre
                 </Typography>
-                <Chip size="small" label={`${formatDate(cuadreData.fecha)}`} />
+                <Chip
+                  size="small"
+                  label={`${formatDate(cuadreData.desde || undefined)} - ${formatDate(
+                    cuadreData.hasta || undefined
+                  )}`}
+                />
               </Box>
               
               <Grid container spacing={2}>
                 <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                  <Paper sx={{ p: 2, bgcolor: "primary.light", borderRadius: 1 }}>
+                  <Paper
+                    sx={(theme) => ({
+                      p: 2,
+                      borderRadius: 1,
+                      bgcolor:
+                        theme.palette.mode === "dark"
+                          ? alpha(theme.palette.primary.main, 0.18)
+                          : "primary.light",
+                    })}
+                  >
                     <Typography variant="caption" color="text.secondary">
-                      Total Pagos
+                      Cantidad de Pagos
                     </Typography>
                     <Typography variant="h6" fontWeight={600}>
-                      {formatMoney(cuadreData.totalPagos)}
+                      {cuadreTotales?.cantidadPagos ?? 0}
                     </Typography>
                   </Paper>
                 </Grid>
-                
-                {cuadreData.totalDesembolsos !== undefined && (
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                    <Paper sx={{ p: 2, bgcolor: "warning.light", borderRadius: 1 }}>
-                      <Typography variant="caption" color="text.secondary">
-                        Desembolsos
-                      </Typography>
-                      <Typography variant="h6" fontWeight={600}>
-                        {formatMoney(cuadreData.totalDesembolsos)}
-                      </Typography>
-                    </Paper>
-                  </Grid>
-                )}
-                
-                {cuadreData.totalGastos !== undefined && (
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                    <Paper sx={{ p: 2, bgcolor: "error.light", borderRadius: 1 }}>
-                      <Typography variant="caption" color="text.secondary">
-                        Gastos
-                      </Typography>
-                      <Typography variant="h6" fontWeight={600}>
-                        {formatMoney(cuadreData.totalGastos)}
-                      </Typography>
-                    </Paper>
-                  </Grid>
-                )}
 
                 <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                  <Paper sx={{ p: 2, bgcolor: "success.light", borderRadius: 1 }}>
+                  <Paper
+                    sx={(theme) => ({
+                      p: 2,
+                      borderRadius: 1,
+                      bgcolor:
+                        theme.palette.mode === "dark"
+                          ? alpha(theme.palette.success.main, 0.18)
+                          : "success.light",
+                    })}
+                  >
                     <Typography variant="caption" color="text.secondary">
-                      Efectivo Neto
+                      Total Monto
                     </Typography>
                     <Typography variant="h6" fontWeight={600}>
-                      {formatMoney(efectivoNeto)}
+                      {formatMoney(cuadreTotales?.totalMonto ?? 0)}
+                    </Typography>
+                  </Paper>
+                </Grid>
+
+                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Paper
+                    sx={(theme) => ({
+                      p: 2,
+                      borderRadius: 1,
+                      bgcolor:
+                        theme.palette.mode === "dark"
+                          ? alpha(theme.palette.common.white, 0.06)
+                          : "grey.100",
+                    })}
+                  >
+                    <Typography variant="caption" color="text.secondary">
+                      Capital
+                    </Typography>
+                    <Typography variant="h6" fontWeight={600}>
+                      {formatMoney(cuadreTotales?.totalCapital ?? 0)}
+                    </Typography>
+                  </Paper>
+                </Grid>
+
+                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Paper
+                    sx={(theme) => ({
+                      p: 2,
+                      borderRadius: 1,
+                      bgcolor:
+                        theme.palette.mode === "dark"
+                          ? alpha(theme.palette.common.white, 0.06)
+                          : "grey.100",
+                    })}
+                  >
+                    <Typography variant="caption" color="text.secondary">
+                      Interés
+                    </Typography>
+                    <Typography variant="h6" fontWeight={600}>
+                      {formatMoney(cuadreTotales?.totalInteres ?? 0)}
+                    </Typography>
+                  </Paper>
+                </Grid>
+
+                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Paper
+                    sx={(theme) => ({
+                      p: 2,
+                      borderRadius: 1,
+                      bgcolor:
+                        theme.palette.mode === "dark"
+                          ? alpha(theme.palette.error.main, 0.18)
+                          : "error.light",
+                    })}
+                  >
+                    <Typography variant="caption" color="text.secondary">
+                      Mora
+                    </Typography>
+                    <Typography variant="h6" fontWeight={600}>
+                      {formatMoney(cuadreTotales?.totalMora ?? 0)}
                     </Typography>
                   </Paper>
                 </Grid>
               </Grid>
 
-              {cuadreData.detalleAdesores && cuadreData.detalleAdesores.length > 0 && (
+              {cuadrePorMetodo.length > 0 && (
+                <Box sx={{ mt: 3 }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+                    Desglose por Método
+                  </Typography>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow
+                          sx={(theme) => ({
+                            bgcolor:
+                              theme.palette.mode === "dark"
+                                ? alpha(theme.palette.common.white, 0.06)
+                                : "grey.100",
+                          })}
+                        >
+                          <TableCell>Método</TableCell>
+                          <TableCell align="right">Cantidad Pagos</TableCell>
+                          <TableCell align="right">Total Monto</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {cuadrePorMetodo.map((m) => (
+                          <TableRow key={String(m.metodoPago)}>
+                            <TableCell>{String(m.metodoPago)}</TableCell>
+                            <TableCell align="right">{m.cantidadPagos}</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 600 }}>
+                              {formatMoney(m.totalMonto)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Box>
+              )}
+
+              {cuadrePorAsesor.length > 0 && (
                 <Box sx={{ mt: 3 }}>
                   <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
                     Desglose por Asesor
@@ -499,22 +736,35 @@ export default function CuadresPage() {
                   <TableContainer>
                     <Table size="small">
                       <TableHead>
-                        <TableRow sx={{ bgcolor: "grey.100" }}>
+                        <TableRow
+                          sx={(theme) => ({
+                            bgcolor:
+                              theme.palette.mode === "dark"
+                                ? alpha(theme.palette.common.white, 0.06)
+                                : "grey.100",
+                          })}
+                        >
                           <TableCell>Asesor</TableCell>
                           <TableCell align="right">Cantidad Pagos</TableCell>
-                          <TableCell align="right">Total Pagos</TableCell>
-                          <TableCell align="right">Promedio</TableCell>
+                          <TableCell align="right">Total Monto</TableCell>
+                          <TableCell align="right">Capital</TableCell>
+                          <TableCell align="right">Interés</TableCell>
+                          <TableCell align="right">Mora</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {cuadreData.detalleAdesores.map((d) => (
+                        {cuadrePorAsesor.map((d) => (
                           <TableRow key={d.cobradorId}>
-                            <TableCell>{d.cobradorNombre}</TableCell>
-                            <TableCell align="right">{d.countPagos}</TableCell>
-                            <TableCell align="right">{formatMoney(d.totalPagos)}</TableCell>
-                            <TableCell align="right">
-                              {formatMoney(d.promedioPorPago)}
+                            <TableCell>
+                              {d.asesor?.nombreCompleto || resolveAsesorNombre(d.cobradorId)}
                             </TableCell>
+                            <TableCell align="right">{d.cantidadPagos}</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 600 }}>
+                              {formatMoney(d.totalMonto)}
+                            </TableCell>
+                            <TableCell align="right">{formatMoney(d.totalCapital)}</TableCell>
+                            <TableCell align="right">{formatMoney(d.totalInteres)}</TableCell>
+                            <TableCell align="right">{formatMoney(d.totalMora)}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -548,70 +798,56 @@ export default function CuadresPage() {
             </Box>
           ) : cobrosData.length === 0 ? (
             <Alert severity="info">No hay cobros registrados para este filtro</Alert>
-          ) : asesorId === "TODOS" ? (
-            <TableContainer sx={{ maxHeight: 500 }}>
-              <Table stickyHeader size="small">
-                <TableHead>
-                  <TableRow sx={{ bgcolor: "grey.100" }}>
-                    <TableCell>Fecha</TableCell>
-                    <TableCell>Asesor</TableCell>
-                    <TableCell>Cliente</TableCell>
-                    <TableCell align="right">Monto</TableCell>
-                    <TableCell>Referencia</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {cobrosData.map((pago) => (
-                    <TableRow key={pago._id || pago.prestamoId}>
-                      <TableCell>{formatDate(pago.fecha)}</TableCell>
-                      <TableCell>{pago.cobradorNombre || "—"}</TableCell>
-                      <TableCell>{pago.clienteNombre || "—"}</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 600 }}>
-                        {formatMoney(pago.monto)}
-                      </TableCell>
-                      <TableCell>{pago.referencia || "—"}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
           ) : (
             <TableContainer sx={{ maxHeight: 500 }}>
               <Table stickyHeader size="small">
                 <TableHead>
-                  <TableRow sx={{ bgcolor: "grey.100" }}>
+                  <TableRow
+                    sx={(theme) => ({
+                      bgcolor:
+                        theme.palette.mode === "dark"
+                          ? alpha(theme.palette.common.white, 0.06)
+                          : "grey.100",
+                    })}
+                  >
                     <TableCell>Fecha</TableCell>
+                    {asesorId === "TODOS" && <TableCell>Asesor</TableCell>}
                     <TableCell>Cliente</TableCell>
                     <TableCell>Préstamo</TableCell>
-                    <TableCell align="right">Monto Principal</TableCell>
-                    <TableCell align="right">Interés</TableCell>
-                    <TableCell align="right">Mora</TableCell>
-                    <TableCell align="right">Total</TableCell>
+                    <TableCell>Método</TableCell>
+                    <TableCell>Comprobante</TableCell>
+                    <TableCell align="right">Monto</TableCell>
                     <TableCell>Estado</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {cobrosData.map((pago) => (
-                    <TableRow key={pago._id || pago.prestamoId}>
-                      <TableCell>{formatDate(pago.fecha)}</TableCell>
-                      <TableCell>{pago.clienteNombre || "—"}</TableCell>
-                      <TableCell>{pago.prestamoId ? pago.prestamoId.slice(0, 8) : "—"}</TableCell>
-                      <TableCell align="right">{formatMoney(pago.montoPrincipal)}</TableCell>
-                      <TableCell align="right">{formatMoney(pago.montoInteres)}</TableCell>
-                      <TableCell align="right">{formatMoney(pago.montoMora)}</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 600 }}>
-                        {formatMoney(pago.monto)}
-                      </TableCell>
+                  {cobrosData.map((pago, idx) => {
+                    const estado = String(pago.estado ?? "—");
+                    const monto = typeof pago.montoPago === "number" ? pago.montoPago : 0;
+                    return (
+                      <TableRow key={String(pago._id ?? `${idx}`)}>
+                        <TableCell>{formatDate(pago.fechaPago)}</TableCell>
+                        {asesorId === "TODOS" && (
+                          <TableCell>{getPagoCobradorNombre(pago) || "—"}</TableCell>
+                        )}
+                        <TableCell>{getPagoClienteLabel(pago)}</TableCell>
+                        <TableCell>{getPagoPrestamoLabel(pago)}</TableCell>
+                        <TableCell>{String(pago.metodoPago ?? "—")}</TableCell>
+                        <TableCell>{String(pago.numeroComprobante ?? "—")}</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 600 }}>
+                          {formatMoney(monto)}
+                        </TableCell>
                       <TableCell>
                         <Chip
-                          label={pago.estado || "Completado"}
+                          label={estado}
                           size="small"
-                          color={pago.estado === "Completado" ? "success" : "default"}
+                          color={estado.toLowerCase() === "completado" ? "success" : "default"}
                           variant="outlined"
                         />
                       </TableCell>
-                    </TableRow>
-                  ))}
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </TableContainer>
@@ -653,9 +889,9 @@ export default function CuadresPage() {
                   }
                 >
                   <MenuItem value="">Selecciona un asesor</MenuItem>
-                  {cobradores.map((c) => (
+                  {asesores.map((c) => (
                     <MenuItem key={c._id} value={c._id}>
-                      {c.nombreCompleto}
+                      {c.nombreCompleto || c.usuario || c.codigoUsuario || c._id}
                     </MenuItem>
                   ))}
                 </TextField>
@@ -724,7 +960,14 @@ export default function CuadresPage() {
                 <TableContainer sx={{ maxHeight: 500 }}>
                   <Table stickyHeader size="small">
                     <TableHead>
-                      <TableRow sx={{ bgcolor: "grey.100" }}>
+                      <TableRow
+                        sx={(theme) => ({
+                          bgcolor:
+                            theme.palette.mode === "dark"
+                              ? alpha(theme.palette.common.white, 0.06)
+                              : "grey.100",
+                        })}
+                      >
                         <TableCell>Fecha</TableCell>
                         <TableCell>Asesor</TableCell>
                         <TableCell>Descripción</TableCell>
@@ -733,16 +976,15 @@ export default function CuadresPage() {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {desembolsosData.map((d) => (
-                        <TableRow key={d._id || `${d.cobradorId || ""}-${d.fecha}-${d.monto}`}
-                        >
-                          <TableCell>{formatDate(d.fecha)}</TableCell>
-                          <TableCell>{resolveAsesorNombre(d.cobradorId, d.cobradorNombre)}</TableCell>
-                          <TableCell>{d.descripcion || "—"}</TableCell>
+                      {desembolsosData.map((d, idx) => (
+                        <TableRow key={String(d._id ?? d.codigoGasto ?? `${idx}`)}>
+                          <TableCell>{formatDate(d.fechaGasto)}</TableCell>
+                          <TableCell>{resolveAsesorNombrePorCodigoUsuario(d.codigoCobradorId)}</TableCell>
+                          <TableCell>{(d.descripcion as string) || "—"}</TableCell>
                           <TableCell align="right" sx={{ fontWeight: 600 }}>
-                            {formatMoney(d.monto)}
+                            {formatMoney(typeof d.monto === "number" ? d.monto : 0)}
                           </TableCell>
-                          <TableCell>{d.referencia || "—"}</TableCell>
+                          <TableCell>{(d.codigoPrestamo as string) || "—"}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -784,9 +1026,9 @@ export default function CuadresPage() {
                   onChange={(e) => setGastoForm((prev) => ({ ...prev, asesorId: e.target.value }))}
                 >
                   <MenuItem value="">Selecciona un asesor</MenuItem>
-                  {cobradores.map((c) => (
+                  {asesores.map((c) => (
                     <MenuItem key={c._id} value={c._id}>
-                      {c.nombreCompleto}
+                      {c.nombreCompleto || c.usuario || c.codigoUsuario || c._id}
                     </MenuItem>
                   ))}
                 </TextField>
@@ -871,29 +1113,33 @@ export default function CuadresPage() {
                 <TableContainer sx={{ maxHeight: 500 }}>
                   <Table stickyHeader size="small">
                     <TableHead>
-                      <TableRow sx={{ bgcolor: "grey.100" }}>
+                      <TableRow
+                        sx={(theme) => ({
+                          bgcolor:
+                            theme.palette.mode === "dark"
+                              ? alpha(theme.palette.common.white, 0.06)
+                              : "grey.100",
+                        })}
+                      >
                         <TableCell>Fecha</TableCell>
                         <TableCell>Asesor</TableCell>
-                        <TableCell>Categoría</TableCell>
+                        <TableCell>Tipo</TableCell>
                         <TableCell>Descripción</TableCell>
-                        <TableCell>Origen</TableCell>
                         <TableCell align="right">Monto</TableCell>
-                        <TableCell>Referencia</TableCell>
+                        <TableCell>Código préstamo</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {gastosData.map((g) => (
-                        <TableRow key={g._id || `${g.cobradorId || ""}-${g.fecha}-${g.monto}`}
-                        >
-                          <TableCell>{formatDate(g.fecha)}</TableCell>
-                          <TableCell>{resolveAsesorNombre(g.cobradorId, g.cobradorNombre)}</TableCell>
-                          <TableCell>{g.categoria || "—"}</TableCell>
-                          <TableCell>{g.descripcion || "—"}</TableCell>
-                          <TableCell>{g.origen || "—"}</TableCell>
+                      {gastosData.map((g, idx) => (
+                        <TableRow key={String(g._id ?? g.codigoGasto ?? `${idx}`)}>
+                          <TableCell>{formatDate(g.fechaGasto)}</TableCell>
+                          <TableCell>{resolveAsesorNombrePorCodigoUsuario(g.codigoCobradorId)}</TableCell>
+                          <TableCell>{(g.tipoGasto as string) || "—"}</TableCell>
+                          <TableCell>{(g.descripcion as string) || "—"}</TableCell>
                           <TableCell align="right" sx={{ fontWeight: 600 }}>
-                            {formatMoney(g.monto)}
+                            {formatMoney(typeof g.monto === "number" ? g.monto : 0)}
                           </TableCell>
-                          <TableCell>{g.referencia || "—"}</TableCell>
+                          <TableCell>{(g.codigoPrestamo as string) || "—"}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -912,14 +1158,14 @@ export default function CuadresPage() {
             <Typography variant="subtitle2" fontWeight={600}>
               Mora Detallada - {selectedAsesorNombre}
             </Typography>
-            <Chip size="small" label={`${moraRows.length} registros`} />
+            <Chip size="small" label={`${moraDetalleRows.length} registros`} />
           </Box>
 
           {isLoading ? (
             <Box sx={{ display: "flex", justifyContent: "center", p: 3 }}>
               <CircularProgress />
             </Box>
-          ) : moraRows.length === 0 ? (
+          ) : moraDetalleRows.length === 0 ? (
             <Alert severity="success">
               ¡Excelente! No hay mora registrada para este filtro
             </Alert>
@@ -927,30 +1173,47 @@ export default function CuadresPage() {
             <TableContainer sx={{ maxHeight: 500 }}>
               <Table stickyHeader size="small">
                 <TableHead>
-                  <TableRow sx={{ bgcolor: "grey.100" }}>
-                    <TableCell>Cliente</TableCell>
+                  <TableRow
+                    sx={(theme) => ({
+                      bgcolor:
+                        theme.palette.mode === "dark"
+                          ? alpha(theme.palette.common.white, 0.06)
+                          : "grey.100",
+                    })}
+                  >
                     <TableCell>Asesor</TableCell>
-                    <TableCell align="right">Cuotas Atrasadas</TableCell>
-                    <TableCell align="right">Total Mora</TableCell>
-                    <TableCell align="right">Días Atraso</TableCell>
-                    <TableCell>Estado</TableCell>
+                    <TableCell>Cliente</TableCell>
+                    <TableCell>Préstamo</TableCell>
+                    <TableCell>Vencimiento</TableCell>
+                    <TableCell align="right">Mora plan</TableCell>
+                    <TableCell align="right">Mora cobrada</TableCell>
+                    <TableCell align="right">Total pago</TableCell>
+                    <TableCell>Último pago</TableCell>
+                    <TableCell align="right">Dep. anticipado</TableCell>
+                    <TableCell>Ha pagado</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {moraRows.map((mora) => (
-                    <TableRow key={mora._id || mora.clienteId}>
-                      <TableCell>{mora.clienteNombre || "—"}</TableCell>
-                      <TableCell>{mora.cobradorNombre || "—"}</TableCell>
-                      <TableCell align="right">{mora.cuotasAtrasadas}</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 600, color: "error.main" }}>
-                        {formatMoney(mora.totalMora)}
+                  {moraDetalleRows.map((row, idx) => (
+                    <TableRow key={row.key || String(idx)}>
+                      <TableCell>{row.asesorNombre}</TableCell>
+                      <TableCell>{row.cliente}</TableCell>
+                      <TableCell>{row.codigoPrestamo || "—"}</TableCell>
+                      <TableCell>{formatDate(row.fechaVencimiento)}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600, color: "warning.main" }}>
+                        {formatMoney(row.moraPlan ?? 0)}
                       </TableCell>
-                      <TableCell align="right">{mora.diasAtraso || "—"}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600, color: "error.main" }}>
+                        {formatMoney(row.moraCobrada ?? 0)}
+                      </TableCell>
+                      <TableCell align="right">{formatMoney(row.totalPago ?? 0)}</TableCell>
+                      <TableCell>{row.ultimoPago ? formatDate(row.ultimoPago) : "—"}</TableCell>
+                      <TableCell align="right">{formatMoney(row.depositoAnticipado ?? 0)}</TableCell>
                       <TableCell>
                         <Chip
-                          label={mora.estadoPrestamo || "Activo"}
+                          label={row.haPagado ? "Sí" : "No"}
                           size="small"
-                          color="error"
+                          color={row.haPagado ? "success" : "default"}
                           variant="outlined"
                         />
                       </TableCell>

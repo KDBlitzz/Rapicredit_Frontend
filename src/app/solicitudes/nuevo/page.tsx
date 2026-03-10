@@ -77,11 +77,15 @@ const NuevoSolicitudPage: React.FC = () => {
         _id: empleadoActual._id,
         codigoUsuario: empleadoActual.codigoUsuario,
         usuario: empleadoActual.usuario,
-        nombreCompleto: empleadoActual.nombreCompleto,
+        nombreCompleto:
+          empleadoActual.nombreCompleto ??
+          empleadoActual.usuario ??
+          empleadoActual.codigoUsuario ??
+          '',
         rol: empleadoActual.rol,
         email: empleadoActual.email,
         telefono: empleadoActual.telefono,
-        estado: empleadoActual.estado,
+        estado: typeof empleadoActual.estado === 'boolean' ? empleadoActual.estado : true,
       };
       setSelectedCobrador(empleadoComoEmpleado);
     }
