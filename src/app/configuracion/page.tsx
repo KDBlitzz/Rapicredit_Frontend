@@ -7,6 +7,10 @@ import {
   Button,
   ButtonBase,
   Divider,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Grid,
   LinearProgress,
   MenuItem,
@@ -70,6 +74,7 @@ export default function ConfiguracionPage() {
   const { data, loading, saving, error, save, reload } = useConfiguracionFinanciera();
 
   const [draftForm, setDraftForm] = useState<ParametrosForm | null>(null);
+  const [confirmApplyOpen, setConfirmApplyOpen] = useState(false);
 
   const [calendarMonth, setCalendarMonth] = useState<Date>(() => startOfMonth(new Date()));
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -122,9 +127,6 @@ export default function ConfiguracionPage() {
   };
 
   const onApplyChanges = async () => {
-    const ok = window.confirm('¿Desea aplicar estos cambios?');
-    if (!ok) return;
-
     const montoPrestamoMin = Number(form.montoPrestamoMin);
     const montoPrestamoMax = Number(form.montoPrestamoMax);
 
@@ -335,10 +337,36 @@ export default function ConfiguracionPage() {
         </Box>
 
         <Stack direction="row" justifyContent="flex-end" sx={{ mt: 2 }}>
-          <Button variant="contained" onClick={onApplyChanges} disabled={loading || saving}>
+          <Button
+            variant="contained"
+            onClick={() => setConfirmApplyOpen(true)}
+            disabled={loading || saving}
+          >
             Aplicar Cambios
           </Button>
         </Stack>
+
+        <Dialog open={confirmApplyOpen} onClose={() => setConfirmApplyOpen(false)} maxWidth="xs" fullWidth>
+          <DialogTitle>¿Desea aplicar estos cambios?</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary">
+              Se guardarán los cambios de parámetros y días no laborables.
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setConfirmApplyOpen(false)}>Cancelar</Button>
+            <Button
+              variant="contained"
+              onClick={async () => {
+                setConfirmApplyOpen(false);
+                await onApplyChanges();
+              }}
+              disabled={saving}
+            >
+              Confirmar
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Paper>
     </Box>
   );

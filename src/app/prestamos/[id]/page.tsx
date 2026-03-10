@@ -588,6 +588,33 @@ const PrestamoDetallePage: React.FC = () => {
                 <Typography>{data.totalPagado != null ? formatMoney(data.totalPagado) : "—"}</Typography>
               </Grid>
               <Grid size={{ xs: 12 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                  Saldo Pendiente por Pagar
+                </Typography>
+                <Typography sx={{ fontWeight: 600, fontSize: "1.1rem", color: "primary.main" }}>
+                  {(() => {
+                    // Usar saldoPendiente si está disponible
+                    if (data.saldoPendiente != null) {
+                      return formatMoney(data.saldoPendiente);
+                    }
+                    // Si no, intentar con saldo o saldoActual
+                    if (data.saldo != null) {
+                      return formatMoney(data.saldo);
+                    }
+                    if (data.saldoActual != null) {
+                      return formatMoney(data.saldoActual);
+                    }
+                    // Si no están disponibles, calcular: (capital + intereses) - pagado
+                    const capital = data.capitalSolicitado ?? 0;
+                    const intereses = data.totalIntereses ?? 0;
+                    const pagado = data.totalPagado ?? 0;
+                    const totalAPagar = capital + intereses;
+                    const pendiente = totalAPagar - pagado;
+                    return formatMoney(pendiente);
+                  })()}
+                </Typography>
+              </Grid>
+              <Grid size={{ xs: 12 }}>
                 <Typography variant="caption" color="text.secondary">Observaciones</Typography>
                 {editMode ? (
                   <TextField

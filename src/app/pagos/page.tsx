@@ -31,7 +31,7 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import VisibilityIcon from '@mui/icons-material/Visibility';
-import { usePagos, EstadoPagoFiltro } from '../../hooks/usePagos';
+import { usePagos, EstadoPagoFiltro, type PagoResumen } from '../../hooks/usePagos';
 import { usePermisos } from '../../hooks/usePermisos';
 import { usePrestamoDetalle } from '../../hooks/usePrestamoDetalle';
 import { usePrestamosAsignados } from '../../hooks/usePrestamosAsignados';
@@ -55,7 +55,7 @@ export default function PagosPage() {
   const [busqueda, setBusqueda] = useState('');
   const [estado, setEstado] = useState<EstadoPagoFiltro>('TODOS');
   const [refreshKey, setRefreshKey] = useState(0);
-  const [dialogPago, setDialogPago] = useState<any>(null);
+  const [dialogPago, setDialogPago] = useState<PagoResumen | null>(null);
   const [dialogNuevo, setDialogNuevo] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [formError, setFormError] = useState<string | null>(null);
@@ -67,6 +67,11 @@ export default function PagosPage() {
     loading: loadingPrestamosAsignados,
     error: errorPrestamosAsignados,
   } = usePrestamosAsignados({ refreshKey });
+
+  const prestamosDisponibles = useMemo(
+    () => prestamosAsignados.filter((p) => (p.estadoPrestamo || '').toUpperCase() !== 'CERRADO'),
+    [prestamosAsignados]
+  );
 
   const allowedFinanciamientoIds = useMemo(
     () => prestamosAsignados.map((p) => p.id),
@@ -141,7 +146,7 @@ export default function PagosPage() {
 
     setSaving(true);
     try {
-      const selected = prestamosAsignados.find((p) => p.codigoPrestamo === form.codigoPrestamo);
+      const selected = prestamosDisponibles.find((p) => p.codigoPrestamo === form.codigoPrestamo);
       if (!selected?.id) {
         setFormError('Selecciona un préstamo válido para registrar el pago');
         return;
@@ -227,11 +232,64 @@ export default function PagosPage() {
       ? `L. ${v.toLocaleString('es-HN', { minimumFractionDigits: 2 })}`
       : 'L. 0.00';
 
-  const formatDate = (iso?: string) =>
-    iso ? new Date(iso).toLocaleDateString('es-HN') : '-';
+  const parsePaymentDate = (value?: string) => {
+    if (!value) return null;
 
-  const formatTime = (iso?: string) =>
-    iso ? new Date(iso).toLocaleTimeString('es-HN', { hour: '2-digit', minute: '2-digit' }) : '-';
+    // Evita desfase horario cuando viene como YYYY-MM-DD (sin zona horaria).
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      const [year, month, day] = value.split('-').map(Number);
+      return new Date(year, month - 1, day);
+    }
+
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed;
+  };
+
+  const formatDate = (iso?: string) => {
+    const parsed = parsePaymentDate(iso);
+    return parsed ? parsed.toLocaleDateString('es-HN') : '-';
+  };
+
+  const formatTime = (iso?: string) => {
+    const parsed = parsePaymentDate(iso);
+    return parsed
+      ? parsed.toLocaleTimeString('es-HN', { hour: '2-digit', minute: '2-digit' })
+      : '-';
+  };
+
+  const clientePorPrestamo = useMemo(() => {
+    const map = new Map<string, string>();
+
+    for (const prestamo of prestamosAsignados) {
+      const nombre = (prestamo.clienteNombre || '').trim();
+      if (!nombre) continue;
+      if (prestamo.id) map.set(`id:${prestamo.id}`, nombre);
+      if (prestamo.codigoPrestamo) map.set(`cod:${prestamo.codigoPrestamo}`, nombre);
+    }
+
+    return map;
+  }, [prestamosAsignados]);
+
+  const getClientePago = (pago: {
+    clienteNombre?: string;
+    prestamoId?: string;
+    financiamientoId?: string;
+    codigoPrestamo?: string;
+  }) => {
+    const directo = (pago.clienteNombre || '').trim();
+    if (directo && directo !== '—') return directo;
+
+    const byId =
+      (pago.financiamientoId && clientePorPrestamo.get(`id:${pago.financiamientoId}`)) ||
+      (pago.prestamoId && clientePorPrestamo.get(`id:${pago.prestamoId}`));
+    if (byId) return byId;
+
+    const byCodigo = pago.codigoPrestamo
+      ? clientePorPrestamo.get(`cod:${pago.codigoPrestamo}`)
+      : undefined;
+    return byCodigo || '—';
+  };
 
   const renderEstadoChip = (estado?: string) => {
     const val = (estado || 'APLICADO').toUpperCase();
@@ -257,10 +315,10 @@ export default function PagosPage() {
 
     setForm((prev) => {
       if (!prev.codigoPrestamo) return prev;
-      const existe = prestamosAsignados.some((p) => p.codigoPrestamo === prev.codigoPrestamo);
+      const existe = prestamosDisponibles.some((p) => p.codigoPrestamo === prev.codigoPrestamo);
       return existe ? prev : { ...prev, codigoPrestamo: '' };
     });
-  }, [dialogNuevo, prestamosAsignados]);
+  }, [dialogNuevo, prestamosDisponibles]);
 
   if (!loadingPermisos && !canVerModuloPagos) {
     return (
@@ -400,10 +458,8 @@ export default function PagosPage() {
           <Table>
             <TableHead>
               <TableRow sx={{ bgcolor: 'background.default' }}>
-                <TableCell sx={{ fontWeight: 600 }}>ID Pago</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Fecha</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Hora</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Préstamo</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Cliente</TableCell>
                 <TableCell align="center" sx={{ fontWeight: 600 }}>
                   Monto
@@ -418,13 +474,13 @@ export default function PagosPage() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={9} align="center" sx={{ py: 3 }}>
+                  <TableCell colSpan={7} align="center" sx={{ py: 3 }}>
                     <CircularProgress size={40} />
                   </TableCell>
                 </TableRow>
               ) : data.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} align="center" sx={{ py: 3 }}>
+                  <TableCell colSpan={7} align="center" sx={{ py: 3 }}>
                     <Typography variant="body2" color="text.secondary">
                       No hay pagos registrados
                     </Typography>
@@ -433,15 +489,9 @@ export default function PagosPage() {
               ) : (
                 data.map((pago) => (
                   <TableRow key={pago.id} hover>
-                    <TableCell>{pago.id}</TableCell>
                     <TableCell>{formatDate(pago.fecha)}</TableCell>
                     <TableCell>{formatTime(pago.fecha)}</TableCell>
-                    <TableCell>
-                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                        {pago.codigoPrestamo}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>{pago.clienteNombre}</TableCell>
+                    <TableCell>{getClientePago(pago)}</TableCell>
                     <TableCell align="center">
                       <Typography variant="body2" sx={{ fontWeight: 500, color: 'success.main' }}>
                         {formatMoney(pago.monto)}
@@ -487,7 +537,7 @@ export default function PagosPage() {
                 <Typography variant="caption" color="text.secondary">
                   Cliente
                 </Typography>
-                <Typography variant="body2">{dialogPago.clienteNombre}</Typography>
+                <Typography variant="body2">{getClientePago(dialogPago)}</Typography>
               </Box>
               <Box>
                 <Typography variant="caption" color="text.secondary">
@@ -547,7 +597,7 @@ export default function PagosPage() {
                       recibo: String(dialogPago.codigoPago || dialogPago.id || String(Date.now()).slice(-5)),
                       codigoPrestamo: String(dialogPago.codigoPrestamo || ''),
                       fecha: String(dialogPago.fecha || new Date().toISOString()),
-                      cliente: String(dialogPago.clienteNombre || '—').toUpperCase(),
+                      cliente: String(getClientePago(dialogPago) || '—').toUpperCase(),
                       asesor: String(asesorNombre).toUpperCase(),
                       monto: Number(dialogPago.monto || 0),
                       saldoPendiente: 0,
@@ -603,16 +653,16 @@ export default function PagosPage() {
                       value={form.codigoPrestamo}
                       onChange={handleFormChange}
                       size="small"
-                      disabled={saving || loadingPrestamosAsignados || prestamosAsignados.length === 0}
+                      disabled={saving || loadingPrestamosAsignados || prestamosDisponibles.length === 0}
                       helperText={
                         loadingPrestamosAsignados
                           ? 'Cargando préstamos asignados...'
-                          : prestamosAsignados.length === 0
-                          ? 'No tienes préstamos asignados para registrar pagos.'
-                          : 'Selecciona un préstamo asignado al asesor actual.'
+                          : prestamosDisponibles.length === 0
+                          ? 'No tienes préstamos vigentes para registrar pagos.'
+                          : 'Selecciona un préstamo asignado al asesor actual (solo vigentes).'
                       }
                     >
-                      {prestamosAsignados.map((prestamo) => (
+                      {prestamosDisponibles.map((prestamo) => (
                         <MenuItem key={prestamo.id} value={prestamo.codigoPrestamo}>
                           {prestamo.codigoPrestamo} — {prestamo.clienteNombre}
                         </MenuItem>
@@ -765,6 +815,42 @@ export default function PagosPage() {
                             </Typography>
                             <Typography variant="body2">
                               {formatDate(prestamoDetalle.fechaVencimiento)}
+                            </Typography>
+                          </Box>
+                        </Box>
+
+                        <Divider />
+
+                        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
+                          <Box>
+                            <Typography variant="caption" color="text.secondary">
+                              Saldo Pendiente por Pagar
+                            </Typography>
+                            <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                              {(() => {
+                                if (prestamoDetalle.saldoPendiente != null) {
+                                  return formatMoney(prestamoDetalle.saldoPendiente);
+                                }
+                                if (prestamoDetalle.saldo != null) {
+                                  return formatMoney(prestamoDetalle.saldo);
+                                }
+                                if (prestamoDetalle.saldoActual != null) {
+                                  return formatMoney(prestamoDetalle.saldoActual);
+                                }
+                                const capital = prestamoDetalle.capitalSolicitado ?? 0;
+                                const intereses = prestamoDetalle.totalIntereses ?? 0;
+                                const pagado = prestamoDetalle.totalPagado ?? 0;
+                                return formatMoney(capital + intereses - pagado);
+                              })()}
+                            </Typography>
+                          </Box>
+
+                          <Box>
+                            <Typography variant="caption" color="text.secondary">
+                              Intereses
+                            </Typography>
+                            <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                              {formatMoney(prestamoDetalle.totalIntereses ?? 0)}
                             </Typography>
                           </Box>
                         </Box>

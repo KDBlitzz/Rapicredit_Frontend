@@ -150,9 +150,16 @@ export function usePagos(filters: PagosFiltros, options: UsePagosOptions = {}) {
           );
 
           const clienteRaw = getNested(p, ["clienteId"]) ?? getNested(p, ["cliente"]) ?? undefined;
+          const clienteDesdeFinanciamiento =
+            getNested(financiamientoRaw, ["clienteId"]) ??
+            getNested(financiamientoRaw, ["cliente"]);
           const clienteId = (() => {
             if (typeof clienteRaw === "string") return clienteRaw;
             if (isRecord(clienteRaw)) return asString(clienteRaw["_id"] ?? clienteRaw["id"]) ?? undefined;
+            if (typeof clienteDesdeFinanciamiento === "string") return clienteDesdeFinanciamiento;
+            if (isRecord(clienteDesdeFinanciamiento)) {
+              return asString(clienteDesdeFinanciamiento["_id"] ?? clienteDesdeFinanciamiento["id"]) ?? undefined;
+            }
             return undefined;
           })();
 
@@ -166,6 +173,10 @@ export function usePagos(filters: PagosFiltros, options: UsePagosOptions = {}) {
             (isRecord(clienteRaw)
               ? asString(clienteRaw["nombreCompleto"]) ||
                 [asString(clienteRaw["nombre"]), asString(clienteRaw["apellido"])].filter(Boolean).join(" ")
+              : undefined) ||
+            (isRecord(clienteDesdeFinanciamiento)
+              ? asString(clienteDesdeFinanciamiento["nombreCompleto"]) ||
+                [asString(clienteDesdeFinanciamiento["nombre"]), asString(clienteDesdeFinanciamiento["apellido"])].filter(Boolean).join(" ")
               : undefined) ||
             "—";
 
@@ -183,6 +194,10 @@ export function usePagos(filters: PagosFiltros, options: UsePagosOptions = {}) {
             0;
 
           const fecha =
+            asString(getNested(p, ["createdAt"])) ||
+            asString(getNested(p, ["fechaRegistro"])) ||
+            asString(getNested(p, ["fechaCreacion"])) ||
+            asString(getNested(p, ["fechaHora"])) ||
             asString(getNested(p, ["fecha"])) ||
             asString(getNested(p, ["fechaPago"])) ||
             asString(getNested(p, ["fechaAbono"])) ||

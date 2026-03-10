@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Box,
   Paper,
@@ -33,6 +33,11 @@ const NuevoPagoPage: React.FC = () => {
     data: prestamosAsignados,
     loading: loadingPrestamosAsignados,
   } = usePrestamosAsignados();
+
+  const prestamosDisponibles = useMemo(
+    () => prestamosAsignados.filter((p) => (p.estadoPrestamo || "").toUpperCase() !== "CERRADO"),
+    [prestamosAsignados]
+  );
   const [codigoPrestamo, setCodigoPrestamo] = useState("");
   
   const { data: prestamoDetalle, loading: loadingDetalle } = usePrestamoDetalle(
@@ -65,12 +70,12 @@ const NuevoPagoPage: React.FC = () => {
   useEffect(() => {
     setForm((prev) => {
       if (!prev.codigoPrestamo) return prev;
-      const existe = prestamosAsignados.some((p) => p.codigoPrestamo === prev.codigoPrestamo);
+      const existe = prestamosDisponibles.some((p) => p.codigoPrestamo === prev.codigoPrestamo);
       if (existe) return prev;
       setCodigoPrestamo("");
       return { ...prev, codigoPrestamo: "" };
     });
-  }, [prestamosAsignados]);
+  }, [prestamosDisponibles]);
 
   if (!loadingPermisos && !canAplicarPago) {
     return (
@@ -135,7 +140,7 @@ const NuevoPagoPage: React.FC = () => {
 
     setSaving(true);
     try {
-      const selected = prestamosAsignados.find((p) => p.codigoPrestamo === form.codigoPrestamo);
+      const selected = prestamosDisponibles.find((p) => p.codigoPrestamo === form.codigoPrestamo);
       console.log("🔍 Préstamo seleccionado:", selected);
       if (!selected?.id) {
         console.log("❌ Validación 3 FALLÓ: Préstamo no encontrado o sin ID");
@@ -285,16 +290,16 @@ const NuevoPagoPage: React.FC = () => {
                     value={form.codigoPrestamo}
                     onChange={handleChange}
                     size="small"
-                    disabled={saving || loadingPrestamosAsignados || prestamosAsignados.length === 0}
+                    disabled={saving || loadingPrestamosAsignados || prestamosDisponibles.length === 0}
                     helperText={
                       loadingPrestamosAsignados
                         ? "Cargando préstamos asignados..."
-                        : prestamosAsignados.length === 0
-                          ? "No tienes préstamos asignados para registrar pagos."
-                          : "Selecciona un préstamo asignado al asesor actual."
+                        : prestamosDisponibles.length === 0
+                          ? "No tienes préstamos vigentes para registrar pagos."
+                          : "Selecciona un préstamo asignado al asesor actual (solo vigentes)."
                     }
                   >
-                    {prestamosAsignados.map((prestamo) => (
+                    {prestamosDisponibles.map((prestamo) => (
                       <MenuItem key={prestamo.id} value={prestamo.codigoPrestamo}>
                         {prestamo.codigoPrestamo} — {prestamo.clienteNombre}
                       </MenuItem>
@@ -469,6 +474,42 @@ const NuevoPagoPage: React.FC = () => {
                         </Typography>
                         <Typography variant="body2">
                           {formatDate(prestamoDetalle.fechaVencimiento)}
+                        </Typography>
+                      </Box>
+                    </Box>
+
+                    <Divider />
+
+                    <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.5 }}>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">
+                          Saldo Pendiente por Pagar
+                        </Typography>
+                        <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                          {(() => {
+                            if (prestamoDetalle.saldoPendiente != null) {
+                              return formatMoney(prestamoDetalle.saldoPendiente);
+                            }
+                            if (prestamoDetalle.saldo != null) {
+                              return formatMoney(prestamoDetalle.saldo);
+                            }
+                            if (prestamoDetalle.saldoActual != null) {
+                              return formatMoney(prestamoDetalle.saldoActual);
+                            }
+                            const capital = prestamoDetalle.capitalSolicitado ?? 0;
+                            const intereses = prestamoDetalle.totalIntereses ?? 0;
+                            const pagado = prestamoDetalle.totalPagado ?? 0;
+                            return formatMoney(capital + intereses - pagado);
+                          })()}
+                        </Typography>
+                      </Box>
+
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">
+                          Intereses
+                        </Typography>
+                        <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                          {formatMoney(prestamoDetalle.totalIntereses ?? 0)}
                         </Typography>
                       </Box>
                     </Box>
