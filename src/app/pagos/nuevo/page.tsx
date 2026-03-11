@@ -185,7 +185,7 @@ const NuevoPagoPage: React.FC = () => {
       console.log("📡 URL completa:", `/prestamos/id/${selected.id}/aplicar-pago`);
       
       console.log("⏳ Iniciando apiFetch...");
-      await apiFetch(`/prestamos/id/${selected.id}/aplicar-pago`, {
+      const applyRes = await apiFetch<unknown>(`/prestamos/id/${selected.id}/aplicar-pago`, {
         method: "POST",
         body: JSON.stringify(payload),
       });
@@ -194,6 +194,37 @@ const NuevoPagoPage: React.FC = () => {
 
       // Comprobante (por ahora: en duro / local). No depende de que el backend devuelva un ID.
       try {
+        const pickString = (...vals: unknown[]) => {
+          for (const v of vals) {
+            if (typeof v === "string" && v.trim()) return v.trim();
+            if (typeof v === "number" && Number.isFinite(v)) return String(v);
+          }
+          return "";
+        };
+
+        const resObj = applyRes && typeof applyRes === "object" ? (applyRes as Record<string, unknown>) : null;
+        const pagoObj =
+          resObj && resObj["pago"] && typeof resObj["pago"] === "object"
+            ? (resObj["pago"] as Record<string, unknown>)
+            : null;
+
+        const pagoId = pickString(
+          pagoObj?._id,
+          pagoObj?.id,
+          resObj?._id,
+          resObj?.id,
+          resObj?.pagoId
+        );
+
+        const numeroComprobante = pickString(
+          pagoObj?.numeroComprobante,
+          pagoObj?.recibo,
+          pagoObj?.referencia,
+          resObj?.numeroComprobante,
+          resObj?.recibo,
+          resObj?.referencia
+        );
+
         const clienteNombre =
           prestamoDetalle?.cliente?.nombreCompleto ||
           selected.clienteNombre ||
@@ -206,11 +237,15 @@ const NuevoPagoPage: React.FC = () => {
           0;
 
         const comprobante = {
-          recibo: String(Date.now()).slice(-5),
+          pagoId: pagoId || undefined,
+          recibo: numeroComprobante || String(Date.now()).slice(-5),
           codigoPrestamo: form.codigoPrestamo,
           fecha: form.fecha,
           cliente: clienteNombre.toUpperCase(),
           asesor: asesorNombre.toUpperCase(),
+          metodoPago: String(form.medioPago || "").toUpperCase(),
+          referencia: numeroComprobante || undefined,
+          observaciones: form.observaciones || undefined,
           monto,
           saldoPendiente,
           cuotasPendientes: 0,
@@ -233,7 +268,28 @@ const NuevoPagoPage: React.FC = () => {
       setSnackbarSeverity("success");
       setSnackbarOpen(true);
 
-      router.push("/pagos/comprobante");
+      {
+        const resObj = applyRes && typeof applyRes === "object" ? (applyRes as Record<string, unknown>) : null;
+        const pagoObj =
+          resObj && resObj["pago"] && typeof resObj["pago"] === "object"
+            ? (resObj["pago"] as Record<string, unknown>)
+            : null;
+
+        const ref =
+          (typeof pagoObj?._id === "string" && pagoObj._id.trim())
+            ? pagoObj._id.trim()
+            : (typeof pagoObj?.id === "string" && pagoObj.id.trim())
+              ? pagoObj.id.trim()
+              : (typeof resObj?._id === "string" && resObj._id.trim())
+                ? resObj._id.trim()
+                : (typeof resObj?.id === "string" && resObj.id.trim())
+                  ? resObj.id.trim()
+                  : (typeof resObj?.pagoId === "string" && resObj.pagoId.trim())
+                    ? resObj.pagoId.trim()
+                    : "";
+
+        router.push(ref ? `/pagos/${encodeURIComponent(ref)}/comprobante` : "/pagos/comprobante");
+      }
     } catch (e: unknown) {
       console.log("💥 ERROR capturado en handleSubmit:", e);
       const msg =

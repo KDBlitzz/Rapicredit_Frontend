@@ -248,6 +248,7 @@ export function usePagos(filters: PagosFiltros, options: UsePagosOptions = {}) {
             return (
               (p.codigoPrestamo || "").toLowerCase().includes(q) ||
               (p.clienteNombre || "").toLowerCase().includes(q) ||
+              (p.referencia || "").toLowerCase().includes(q) ||
               (p.codigoPago || "").toLowerCase().includes(q) ||
               (p.id || "").toLowerCase().includes(q)
             );
