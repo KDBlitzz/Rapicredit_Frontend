@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Box,
   Paper,
@@ -52,7 +53,10 @@ const tabs = [
   { value: "MORA", label: "Mora Detallada" },
 ];
 
+const COMPROBANTE_STORAGE_KEY = "rapicredit:comprobanteAbono";
+
 export default function CuadresPage() {
+  const router = useRouter();
   const hoy = todayISO();
 
   const [fechaInicio, setFechaInicio] = useState(hoy);
@@ -824,6 +828,7 @@ export default function CuadresPage() {
                   {cobrosData.map((pago, idx) => {
                     const estado = String(pago.estado ?? "—");
                     const monto = typeof pago.montoPago === "number" ? pago.montoPago : 0;
+                    const canOpenComprobante = Boolean(pago?.numeroComprobante || pago?._id);
                     return (
                       <TableRow key={String(pago._id ?? `${idx}`)}>
                         <TableCell>{formatDate(pago.fechaPago)}</TableCell>
@@ -833,7 +838,53 @@ export default function CuadresPage() {
                         <TableCell>{getPagoClienteLabel(pago)}</TableCell>
                         <TableCell>{getPagoPrestamoLabel(pago)}</TableCell>
                         <TableCell>{String(pago.metodoPago ?? "—")}</TableCell>
-                        <TableCell>{String(pago.numeroComprobante ?? "—")}</TableCell>
+                        <TableCell>
+                          {canOpenComprobante ? (
+                            <Button
+                              variant="text"
+                              size="small"
+                              onClick={() => {
+                                try {
+                                  const recibo = String(pago.numeroComprobante || pago._id || "").trim();
+                                  const asesorNombre = (getPagoCobradorNombre(pago) || "—").toUpperCase();
+                                  const clienteLabel = String(getPagoClienteLabel(pago) || "—").toUpperCase();
+                                  const codigoPrestamo = String(getPagoPrestamoLabel(pago) || "");
+
+                                  const comprobante = {
+                                    pagoId: pago._id ? String(pago._id) : undefined,
+                                    recibo: recibo || String(Date.now()).slice(-5),
+                                    codigoPrestamo,
+                                    fecha: String(pago.fechaPago || new Date().toISOString()),
+                                    cliente: clienteLabel,
+                                    asesor: asesorNombre,
+                                    metodoPago: String(pago.metodoPago || "").toUpperCase(),
+                                    referencia: pago.numeroComprobante ? String(pago.numeroComprobante) : undefined,
+                                    observaciones: pago.observaciones ? String(pago.observaciones) : undefined,
+                                    monto,
+                                    saldoPendiente: 0,
+                                    cuotasPendientes: 0,
+                                    cuotasPagadas: [
+                                      {
+                                        numero: 1,
+                                        cuota: 0,
+                                        pago: monto,
+                                        multa: 0,
+                                      },
+                                    ],
+                                  };
+                                  sessionStorage.setItem(COMPROBANTE_STORAGE_KEY, JSON.stringify(comprobante));
+                                } catch {
+                                  // ignore
+                                }
+                                router.push("/pagos/comprobante");
+                              }}
+                            >
+                              {String(pago.numeroComprobante ?? "Ver")}
+                            </Button>
+                          ) : (
+                            String(pago.numeroComprobante ?? "—")
+                          )}
+                        </TableCell>
                         <TableCell align="right" sx={{ fontWeight: 600 }}>
                           {formatMoney(monto)}
                         </TableCell>
