@@ -2,12 +2,23 @@
 
 import { useState } from "react";
 import {
-  Box, Card, CardContent, TextField, Typography,
-  Button, Stack, Alert, IconButton, InputAdornment, Link
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Link,
+  Stack,
+  TextField,
+  Typography,
 } from "@mui/material";
-import { Visibility, VisibilityOff } from "@mui/icons-material";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
+
+type EmpleadoAuthShape = {
+  estado?: boolean;
+  rol?: string;
+};
 
 export default function LoginPage() {
   const router = useRouter();
@@ -15,7 +26,6 @@ export default function LoginPage() {
 
   const [user, setUser] = useState("");
   const [pass, setPass] = useState("");
-  const [showPass, setShowPass] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -35,11 +45,11 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const empleado = await login(user.trim(), pass);
+      const empleado = (await login(user.trim(), pass)) as EmpleadoAuthShape;
 
       // Si el backend incluye estado y viene inactivo, bloqueamos.
       if (Object.prototype.hasOwnProperty.call(empleado, "estado")) {
-        const estadoVal = (empleado as any).estado;
+        const estadoVal = empleado.estado;
         if (estadoVal === false) {
           await logout();
           throw new Error("Empleado inactivo");
@@ -48,7 +58,7 @@ export default function LoginPage() {
 
       showTemporaryMessage(setSuccessMessage, "¡Ingreso exitoso!", 800);
 
-      const rolActual = String((empleado as any).rol || "").trim().toLowerCase();
+      const rolActual = String(empleado.rol || "").trim().toLowerCase();
       const destinoInicio = rolActual === "caja" ? "/cuadres" : "/dashboard";
 
       //  navegación suave (evita carreras y recargas)
@@ -85,115 +95,218 @@ export default function LoginPage() {
   return (
     <Box
       sx={{
-        height: "100vh",
-        background: "#060010",
+        minHeight: "100vh",
+        backgroundColor: "#e7eef5",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        px: 3,
+        px: 2,
+        py: 4,
         position: "relative",
+        overflow: "hidden",
       }}
     >
       <Box
-        component="img"
-        src="/img/logo3.png"
-        alt="Logo"
         sx={{
           position: "absolute",
-          top: "10%",
-          left: "50%",
-          transform: "translateX(-50%)",
-          width: 550,
-          opacity: 0.1,
+          top: "-40vmin",
+          left: "-45vmin",
+          width: "105vmin",
+          height: "105vmin",
+          borderRadius: "50%",
+          backgroundColor: "#5db4ea",
+          pointerEvents: "none",
+        }}
+      />
+
+      <Box
+        sx={{
+          position: "absolute",
+          bottom: "-60vmin",
+          right: "-50vmin",
+          width: "110vmin",
+          height: "110vmin",
+          borderRadius: "50%",
+          backgroundColor: "#123782",
+          pointerEvents: "none",
+        }}
+      />
+
+      <Box
+        sx={{
+          position: "absolute",
+          bottom: "-30vmin",
+          left: "-10vmin",
+          width: "130vmin",
+          height: "62vmin",
+          borderTopLeftRadius: "58% 100%",
+          borderTopRightRadius: "58% 100%",
+          backgroundColor: "#edf3fa",
           pointerEvents: "none",
         }}
       />
 
       <Card
         sx={{
-          width: 420,
-          borderRadius: 4,
-          background: "rgba(255,255,255,0.04)",
-          backdropFilter: "blur(7px)",
-          border: "1px solid rgba(76,117,255,0.35)",
-          boxShadow: "0 0 25px rgba(76,117,255,0.18)",
+          width: "min(92vw, 380px)",
+          borderRadius: "22px",
+          background: "#ffffff",
+          boxShadow: "0 35px 55px rgba(4, 35, 78, 0.18)",
+          position: "relative",
+          overflow: "hidden",
+          zIndex: 2,
         }}
       >
-        <CardContent>
-          <Typography variant="h5" textAlign="center" color="white" fontWeight={700} mb={1}>
-            Iniciar Sesión
+        <Box
+          sx={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: 92,
+            backgroundColor: "#245dcb",
+            borderBottomLeftRadius: "50% 28px",
+            borderBottomRightRadius: "50% 28px",
+          }}
+        />
+
+        <Box
+          sx={{
+            position: "absolute",
+            top: 33,
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: 62,
+            height: 62,
+            borderRadius: "50%",
+            backgroundColor: "#f8fbff",
+            border: "1px solid rgba(0, 0, 0, 0.08)",
+            boxShadow: "0 8px 16px rgba(0, 0, 0, 0.08)",
+            display: "grid",
+            placeItems: "center",
+          }}
+        >
+          <Box
+            component="img"
+            src="/img/logo2.png"
+            alt="RapiCredit"
+            sx={{ width: 34, height: 34, objectFit: "contain" }}
+          />
+        </Box>
+
+        <CardContent
+          sx={{
+            pt: "118px !important",
+            px: "30px !important",
+            pb: "34px !important",
+          }}
+        >
+          <Typography
+            textAlign="center"
+            color="#8f8f8f"
+            fontWeight={600}
+            mb={4.3}
+            sx={{
+              fontSize: "2.05rem",
+              letterSpacing: 0.2,
+            }}
+          >
+            Welcome Back
           </Typography>
 
           {errorMessage && <Alert severity="error" sx={{ mb: 2 }}>{errorMessage}</Alert>}
           {successMessage && <Alert severity="success" sx={{ mb: 2 }}>{successMessage}</Alert>}
 
           <Box component="form" onSubmit={handleSubmit}>
-            <Stack spacing={2}>
-            <TextField
-              label="Usuario (email)"
-              fullWidth
-              value={user}
-              onChange={(e) => setUser(e.target.value)}
-              disabled={loading}
-              InputLabelProps={{ style: { color: "#b9c4ff" } }}
-              inputProps={{ style: { color: "white" } }}
-              sx={{
-                "& .MuiOutlinedInput-root": {
-                  "& fieldset": { borderColor: "rgba(76,117,255,0.35)" },
-                  "&:hover fieldset": { borderColor: "rgba(76,117,255,0.55)" }
-                }
-              }}
-            />
+            <Stack spacing={1.7}>
+              <TextField
+                placeholder="Username"
+                fullWidth
+                value={user}
+                onChange={(e) => setUser(e.target.value)}
+                disabled={loading}
+                variant="outlined"
+                sx={{
+                  "& .MuiOutlinedInput-root": {
+                    borderRadius: "999px",
+                    backgroundColor: "#ececef",
+                    "& fieldset": { border: 0 },
+                    "& input": {
+                      py: 1.55,
+                      px: 3,
+                      color: "#8c8c8c",
+                      fontSize: "1.05rem",
+                    },
+                  },
+                }}
+              />
 
-            <TextField
-              label="Contraseña"
-              type={showPass ? "text" : "password"}
-              fullWidth
-              value={pass}
-              onChange={(e) => setPass(e.target.value)}
-              disabled={loading}
-              InputLabelProps={{ style: { color: "#b9c4ff" } }}
-              inputProps={{ style: { color: "white" } }}
-              sx={{
-                "& .MuiOutlinedInput-root": {
-                  "& fieldset": { borderColor: "rgba(76,117,255,0.35)" },
-                  "&:hover fieldset": { borderColor: "rgba(76,117,255,0.55)" }
-                }
-              }}
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton sx={{ color: "white" }} onClick={() => setShowPass(!showPass)}>
-                      {showPass ? <VisibilityOff /> : <Visibility />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
+              <TextField
+                placeholder="Password"
+                type="password"
+                fullWidth
+                value={pass}
+                onChange={(e) => setPass(e.target.value)}
+                disabled={loading}
+                variant="outlined"
+                sx={{
+                  "& .MuiOutlinedInput-root": {
+                    borderRadius: "999px",
+                    backgroundColor: "#ececef",
+                    "& fieldset": { border: 0 },
+                    "& input": {
+                      py: 1.55,
+                      px: 3,
+                      color: "#8c8c8c",
+                      fontSize: "1.05rem",
+                    },
+                  },
+                }}
+              />
 
-            <Link underline="hover" sx={{ color: "#8fa6ff", textAlign: "right", fontSize: "0.9rem", cursor: "pointer" }}>
-              ¿Olvidaste tu contraseña?
-            </Link>
-
-            <Button
-              variant="contained"
-              size="large"
+              <Button
+                variant="contained"
+                size="large"
                 type="submit"
-              disabled={loading}
-              sx={{
-                mt: 1,
-                py: 1.3,
-                borderRadius: 2,
-                fontWeight: 700,
-                background: "#3A6DFF",
-                ":hover": { background: "#5C86FF" },
-                boxShadow: "0 0 12px rgba(76,117,255,0.35)"
-              }}
-            >
-              {loading ? "Validando…" : "Entrar"}
-            </Button>
+                disabled={loading}
+                sx={{
+                  mt: 1,
+                  py: 1.45,
+                  borderRadius: "999px",
+                  fontWeight: 700,
+                  fontSize: "1.12rem",
+                  letterSpacing: 0.2,
+                  textTransform: "none",
+                  background: "#245dcb",
+                  boxShadow: "none",
+                  ":hover": { background: "#1f53b5", boxShadow: "none" },
+                }}
+              >
+                {loading ? "Validando..." : "Sign In"}
+              </Button>
             </Stack>
           </Box>
+
+          <Typography
+            textAlign="center"
+            color="#979797"
+            mt={5.5}
+            fontSize="0.84rem"
+            fontWeight={600}
+          >
+            Need an account? Sign up{" "}
+            <Link
+              href="#"
+              underline="always"
+              sx={{
+                color: "#2f58bd",
+                fontWeight: 700,
+                textUnderlineOffset: "2px",
+              }}
+            >
+              here
+            </Link>
+          </Typography>
         </CardContent>
       </Card>
     </Box>
