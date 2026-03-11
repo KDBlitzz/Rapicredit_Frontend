@@ -24,6 +24,11 @@ export interface DashboardResumen {
     codigo: string;
     cliente: {
       id: string;
+      nombreCompleto?: string;
+      nombres?: string;
+      apellidos?: string;
+      nombre?: string;
+      apellido?: string;
       codigoCliente?: string;
       identidadCliente?: string;
     } | null;
@@ -35,11 +40,16 @@ export interface DashboardResumen {
   }[];
   pagosHoy: {
     id: string;
-    codigoFinanciamiento: string | null;
+    codigoPrestamo: string | null;
     monto: number;
     fechaAbono: string;
     cliente: {
       id: string;
+      nombreCompleto?: string;
+      nombres?: string;
+      apellidos?: string;
+      nombre?: string;
+      apellido?: string;
       codigoCliente?: string;
       identidadCliente?: string;
     } | null;
@@ -49,6 +59,11 @@ export interface DashboardResumen {
     codigo: string;
     cliente: {
       id: string;
+      nombreCompleto?: string;
+      nombres?: string;
+      apellidos?: string;
+      nombre?: string;
+      apellido?: string;
       codigoCliente?: string;
       identidadCliente?: string;
     } | null;
@@ -91,6 +106,16 @@ function normalizeDashboardResumen(raw: unknown): DashboardResumen {
     if (!o) return null;
     return {
       id: toString(o["id"] ?? o["_id"] ?? ""),
+      nombreCompleto:
+        typeof o["nombreCompleto"] === "string" ? (o["nombreCompleto"] as string) : undefined,
+      nombres:
+        typeof o["nombres"] === "string" ? (o["nombres"] as string) : undefined,
+      apellidos:
+        typeof o["apellidos"] === "string" ? (o["apellidos"] as string) : undefined,
+      nombre:
+        typeof o["nombre"] === "string" ? (o["nombre"] as string) : undefined,
+      apellido:
+        typeof o["apellido"] === "string" ? (o["apellido"] as string) : undefined,
       codigoCliente: typeof o["codigoCliente"] === "string" ? (o["codigoCliente"] as string) : undefined,
       identidadCliente: typeof o["identidadCliente"] === "string" ? (o["identidadCliente"] as string) : undefined,
     };
@@ -113,11 +138,11 @@ function normalizeDashboardResumen(raw: unknown): DashboardResumen {
 
   const pagosHoy = toArray(payload["pagosHoy"]).map((item, idx) => {
     const o = asRecord(item) ?? {};
-    const id = toString(o["id"] ?? o["_id"] ?? o["codigoFinanciamiento"] ?? idx);
+    const id = toString(o["id"] ?? o["_id"] ?? o["codigoPrestamo"] ?? idx);
     return {
       id,
-      codigoFinanciamiento:
-        o["codigoFinanciamiento"] == null ? null : toString(o["codigoFinanciamiento"]),
+      codigoPrestamo:
+        o["codigoPrestamo"] == null ? null : toString(o["codigoPrestamo"]),
       monto: toNumber(o["monto"] ?? o["montoPago"] ?? 0, 0),
       fechaAbono: toString(o["fechaAbono"] ?? o["fechaPago"] ?? o["fecha"] ?? ""),
       cliente: normalizeCliente(o["cliente"]),
@@ -213,10 +238,11 @@ export function useDashboard() {
         if (!cancelled) {
           setData(normalizeDashboardResumen(res));
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!cancelled) {
           console.error("Error cargando dashboard:", err);
-          setError(err.message || "Error al cargar el dashboard");
+          const msg = err instanceof Error ? err.message : "Error al cargar el dashboard";
+          setError(msg);
         }
       } finally {
         if (!cancelled) {

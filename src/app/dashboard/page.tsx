@@ -58,6 +58,18 @@ const DashboardPage: React.FC = () => {
   const formatDate = (iso?: string) =>
     iso ? new Date(iso).toLocaleDateString("es-HN") : "—";
 
+  const formatPagoFecha = (iso?: string) => {
+    if (!iso) return "—";
+    const parsed = new Date(iso);
+    if (!Number.isFinite(parsed.getTime())) return "—";
+
+    return parsed.toLocaleTimeString("es-HN", {
+      timeZone: "America/Tegucigalpa",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
   if (loading && !data) {
     return (
       <Box
@@ -349,6 +361,7 @@ const DashboardPage: React.FC = () => {
                   <TableRow>
                     <TableCell>Código</TableCell>
                     <TableCell>Cliente</TableCell>
+                    <TableCell>Nombre</TableCell>
                     <TableCell>Monto</TableCell>
                     <TableCell>Saldo</TableCell>
                     <TableCell>Estado</TableCell>
@@ -362,11 +375,17 @@ const DashboardPage: React.FC = () => {
                       p.cliente?.identidadCliente ||
                       p.cliente?.id ||
                       "—";
+                    const clienteNombre =
+                      p.cliente?.nombreCompleto ||
+                      [p.cliente?.nombres, p.cliente?.apellidos].filter(Boolean).join(" ") ||
+                      [p.cliente?.nombre, p.cliente?.apellido].filter(Boolean).join(" ") ||
+                      "—";
 
                     return (
                       <TableRow key={p.id}>
                         <TableCell>{p.codigo}</TableCell>
                         <TableCell>{clienteLabel}</TableCell>
+                        <TableCell>{clienteNombre}</TableCell>
                         <TableCell>{formatMoney(p.monto)}</TableCell>
                         <TableCell>{formatMoney(p.saldo)}</TableCell>
                         <TableCell>
@@ -391,7 +410,7 @@ const DashboardPage: React.FC = () => {
                   })}
                   {prestamosRecientes.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={6} align="center">
+                      <TableCell colSpan={7} align="center">
                         No hay préstamos recientes.
                       </TableCell>
                     </TableRow>
@@ -414,6 +433,7 @@ const DashboardPage: React.FC = () => {
                   <TableRow>
                     <TableCell>Préstamo</TableCell>
                     <TableCell>Cliente</TableCell>
+                    <TableCell>Nombre</TableCell>
                     <TableCell>Monto</TableCell>
                     <TableCell>Fecha</TableCell>
                   </TableRow>
@@ -425,26 +445,25 @@ const DashboardPage: React.FC = () => {
                       p.cliente?.identidadCliente ||
                       p.cliente?.id ||
                       "—";
+                    const clienteNombre =
+                      p.cliente?.nombreCompleto ||
+                      [p.cliente?.nombres, p.cliente?.apellidos].filter(Boolean).join(" ") ||
+                      [p.cliente?.nombre, p.cliente?.apellido].filter(Boolean).join(" ") ||
+                      "—";
 
                     return (
                       <TableRow key={p.id}>
-                        <TableCell>{p.codigoFinanciamiento || "—"}</TableCell>
+                        <TableCell>{p.codigoPrestamo || "—"}</TableCell>
                         <TableCell>{clienteLabel}</TableCell>
+                        <TableCell>{clienteNombre}</TableCell>
                         <TableCell>{formatMoney(p.monto)}</TableCell>
-                        <TableCell>
-                          {p.fechaAbono
-                            ? new Date(p.fechaAbono).toLocaleTimeString("es-HN", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })
-                            : "—"}
-                        </TableCell>
+                        <TableCell>{formatPagoFecha(p.fechaAbono)}</TableCell>
                       </TableRow>
                     );
                   })}
                   {pagosHoy.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={4} align="center">
+                      <TableCell colSpan={5} align="center">
                         No hay pagos registrados para hoy.
                       </TableCell>
                     </TableRow>
