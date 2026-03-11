@@ -17,7 +17,9 @@ import {
   TableBody,
   Chip,
 } from "@mui/material";
+import Link from "next/link";
 import { useReportes } from "../../hooks/useReportes";
+import { useEmpleadoActual } from "../../hooks/useEmpleadoActual";
 
 const ReportesPage: React.FC = () => {
   const hoy = new Date().toISOString().slice(0, 10);
@@ -27,6 +29,9 @@ const ReportesPage: React.FC = () => {
 
   const [fechaInicio, setFechaInicio] = useState(hace7Iso);
   const [fechaFin, setFechaFin] = useState(hoy);
+  const { empleado } = useEmpleadoActual();
+  const rolActual = (empleado?.rol || "").toLowerCase();
+  const isAsesor = rolActual === "asesor";
 
   const { data, loading, error } = useReportes(fechaInicio, fechaFin);
 
@@ -102,6 +107,19 @@ const ReportesPage: React.FC = () => {
           </Button>
         </Box>
       </Box>
+
+      {!isAsesor && (
+        <Box sx={{ display: "flex", justifyContent: "center" }}>
+          <Button
+            component={Link}
+            href="/reportes/trazabilidad-decisiones"
+            variant="contained"
+            size="small"
+          >
+            Trazabilidad de decisiones
+          </Button>
+        </Box>
+      )}
 
       {/* Estado de carga / error */}
       {loading && (

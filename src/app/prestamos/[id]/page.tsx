@@ -28,6 +28,17 @@ import { useTasasInteres, TasaInteres } from "../../../hooks/useTasasInteres";
 import { useFrecuenciasPago, FrecuenciaPago } from "../../../hooks/useFrecuenciasPago";
 import { usePermisos } from "../../../hooks/usePermisos";
 
+type UnknownRecord = Record<string, unknown>;
+const isRecord = (v: unknown): v is UnknownRecord => typeof v === "object" && v !== null;
+const asNumber = (v: unknown): number | undefined => {
+  if (typeof v === "number") return Number.isFinite(v) ? v : undefined;
+  if (typeof v === "string" && v.trim() !== "") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+};
+
 const PrestamoDetallePage: React.FC = () => {
   const params = useParams();
   // En esta ruta el "id" realmente es el código del préstamo (ej: P-2026-001)
@@ -42,9 +53,10 @@ const PrestamoDetallePage: React.FC = () => {
   const [reloadKey, setReloadKey] = useState(0);
   const { data, loading, error } = usePrestamoDetalle(codigoPrestamo, reloadKey);
 
-  const { empleado } = usePermisos();
+  const { empleado, hasPermiso } = usePermisos();
   const rolActual = (empleado?.rol || "").toLowerCase();
   const isGerente = rolActual === "gerente";
+  const canEditarPrestamo = hasPermiso("F002");
 
   const [editMode, setEditMode] = useState<boolean>(initialEditMode);
   const [saving, setSaving] = useState(false);
@@ -65,26 +77,9 @@ const PrestamoDetallePage: React.FC = () => {
   const [selectedTasa, setSelectedTasa] = useState<TasaInteres | null>(null);
   const [selectedFrecuencia, setSelectedFrecuencia] = useState<FrecuenciaPago | null>(null);
 
-  const tasaOptions = useMemo(() => {
-    if (!selectedTasa?._id) return tasas;
-    const exists = tasas.some((t) => String(t._id) === String(selectedTasa._id));
-    return exists ? tasas : [selectedTasa, ...tasas];
-  }, [tasas, selectedTasa]);
-
   const [toastOpen, setToastOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [toastSeverity, setToastSeverity] = useState<"success" | "error" | "info" | "warning">("success");
-
-  type UnknownRecord = Record<string, unknown>;
-  const isRecord = (v: unknown): v is UnknownRecord => typeof v === "object" && v !== null;
-  const asNumber = (v: unknown): number | undefined => {
-    if (typeof v === "number") return Number.isFinite(v) ? v : undefined;
-    if (typeof v === "string" && v.trim() !== "") {
-      const n = Number(v);
-      return Number.isFinite(n) ? n : undefined;
-    }
-    return undefined;
-  };
 
   const amortizacionRows = useMemo(() => {
     const raw = Array.isArray(data?.amortizacionPreview) ? data.amortizacionPreview : [];
@@ -215,28 +210,21 @@ const PrestamoDetallePage: React.FC = () => {
   const onSave = async () => {
     if (!data?.codigoPrestamo) return;
 
+    if (!canEditarPrestamo) {
+      setToastSeverity("error");
+      setToastMessage("No tienes permisos para editar préstamos.");
+      setToastOpen(true);
+      return;
+    }
+
     const toFiniteNumber = (v: string): number | null => {
       const n = Number(v);
       return Number.isFinite(n) ? n : null;
     };
 
-    if (!selectedTasa?._id) {
-      setToastSeverity("error");
-      setToastMessage("Debes seleccionar una tasa de interés.");
-      setToastOpen(true);
-      return;
-    }
     if (!selectedFrecuencia?.nombre) {
       setToastSeverity("error");
       setToastMessage("Debes seleccionar una frecuencia de pago.");
-      setToastOpen(true);
-      return;
-    }
-
-    const capital = toFiniteNumber(form.capitalSolicitado);
-    if (capital == null || capital <= 0) {
-      setToastSeverity("error");
-      setToastMessage("El capital solicitado debe ser mayor a cero.");
       setToastOpen(true);
       return;
     }
@@ -249,39 +237,6 @@ const PrestamoDetallePage: React.FC = () => {
       return;
     }
 
-    if (!form.fechaDesembolso || !form.fechaVencimiento) {
-      setToastSeverity("error");
-      setToastMessage("Debes indicar fecha de desembolso y vencimiento.");
-      setToastOpen(true);
-      return;
-    }
-
-    // Validación básica: vencimiento no puede ser antes que desembolso
-    const desembolsoTime = Date.parse(form.fechaDesembolso);
-    const vencimientoTime = Date.parse(form.fechaVencimiento);
-    if (Number.isFinite(desembolsoTime) && Number.isFinite(vencimientoTime) && vencimientoTime < desembolsoTime) {
-      setToastSeverity("error");
-      setToastMessage("La fecha de vencimiento no puede ser anterior a la fecha de desembolso.");
-      setToastOpen(true);
-      return;
-    }
-
-    const min = Number(selectedTasa.capitalMin);
-    const max = Number(selectedTasa.capitalMax);
-    const hasMin = Number.isFinite(min) && min > 0;
-    const hasMax = Number.isFinite(max) && max > 0;
-    if (hasMin && capital < min) {
-      setToastSeverity("error");
-      setToastMessage(`El capital no puede ser menor a L. ${min.toLocaleString("es-HN", { minimumFractionDigits: 2 })} según la tasa seleccionada.`);
-      setToastOpen(true);
-      return;
-    }
-    if (hasMax && capital > max) {
-      setToastSeverity("error");
-      setToastMessage(`El capital no puede ser mayor a L. ${max.toLocaleString("es-HN", { minimumFractionDigits: 2 })} según la tasa seleccionada.`);
-      setToastOpen(true);
-      return;
-    }
 
     const frecuenciaEnum = (() => {
       switch (selectedFrecuencia.nombre) {
@@ -304,30 +259,21 @@ const PrestamoDetallePage: React.FC = () => {
       return;
     }
 
-    const estado = (form.estadoPrestamo || "").toUpperCase();
-    const estadoOk = ["VIGENTE", "CERRADO", "RECHAZADO", "PENDIENTE"].includes(estado);
-    if (!estadoOk) {
-      setToastSeverity("error");
-      setToastMessage("Estado de préstamo inválido.");
-      setToastOpen(true);
-      return;
-    }
-
     const payload: Record<string, unknown> = {
       // Campos requeridos por el modelo (por si el backend valida el documento completo)
       clienteId: data.clienteId,
       solicitudId: data.solicitudId,
 
-      tasaInteresId: selectedTasa._id,
+      tasaInteresId: data.tasaInteresId ?? selectedTasa?._id,
       frecuenciaPago: frecuenciaEnum,
-      capitalSolicitado: capital,
+      capitalSolicitado: data.capitalSolicitado,
       cuotaFija: data.cuotaFija,
       plazoCuotas: plazo,
-      fechaDesembolso: form.fechaDesembolso,
-      fechaVencimiento: form.fechaVencimiento,
-      estadoPrestamo: estado,
-      observaciones: form.observaciones ?? "",
-      activo: form.activo !== "false",
+      fechaDesembolso: data.fechaDesembolso,
+      fechaVencimiento: data.fechaVencimiento,
+      estadoPrestamo: data.estadoPrestamo,
+      observaciones: data.observaciones ?? "",
+      activo: data.activo !== false,
     };
 
     if (!payload.clienteId || !payload.solicitudId) {
@@ -407,7 +353,7 @@ const PrestamoDetallePage: React.FC = () => {
               Contrato y pagaré
             </Button>
           )}
-          {editMode ? (
+          {editMode && canEditarPrestamo ? (
             <>
               <Button size="small" variant="contained" onClick={onSave} disabled={saving}>
                 {saving ? "Guardando…" : "Guardar"}
@@ -417,9 +363,11 @@ const PrestamoDetallePage: React.FC = () => {
               </Button>
             </>
           ) : (
-            <Button size="small" variant="contained" onClick={() => setEditMode(true)}>
-              Editar
-            </Button>
+            canEditarPrestamo ? (
+              <Button size="small" variant="contained" onClick={() => setEditMode(true)}>
+                Editar
+              </Button>
+            ) : null
           )}
 
           {data.cliente && (
@@ -439,38 +387,47 @@ const PrestamoDetallePage: React.FC = () => {
             <Typography variant="subtitle2" sx={{ mb: 1 }}>Datos del préstamo</Typography>
             <Grid container spacing={1}>
               <Grid size={{ xs: 12, sm: 6 }}>
+                <>
+                  <Typography variant="caption" color="text.secondary">Capital</Typography>
+                  <Typography>{formatMoney(data.capitalSolicitado)}</Typography>
+                </>
+              </Grid>
+
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Typography variant="caption" color="text.secondary">Tasa de interés</Typography>
+                <Typography>{tasaInteresLabel}</Typography>
+              </Grid>
+
+              <Grid size={{ xs: 12, sm: 6 }}>
                 {editMode ? (
                   <TextField
-                    label="Capital solicitado"
                     fullWidth
                     size="small"
-                    type="number"
-                    name="capitalSolicitado"
-                    value={form.capitalSolicitado}
-                    onChange={onChangeForm}
-                    inputProps={{ inputMode: "decimal", step: "0.01" }}
-                  />
+                    select
+                    label="Frecuencia de pago"
+                    value={selectedFrecuencia?.nombre ?? ""}
+                    onChange={(e) => {
+                      const nombre = e.target.value;
+                      const match = frecuencias.find((f) => String(f.nombre) === String(nombre));
+                      setSelectedFrecuencia(match ?? null);
+                    }}
+                  >
+                    <MenuItem value="" disabled>
+                      <em>Selecciona una frecuencia</em>
+                    </MenuItem>
+                    {frecuencias.map((f) => (
+                      <MenuItem key={String(f._id)} value={String(f.nombre)}>
+                        {String(f.nombre)}
+                      </MenuItem>
+                    ))}
+                  </TextField>
                 ) : (
                   <>
-                    <Typography variant="caption" color="text.secondary">Capital</Typography>
-                    <Typography>{formatMoney(data.capitalSolicitado)}</Typography>
+                    <Typography variant="caption" color="text.secondary">Frecuencia de pago</Typography>
+                    <Typography>{data.frecuenciaPago || "—"}</Typography>
                   </>
                 )}
               </Grid>
-
-              {!editMode && (
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <Typography variant="caption" color="text.secondary">Tasa de interés</Typography>
-                  <Typography>{tasaInteresLabel}</Typography>
-                </Grid>
-              )}
-
-              {!editMode && (
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <Typography variant="caption" color="text.secondary">Frecuencia de pago</Typography>
-                  <Typography>{data.frecuenciaPago || "—"}</Typography>
-                </Grid>
-              )}
               <Grid size={{ xs: 6 }}>
                 <Typography variant="caption" color="text.secondary">Cuota fija</Typography>
                 <Typography>{formatMoney(data.cuotaFija)}</Typography>
@@ -495,99 +452,17 @@ const PrestamoDetallePage: React.FC = () => {
                 )}
               </Grid>
 
-              {editMode && (
-                <Grid size={{ xs: 12 }}>
-                  <Typography variant="subtitle2" sx={{ mt: 1 }}>Parámetros financieros</Typography>
-                </Grid>
-              )}
-              {editMode && (
-                <>
-                  <Grid size={{ xs: 12, sm: 6 }}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      select
-                      label="Tasa de interés"
-                      value={selectedTasa?._id ?? ""}
-                      onChange={(e) => {
-                        const id = e.target.value;
-                        const match = tasaOptions.find((t) => String(t._id) === String(id));
-                        setSelectedTasa(match ?? null);
-                      }}
-                    >
-                      <MenuItem value="" disabled>
-                        <em>Selecciona una tasa</em>
-                      </MenuItem>
-                      {tasaOptions.map((t) => (
-                        <MenuItem key={String(t._id)} value={String(t._id)}>
-                          {t.nombre} {t.porcentajeInteres != null ? `- ${t.porcentajeInteres}%` : ""}
-                        </MenuItem>
-                      ))}
-                    </TextField>
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 6 }}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      select
-                      label="Frecuencia de pago"
-                      value={selectedFrecuencia?.nombre ?? ""}
-                      onChange={(e) => {
-                        const nombre = e.target.value;
-                        const match = frecuencias.find((f) => String(f.nombre) === String(nombre));
-                        setSelectedFrecuencia(match ?? null);
-                      }}
-                    >
-                      <MenuItem value="" disabled>
-                        <em>Selecciona una frecuencia</em>
-                      </MenuItem>
-                      {frecuencias.map((f) => (
-                        <MenuItem key={String(f._id)} value={String(f.nombre)}>
-                          {String(f.nombre)}
-                        </MenuItem>
-                      ))}
-                    </TextField>
-                  </Grid>
-                </>
-              )}
-
               <Grid size={{ xs: 12, sm: 6 }}>
-                {editMode ? (
-                  <TextField
-                    label="Fecha de desembolso"
-                    type="date"
-                    name="fechaDesembolso"
-                    value={form.fechaDesembolso}
-                    onChange={onChangeForm}
-                    fullWidth
-                    size="small"
-                    InputLabelProps={{ shrink: true }}
-                  />
-                ) : (
-                  <>
-                    <Typography variant="caption" color="text.secondary">Desembolso</Typography>
-                    <Typography>{formatDate(data.fechaDesembolso)}</Typography>
-                  </>
-                )}
+                <>
+                  <Typography variant="caption" color="text.secondary">Desembolso</Typography>
+                  <Typography>{formatDate(data.fechaDesembolso)}</Typography>
+                </>
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
-                {editMode ? (
-                  <TextField
-                    label="Fecha de vencimiento"
-                    type="date"
-                    name="fechaVencimiento"
-                    value={form.fechaVencimiento}
-                    onChange={onChangeForm}
-                    fullWidth
-                    size="small"
-                    InputLabelProps={{ shrink: true }}
-                  />
-                ) : (
-                  <>
-                    <Typography variant="caption" color="text.secondary">Vencimiento</Typography>
-                    <Typography>{formatDate(data.fechaVencimiento)}</Typography>
-                  </>
-                )}
+                <>
+                  <Typography variant="caption" color="text.secondary">Vencimiento</Typography>
+                  <Typography>{formatDate(data.fechaVencimiento)}</Typography>
+                </>
               </Grid>
               <Grid size={{ xs: 6 }}>
                 <Typography variant="caption" color="text.secondary">Total intereses</Typography>
@@ -626,20 +501,7 @@ const PrestamoDetallePage: React.FC = () => {
               </Grid>
               <Grid size={{ xs: 12 }}>
                 <Typography variant="caption" color="text.secondary">Observaciones</Typography>
-                {editMode ? (
-                  <TextField
-                    fullWidth
-                    size="small"
-                    multiline
-                    minRows={2}
-                    name="observaciones"
-                    value={form.observaciones}
-                    onChange={onChangeForm}
-                    placeholder="Observaciones"
-                  />
-                ) : (
-                  <Typography>{data.observaciones || "—"}</Typography>
-                )}
+                <Typography>{data.observaciones || "—"}</Typography>
               </Grid>
             </Grid>
           </Paper>
@@ -651,41 +513,11 @@ const PrestamoDetallePage: React.FC = () => {
             <Grid container spacing={1}>
               <Grid size={{ xs: 6 }}>
                 <Typography variant="caption" color="text.secondary">Estado</Typography>
-                {editMode ? (
-                  <TextField
-                    fullWidth
-                    size="small"
-                    select
-                    name="estadoPrestamo"
-                    value={form.estadoPrestamo}
-                    onChange={onChangeForm}
-                  >
-                    <MenuItem value="VIGENTE">VIGENTE</MenuItem>
-                    <MenuItem value="PENDIENTE">PENDIENTE</MenuItem>
-                    <MenuItem value="CERRADO">CERRADO</MenuItem>
-                    <MenuItem value="RECHAZADO">RECHAZADO</MenuItem>
-                  </TextField>
-                ) : (
-                  <Typography>{data.estadoPrestamo || "—"}</Typography>
-                )}
+                <Typography>{data.estadoPrestamo || "—"}</Typography>
               </Grid>
               <Grid size={{ xs: 6 }}>
                 <Typography variant="caption" color="text.secondary">Activo</Typography>
-                {editMode ? (
-                  <TextField
-                    fullWidth
-                    size="small"
-                    select
-                    name="activo"
-                    value={form.activo}
-                    onChange={onChangeForm}
-                  >
-                    <MenuItem value="true">Sí</MenuItem>
-                    <MenuItem value="false">No</MenuItem>
-                  </TextField>
-                ) : (
-                  <Typography>{data.activo === false ? "No" : "Sí"}</Typography>
-                )}
+                <Typography>{data.activo === false ? "No" : "Sí"}</Typography>
               </Grid>
             </Grid>
           </Paper>

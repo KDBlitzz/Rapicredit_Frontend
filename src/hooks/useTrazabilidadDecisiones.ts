@@ -29,6 +29,61 @@ export function useTrazabilidadDecisiones(options: UseTrazabilidadDecisionesOpti
   useEffect(() => {
     let cancelled = false;
 
+    const asRecord = (v: unknown): Record<string, unknown> | null =>
+      v && typeof v === "object" ? (v as Record<string, unknown>) : null;
+
+    const asString = (v: unknown): string | undefined => {
+      if (typeof v === "string") {
+        const s = v.trim();
+        return s ? s : undefined;
+      }
+      if (v == null) return undefined;
+      const s = String(v).trim();
+      return s ? s : undefined;
+    };
+
+    const normalizeAccion = (raw: Record<string, unknown>): string => {
+      const base = asString(raw["accion"] ?? raw["decision"] ?? raw["estado"] ?? raw["estadoDecision"] ?? "") || "";
+      const upper = base.toUpperCase();
+
+      if (upper !== "EN_REVISION") return upper || "-";
+
+      const preEstado = asString(raw["preEstado"] ?? raw["preDecision"] ?? raw["estadoPreaprobacion"] ?? "");
+      if (preEstado) {
+        const preUpper = preEstado.toUpperCase();
+        if (preUpper === "PRE_APROBADO" || preUpper === "PRE_RECHAZADO") {
+          return preUpper;
+        }
+      }
+
+      const comentario = asString(raw["comentario"] ?? raw["observacion"] ?? "") || "";
+      if (/rechaz|denegad|negad/i.test(comentario)) return "PRE_RECHAZADO";
+      return "PRE_APROBADO";
+    };
+
+    const resolveActorName = (raw: Record<string, unknown>): string => {
+      const actorObj = asRecord(raw["aprobadoPor"] ?? raw["usuario"] ?? raw["supervisor"] ?? raw["empleado"] ?? raw["registradoPor"]);
+      const fromActorObj = asString(
+        actorObj?.["nombreCompleto"] ??
+          actorObj?.["usuario"] ??
+          actorObj?.["nombre"] ??
+          actorObj?.["codigoUsuario"]
+      );
+
+      const direct = asString(
+        raw["aprobadoPorNombre"] ??
+          raw["usuarioNombre"] ??
+          raw["nombreSupervisor"] ??
+          raw["nombreEmpleado"] ??
+          raw["aprobadoPor"] ??
+          raw["usuario"] ??
+          raw["supervisor"] ??
+          raw["empleado"]
+      );
+
+      return fromActorObj || direct || "-";
+    };
+
     async function load() {
       setLoading(true);
       setError(null);
@@ -49,29 +104,32 @@ export function useTrazabilidadDecisiones(options: UseTrazabilidadDecisionesOpti
         if (Array.isArray(res)) {
           lista = res;
         } else if (res && typeof res === "object") {
-          const maybe: any = res;
+          const maybe = res as Record<string, unknown>;
           if (Array.isArray(maybe.items)) lista = maybe.items;
           else if (Array.isArray(maybe.data)) lista = maybe.data;
         }
 
-        const mapped: TrazabilidadDecisionItem[] = lista.map((raw: any, idx: number) => ({
-          id: String(raw.id ?? raw._id ?? idx),
-          tipoEntidad: raw.tipoEntidad ?? raw.entidadTipo ?? null,
-          codigoEntidad: raw.codigoEntidad ?? raw.codigo ?? null,
-          entidadId: raw.entidadId ?? raw.solicitudId ?? raw.prestamoId ?? null,
-          accion: String(raw.accion ?? raw.decision ?? ""),
-          aprobadoPor: String(raw.aprobadoPor ?? raw.usuario ?? ""),
-          fecha: String(raw.fecha ?? raw.fechaDecision ?? new Date().toISOString()),
-          comentario: raw.comentario ?? null,
-        }));
+        const mapped: TrazabilidadDecisionItem[] = lista.map((item, idx: number) => {
+          const raw = asRecord(item) || {};
+          return {
+            id: String(raw.id ?? raw._id ?? idx),
+            tipoEntidad: asString(raw.tipoEntidad ?? raw.entidadTipo) ?? null,
+            codigoEntidad: asString(raw.codigoEntidad ?? raw.codigo) ?? null,
+            entidadId: asString(raw.entidadId ?? raw.solicitudId ?? raw.prestamoId) ?? null,
+            accion: normalizeAccion(raw),
+            aprobadoPor: resolveActorName(raw),
+            fecha: String(raw.fecha ?? raw.fechaDecision ?? new Date().toISOString()),
+            comentario: asString(raw.comentario ?? raw.observacion) ?? null,
+          };
+        });
 
         if (!cancelled) {
           setData(mapped);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("Error cargando trazabilidad de decisiones:", err);
         if (!cancelled) {
-          setError(err.message || "Error al cargar trazabilidad de decisiones");
+          setError(err instanceof Error ? err.message : "Error al cargar trazabilidad de decisiones");
         }
       } finally {
         if (!cancelled) {

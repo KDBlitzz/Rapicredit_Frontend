@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
 	Box,
@@ -15,6 +15,7 @@ import {
 import Link from "next/link";
 import { usePrestamoDetalle } from "../../../../hooks/usePrestamoDetalle";
 import { usePermisos } from "../../../../hooks/usePermisos";
+import { useTasasInteres } from "../../../../hooks/useTasasInteres";
 
 const CLAUSULAS_CONTRATO_SIN_DESPLAZAMIENTO = [
 	"PRIMERO: Información: Declara el Deudor, que previo a la suscripción del presente contrato ha recibido a su satisfacción por parte del acreedor, la información relacionada con el presente contrato de préstamo, intereses, comisiones pactadas, así como las consecuencias por el incumplimiento de la obligación.",
@@ -212,6 +213,7 @@ const PrestamoDocumentosPage: React.FC = () => {
 	const isGerente = rolActual === "gerente";
 
 	const { data, loading, error } = usePrestamoDetalle(codigoPrestamo, 0);
+	const { data: tasas } = useTasasInteres();
 	type DocType = "sin" | "con" | "dacion" | "pagare";
 	const [generatingDoc, setGeneratingDoc] = useState<DocType | null>(null);
 	const generating = generatingDoc !== null;
@@ -220,6 +222,26 @@ const PrestamoDocumentosPage: React.FC = () => {
 		v != null
 			? `L. ${v.toLocaleString("es-HN", { minimumFractionDigits: 2 })}`
 			: "L. 0.00";
+
+	const tasaInteresLabel = useMemo(() => {
+		if (!data) return "—";
+
+		const tasaPorCatalogo = tasas.find(
+			(t) =>
+				String(t._id) === String(data.tasaInteresId || "") ||
+				String(t.codigoTasa || "") === String(data.tasaInteresId || "")
+		);
+
+		const nombre = data.tasaInteresNombre || tasaPorCatalogo?.nombre;
+		const porcentaje =
+			data.tasaInteresAnual ??
+			tasaPorCatalogo?.porcentajeInteres;
+
+		if (nombre && porcentaje != null) return `${nombre} (${porcentaje}%)`;
+		if (nombre) return nombre;
+		if (porcentaje != null) return `${porcentaje}%`;
+		return data.tasaInteresId || "—";
+	}, [data, tasas]);
 
 	type PdfContext = {
 		doc: import("jspdf").jsPDF;
@@ -859,7 +881,7 @@ const PrestamoDocumentosPage: React.FC = () => {
 							Tasa de interés
 						</Typography>
 						<Typography variant="body2">
-							{data.tasaInteresNombre || data.tasaInteresId || "—"}
+							{tasaInteresLabel}
 						</Typography>
 					</Grid>
 				</Grid>

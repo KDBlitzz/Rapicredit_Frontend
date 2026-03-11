@@ -18,6 +18,7 @@ import {
 } from "@mui/material";
 import Link from "next/link";
 import { useTrazabilidadDecisiones } from "../../../hooks/useTrazabilidadDecisiones";
+import { useEmpleadoActual } from "../../../hooks/useEmpleadoActual";
 
 const TrazabilidadDecisionesPage: React.FC = () => {
   const hoy = new Date().toISOString().slice(0, 10);
@@ -32,6 +33,9 @@ const TrazabilidadDecisionesPage: React.FC = () => {
     fechaInicio,
     fechaFin,
   });
+  const { empleado } = useEmpleadoActual();
+  const rolActual = (empleado?.rol || "").toLowerCase();
+  const isAsesor = rolActual === "asesor";
 
   const handleAplicarRango = (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,6 +49,19 @@ const TrazabilidadDecisionesPage: React.FC = () => {
       minute: "2-digit",
     })}`;
   };
+
+  if (isAsesor) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Sin acceso
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          No tienes permisos para ver la trazabilidad de decisiones.
+        </Typography>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -148,18 +165,23 @@ const TrazabilidadDecisionesPage: React.FC = () => {
                     <TableRow key={item.id}>
                       <TableCell>{formatDateTime(item.fecha)}</TableCell>
                       <TableCell>
+                        {(() => {
+                          const accion = (item.accion || "").toUpperCase();
+                          const chipColor =
+                            accion === "APROBADA" || accion === "PRE_APROBADO"
+                              ? "success"
+                              : accion === "RECHAZADA" || accion === "PRE_RECHAZADO"
+                              ? "error"
+                              : "info";
+                          return (
                         <Chip
                           size="small"
                           label={item.accion || ""}
-                          color={
-                            (item.accion || "").toUpperCase() === "APROBADA"
-                              ? "success"
-                              : (item.accion || "").toUpperCase() === "RECHAZADA"
-                              ? "error"
-                              : "info"
-                          }
+                          color={chipColor}
                           variant="outlined"
                         />
+                          );
+                        })()}
                       </TableCell>
                       <TableCell>{item.aprobadoPor || "-"}</TableCell>
                       <TableCell>{item.tipoEntidad || "-"}</TableCell>

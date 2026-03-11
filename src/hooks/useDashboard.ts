@@ -33,7 +33,7 @@ export interface DashboardResumen {
       identidadCliente?: string;
     } | null;
     monto: number;
-    saldo: number;
+    saldoPendiente: number;
     estado: string;
     fechaDesembolso: string;
     fechaVencimiento: string;
@@ -129,7 +129,7 @@ function normalizeDashboardResumen(raw: unknown): DashboardResumen {
       codigo: toString(o["codigo"] ?? o["codigoFinanciamiento"] ?? "—", "—"),
       cliente: normalizeCliente(o["cliente"]),
       monto: toNumber(o["monto"] ?? o["capitalSolicitado"] ?? 0, 0),
-      saldo: toNumber(o["saldo"] ?? 0, 0),
+      saldoPendiente: toNumber(o["saldoPendiente"] ?? o["saldoCapital"] ?? o["saldo"] ?? 0, 0),
       estado: toString(o["estado"] ?? o["estadoPrestamo"] ?? "—", "—"),
       fechaDesembolso: toString(o["fechaDesembolso"] ?? o["fechaSolicitud"] ?? ""),
       fechaVencimiento: toString(o["fechaVencimiento"] ?? ""),

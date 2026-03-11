@@ -32,6 +32,7 @@ import {
   useGastosCaja,
   useDesembolsosCaja,
 } from "../../hooks/useCaja";
+import type { Pago } from "../../services/cajaApi";
 import { empleadosApi, type EmpleadoMongo } from "../../services/empleadosApi";
 import { gastosApi } from "../../services/gastosApi";
 import { parseDateInput, toOffsetISOString } from "../../lib/dateRange";
@@ -47,7 +48,7 @@ function todayISO() {
 
 const tabs = [
   { value: "RESUMEN", label: "Resumen" },
-  { value: "COBROS", label: "Cobros" },
+  { value: "PAGOS", label: "Pagos" },
   { value: "DESEMBOLSOS", label: "Desembolsos" },
   { value: "GASTOS", label: "Gastos" },
   { value: "MORA", label: "Mora Detallada" },
@@ -62,7 +63,7 @@ export default function CuadresPage() {
   const [fechaInicio, setFechaInicio] = useState(hoy);
   const [fechaFin, setFechaFin] = useState(hoy);
   const [asesorId, setAsesorId] = useState<string | "TODOS">("TODOS");
-  const [tab, setTab] = useState<"RESUMEN" | "COBROS" | "DESEMBOLSOS" | "GASTOS" | "MORA">("RESUMEN");
+  const [tab, setTab] = useState<"RESUMEN" | "PAGOS" | "DESEMBOLSOS" | "GASTOS" | "MORA">("RESUMEN");
   const [refreshKey, setRefreshKey] = useState(0);
 
   const [snackbarOpen, setSnackbarOpen] = useState(false);
@@ -91,6 +92,8 @@ export default function CuadresPage() {
   });
 
   const { empleado: empleadoActual } = useEmpleadoActual();
+  const rolActual = (empleadoActual?.rol || "").toLowerCase();
+  const isAsesor = rolActual === "asesor";
 
   const [asesores, setAsesores] = useState<EmpleadoMongo[]>([]);
   const [loadingAsesores, setLoadingAsesores] = useState(false);
@@ -198,7 +201,7 @@ export default function CuadresPage() {
   const resolveAsesorNombre = (id?: string, nombre?: string) => {
     if (nombre) return nombre;
     if (!id) return "—";
-    const a = asesores.find((c) => c._id === id);
+    const a = asesores.find((c) => c._id === id || c.codigoUsuario === id);
     return a?.nombreCompleto || a?.usuario || a?.codigoUsuario || "—";
   };
 
@@ -339,36 +342,88 @@ export default function CuadresPage() {
     return a?.nombreCompleto || a?.usuario || a?.codigoUsuario || codigoUsuario;
   };
 
-  const getPagoCobradorId = (pago: any): string | undefined => {
+  const resolveAsesorNombrePorReferencia = (ref?: string) => {
+    if (!ref) return undefined;
+    const normalized = String(ref).trim();
+    if (!normalized) return undefined;
+    const a = asesores.find((x) => x._id === normalized || x.codigoUsuario === normalized);
+    return a?.nombreCompleto || a?.usuario || a?.codigoUsuario;
+  };
+
+  const asRecord = (v: unknown): Record<string, unknown> | null => {
+    if (!v || typeof v !== "object") return null;
+    return v as Record<string, unknown>;
+  };
+
+  const getPagoCobradorId = (pago: Pago): string | undefined => {
     const raw = pago?.cobradorId;
     if (!raw) return undefined;
     if (typeof raw === "string") return raw;
-    if (typeof raw === "object") {
-      const rec = raw as Record<string, unknown>;
-      const id = rec["_id"] ?? rec["id"];
+    const rec = asRecord(raw);
+    if (rec) {
+      const id = rec["_id"] ?? rec["id"] ?? rec["codigoUsuario"];
       return id != null ? String(id) : undefined;
     }
     return undefined;
   };
 
-  const getPagoCobradorNombre = (pago: any): string | undefined => {
-    const raw = pago?.cobradorId;
-    if (!raw) return undefined;
-    if (typeof raw === "object") {
-      const rec = raw as Record<string, unknown>;
-      const n = rec["nombreCompleto"] ?? rec["usuario"] ?? rec["codigoUsuario"];
+  const getPagoCobradorNombre = (pago: Pago): string | undefined => {
+    const asesorRecord = asRecord((pago as Record<string, unknown>)["asesor"]);
+    if (asesorRecord) {
+      const n = asesorRecord["nombreCompleto"] ?? asesorRecord["usuario"] ?? asesorRecord["codigoUsuario"];
+      if (typeof n === "string" && n.trim()) return n;
+      const fromAsesorRef = resolveAsesorNombrePorReferencia(
+        String(asesorRecord["codigoUsuario"] ?? asesorRecord["id"] ?? "")
+      );
+      if (fromAsesorRef) return fromAsesorRef;
+    }
+
+    const cobradorRaw = pago?.cobradorId;
+    const cobradorRecord = asRecord(cobradorRaw);
+    if (cobradorRecord) {
+      const n =
+        cobradorRecord["nombreCompleto"] ??
+        cobradorRecord["usuario"] ??
+        cobradorRecord["codigoUsuario"];
       if (typeof n === "string" && n.trim()) return n;
     }
-    const id = getPagoCobradorId(pago);
-    return id ? resolveAsesorNombre(id) : undefined;
+
+    const pagoRec = pago as Record<string, unknown>;
+    const posiblesRefs = [
+      getPagoCobradorId(pago),
+      typeof pagoRec["codigoRegistradoPor"] === "string" ? String(pagoRec["codigoRegistradoPor"]) : undefined,
+      typeof pagoRec["registradoPor"] === "string" ? String(pagoRec["registradoPor"]) : undefined,
+      typeof pagoRec["usuarioRegistro"] === "string" ? String(pagoRec["usuarioRegistro"]) : undefined,
+      typeof pagoRec["creadoPor"] === "string" ? String(pagoRec["creadoPor"]) : undefined,
+    ].filter(Boolean) as string[];
+
+    for (const ref of posiblesRefs) {
+      const resolved = resolveAsesorNombrePorReferencia(ref);
+      if (resolved) return resolved;
+    }
+
+    const registradoPorRecord = asRecord(pagoRec["registradoPor"]);
+    if (registradoPorRecord) {
+      const n =
+        registradoPorRecord["nombreCompleto"] ??
+        registradoPorRecord["usuario"] ??
+        registradoPorRecord["codigoUsuario"];
+      if (typeof n === "string" && n.trim()) return n;
+      const resolved = resolveAsesorNombrePorReferencia(
+        String(registradoPorRecord["codigoUsuario"] ?? registradoPorRecord["id"] ?? "")
+      );
+      if (resolved) return resolved;
+    }
+
+    return undefined;
   };
 
-  const getPagoClienteLabel = (pago: any): string => {
+  const getPagoClienteLabel = (pago: Pago): string => {
     const raw = pago?.clienteId;
     if (!raw) return "—";
     if (typeof raw === "string") return raw;
-    if (typeof raw === "object") {
-      const rec = raw as Record<string, unknown>;
+    const rec = asRecord(raw);
+    if (rec) {
       const codigo = typeof rec["codigoCliente"] === "string" ? rec["codigoCliente"] : "";
       const identidad = typeof rec["identidadCliente"] === "string" ? rec["identidadCliente"] : "";
       return [codigo, identidad].filter(Boolean).join(" · ") || "—";
@@ -376,30 +431,30 @@ export default function CuadresPage() {
     return "—";
   };
 
-  const getPagoPrestamoLabel = (pago: any): string => {
+  const getPagoPrestamoLabel = (pago: Pago): string => {
     const raw = pago?.prestamoId;
     if (!raw) return "—";
     if (typeof raw === "string") return raw;
-    if (typeof raw === "object") {
-      const rec = raw as Record<string, unknown>;
+    const rec = asRecord(raw);
+    if (rec) {
       const codigo = rec["codigoPrestamo"];
       if (typeof codigo === "string" && codigo.trim()) return codigo;
     }
     return "—";
   };
 
-  const cobrosResp = asesorId === "TODOS" ? pagosTodos : pagosPorAsesor;
-  const cobrosData = useMemo(() => cobrosResp?.pagos ?? [], [cobrosResp]);
-  const cobrosLoading = asesorId === "TODOS" ? loadingPagosTodos : loadingPagoAsesor;
-  const cobrosError = asesorId === "TODOS" ? errorPagosTodos : errorPagoAsesor;
+  const pagosResp = asesorId === "TODOS" ? pagosTodos : pagosPorAsesor;
+  const pagosData = useMemo(() => pagosResp?.pagos ?? [], [pagosResp]);
+  const pagosLoading = asesorId === "TODOS" ? loadingPagosTodos : loadingPagoAsesor;
+  const pagosError = asesorId === "TODOS" ? errorPagosTodos : errorPagoAsesor;
 
-  const totalCobros = useMemo(
+  const totalPagos = useMemo(
     () =>
-      cobrosData.reduce(
+      pagosData.reduce(
         (acc, p) => acc + (typeof p.montoPago === "number" ? p.montoPago : 0),
         0
       ),
-    [cobrosData]
+    [pagosData]
   );
 
   const totalGastos = useMemo(
@@ -482,18 +537,28 @@ export default function CuadresPage() {
 
   // Estados de carga y error
   const isLoading =
-    (tab === "COBROS" && cobrosLoading) ||
+    (tab === "PAGOS" && pagosLoading) ||
     (tab === "DESEMBOLSOS" && loadingDesembolsos) ||
     (tab === "GASTOS" && loadingGastos) ||
     (tab === "RESUMEN" && loadingCuadre) ||
     (tab === "MORA" && loadingMora);
 
   const currentError =
-    (tab === "COBROS" && cobrosError) ||
+    (tab === "PAGOS" && pagosError) ||
     (tab === "DESEMBOLSOS" && errorDesembolsos) ||
     (tab === "GASTOS" && errorGastos) ||
     (tab === "RESUMEN" && errorCuadre) ||
     (tab === "MORA" && errorMora);
+
+  if (isAsesor) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          No tienes acceso a la vista de cuadres.
+        </Alert>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -504,7 +569,7 @@ export default function CuadresPage() {
             Cuadre de Caja
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Cobros, desembolsos y gastos por asesor para cuadre de caja
+            Pagos, desembolsos y gastos por asesor para cuadre de caja
           </Typography>
         </Box>
 
@@ -538,6 +603,8 @@ export default function CuadresPage() {
             sx={{ minWidth: 160 }}
           >
             <MenuItem value="TODOS">Todos los asesores</MenuItem>
+            {loadingAsesores && <MenuItem disabled value="__loading">Cargando asesores...</MenuItem>}
+            {errorAsesores && <MenuItem disabled value="__error">{errorAsesores}</MenuItem>}
             {asesores.map((c) => (
               <MenuItem key={c._id} value={c._id}>
                 {c.nombreCompleto || c.usuario || c.codigoUsuario || c._id}
@@ -783,16 +850,16 @@ export default function CuadresPage() {
         </Box>
       )}
 
-      {/* COBROS */}
-      {tab === "COBROS" && (
+      {/* PAGOS */}
+      {tab === "PAGOS" && (
         <Paper sx={{ p: 2 }}>
           <Box sx={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 1, mb: 2 }}>
             <Typography variant="subtitle2" fontWeight={600}>
-              Cobros - {selectedAsesorNombre}
+              Pagos - {selectedAsesorNombre}
             </Typography>
             <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
-              <Chip size="small" label={`${cobrosData.length} registros`} />
-              <Chip size="small" color="primary" label={formatMoney(totalCobros)} />
+              <Chip size="small" label={`${pagosData.length} registros`} />
+              <Chip size="small" color="primary" label={formatMoney(totalPagos)} />
             </Box>
           </Box>
 
@@ -800,8 +867,8 @@ export default function CuadresPage() {
             <Box sx={{ display: "flex", justifyContent: "center", p: 3 }}>
               <CircularProgress />
             </Box>
-          ) : cobrosData.length === 0 ? (
-            <Alert severity="info">No hay cobros registrados para este filtro</Alert>
+          ) : pagosData.length === 0 ? (
+            <Alert severity="info">No hay pagos registrados para este filtro</Alert>
           ) : (
             <TableContainer sx={{ maxHeight: 500 }}>
               <Table stickyHeader size="small">
@@ -825,7 +892,7 @@ export default function CuadresPage() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {cobrosData.map((pago, idx) => {
+                  {pagosData.map((pago, idx) => {
                     const estado = String(pago.estado ?? "—");
                     const monto = typeof pago.montoPago === "number" ? pago.montoPago : 0;
                     const canOpenComprobante = Boolean(pago?.numeroComprobante || pago?._id);
@@ -861,8 +928,8 @@ export default function CuadresPage() {
                                     referencia: pago.numeroComprobante ? String(pago.numeroComprobante) : undefined,
                                     observaciones: pago.observaciones ? String(pago.observaciones) : undefined,
                                     monto,
-                                    saldoPendiente: 0,
-                                    cuotasPendientes: 0,
+                                    saldoPendiente: undefined,
+                                    cuotasPendientes: undefined,
                                     cuotasPagadas: [
                                       {
                                         numero: 1,

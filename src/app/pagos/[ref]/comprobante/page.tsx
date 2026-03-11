@@ -1,5 +1,10 @@
 import ComprobanteAbonoView from "../../comprobante/ComprobanteAbonoView";
 
-export default function ComprobanteByRefPage({ params }: { params: { ref: string } }) {
-  return <ComprobanteAbonoView refId={params.ref} />;
+export default async function ComprobanteByRefPage({
+  params,
+}: {
+  params: Promise<{ ref: string }>;
+}) {
+  const { ref } = await params;
+  return <ComprobanteAbonoView refId={ref} />;
 }

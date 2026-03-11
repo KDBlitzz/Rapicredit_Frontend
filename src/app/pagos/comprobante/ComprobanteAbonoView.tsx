@@ -440,7 +440,7 @@ async function resolveComprobanteByRef(ref: string): Promise<ComprobanteAbonoDat
 
 export default function ComprobanteAbonoView({ refId }: { refId?: string }) {
   const router = useRouter();
-  const { firebaseUser } = useEmpleadoActual();
+  const { firebaseUser, empleado } = useEmpleadoActual();
 
   const [stored, setStored] = useState<ComprobanteAbonoData | null>(null);
   const [remote, setRemote] = useState<ComprobanteAbonoData | null>(null);
@@ -510,8 +510,9 @@ export default function ComprobanteAbonoView({ refId }: { refId?: string }) {
     if (!firebaseUser) return false;
     if (!base?.codigoPrestamo) return false;
     // Solo si necesitamos completar campos importantes
-    if (base.saldoPendiente == null) return true;
-    if (base.cuotasPendientes == null) return true;
+    if (!base.cliente || !String(base.cliente).trim()) return true;
+    if (base.saldoPendiente == null || Number(base.saldoPendiente) <= 0) return true;
+    if (base.cuotasPendientes == null || Number(base.cuotasPendientes) <= 0) return true;
     if (!Array.isArray(base.cuotasPagadas) || base.cuotasPagadas.length === 0) return true;
     return false;
   }, [base?.codigoPrestamo, base?.cuotasPagadas, base?.cuotasPendientes, base?.saldoPendiente, firebaseUser]);
@@ -528,13 +529,19 @@ export default function ComprobanteAbonoView({ refId }: { refId?: string }) {
     const codigoPrestamo = String(base.codigoPrestamo || "").trim();
 
     const saldoFromPrestamo =
-      prestamoDetalle?.saldo ?? prestamoDetalle?.saldoActual ?? prestamoDetalle?.saldoPendiente;
+      prestamoDetalle?.saldoPendiente ??
+      prestamoDetalle?.saldoActual ??
+      prestamoDetalle?.saldo ??
+      prestamoDetalle?.saldoCapital;
 
-    const saldoPendiente = Number.isFinite(base.saldoPendiente)
-      ? Number(base.saldoPendiente)
-      : Number.isFinite(saldoFromPrestamo)
-        ? Number(saldoFromPrestamo)
-        : 0;
+    const saldoBase = Number.isFinite(base.saldoPendiente) ? Number(base.saldoPendiente) : undefined;
+    const saldoPrestamo = Number.isFinite(saldoFromPrestamo) ? Number(saldoFromPrestamo) : undefined;
+    const saldoPendiente =
+      saldoBase != null && saldoBase > 0
+        ? saldoBase
+        : saldoPrestamo != null
+          ? saldoPrestamo
+          : saldoBase ?? 0;
 
     const cuotasPagadas: CuotaPagada[] = (() => {
       if (Array.isArray(base.cuotasPagadas) && base.cuotasPagadas.length) {
@@ -556,7 +563,9 @@ export default function ComprobanteAbonoView({ refId }: { refId?: string }) {
     })();
 
     const cuotasPendientes = (() => {
-      if (Number.isFinite(base.cuotasPendientes)) return Number(base.cuotasPendientes);
+      if (Number.isFinite(base.cuotasPendientes) && Number(base.cuotasPendientes) > 0) {
+        return Number(base.cuotasPendientes);
+      }
 
       const cuotaFija =
         (Number.isFinite(prestamoDetalle?.cuotaFija) ? Number(prestamoDetalle?.cuotaFija) : undefined) ??
@@ -571,13 +580,26 @@ export default function ComprobanteAbonoView({ refId }: { refId?: string }) {
 
     const safeUpper = (s?: string) => (s && s.trim() ? s.trim().toUpperCase() : "—");
 
+    const clienteResolved =
+      (base.cliente && String(base.cliente).trim()) ||
+      prestamoDetalle?.cliente?.nombreCompleto ||
+      prestamoDetalle?.cliente?.codigoCliente ||
+      prestamoDetalle?.cliente?.identidadCliente ||
+      "";
+
+    const asesorResolved =
+      (base.asesor && String(base.asesor).trim()) ||
+      empleado?.nombreCompleto ||
+      empleado?.usuario ||
+      "";
+
     return {
       pagoId: base.pagoId ? String(base.pagoId) : "",
       recibo: recibo || "—",
       codigoPrestamo,
       fecha: base.fecha || new Date().toISOString(),
-      cliente: safeUpper(base.cliente),
-      asesor: safeUpper(base.asesor),
+      cliente: safeUpper(clienteResolved),
+      asesor: safeUpper(asesorResolved),
       metodoPago: safeUpper(base.metodoPago),
       referencia: base.referencia ? String(base.referencia) : "",
       observaciones: base.observaciones ? String(base.observaciones) : "",
@@ -586,7 +608,18 @@ export default function ComprobanteAbonoView({ refId }: { refId?: string }) {
       cuotasPendientes,
       cuotasPagadas,
     };
-  }, [base, prestamoDetalle?.cuotaFija, prestamoDetalle?.saldo, prestamoDetalle?.saldoActual, prestamoDetalle?.saldoPendiente]);
+  }, [
+    base,
+    empleado?.nombreCompleto,
+    empleado?.usuario,
+    prestamoDetalle?.cliente?.codigoCliente,
+    prestamoDetalle?.cliente?.identidadCliente,
+    prestamoDetalle?.cliente?.nombreCompleto,
+    prestamoDetalle?.cuotaFija,
+    prestamoDetalle?.saldo,
+    prestamoDetalle?.saldoActual,
+    prestamoDetalle?.saldoPendiente,
+  ]);
 
   const totalEnLetras = useMemo(() => (data ? toLempirasText(data.monto) : ""), [data]);
 

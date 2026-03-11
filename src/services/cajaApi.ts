@@ -120,6 +120,7 @@ export const cajaApi = {
     const qs = new URLSearchParams();
     qs.set('desde', params.desde);
     qs.set('hasta', params.hasta);
+    qs.set('limit', '10000');
     return await apiFetch<CajaPagosResponse>(`/api/caja/pagos?${qs.toString()}`);
   },
 
@@ -130,6 +131,7 @@ export const cajaApi = {
     const qs = new URLSearchParams();
     qs.set('desde', params.desde);
     qs.set('hasta', params.hasta);
+    qs.set('limit', '10000');
     return await apiFetch<CajaPagosResponse>(
       `/api/caja/pagos/asesor/${encodeURIComponent(cobradorId)}?${qs.toString()}`
     );

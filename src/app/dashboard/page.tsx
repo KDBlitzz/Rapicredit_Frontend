@@ -363,7 +363,7 @@ const DashboardPage: React.FC = () => {
                     <TableCell>Cliente</TableCell>
                     <TableCell>Nombre</TableCell>
                     <TableCell>Monto</TableCell>
-                    <TableCell>Saldo</TableCell>
+                    <TableCell>Saldo pendiente</TableCell>
                     <TableCell>Estado</TableCell>
                     <TableCell>Desembolso</TableCell>
                   </TableRow>
@@ -387,7 +387,7 @@ const DashboardPage: React.FC = () => {
                         <TableCell>{clienteLabel}</TableCell>
                         <TableCell>{clienteNombre}</TableCell>
                         <TableCell>{formatMoney(p.monto)}</TableCell>
-                        <TableCell>{formatMoney(p.saldo)}</TableCell>
+                        <TableCell>{formatMoney(p.saldoPendiente)}</TableCell>
                         <TableCell>
                           <Chip
                             size="small"

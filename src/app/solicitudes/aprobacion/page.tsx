@@ -94,8 +94,8 @@ const RevisionPage: React.FC = () => {
     const val = estado.toUpperCase();
     let color: "default" | "success" | "warning" | "error" | "info" = "info";
     if (val === "REGISTRADA") color = "info";
-    else if (val === "PRE-APROBADA") color = "warning";
-    else if (val === "PRE-RECHAZADA") color = "warning";
+      else if (val === "PRE-APROBADA") color = "success";
+      else if (val === "PRE-RECHAZADA") color = "error";
     else if (val === "APROBADA") color = "success";
     else if (val === "RECHAZADA") color = "error";
     return <Chip size="small" label={val} color={color} variant="outlined" />;

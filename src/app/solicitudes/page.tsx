@@ -110,7 +110,6 @@ const SolicitudesPage: React.FC = () => {
   const canVerModuloSolicitudes = hasAnyPermiso(["f001", "F002", "F010"]);
   const canCrearSolicitudes = hasPermiso("F002");
   const canGestionarFlujoSolicitudes = hasPermiso("F010"); // Aprobar/Rechazar crédito / flujo de revisión
-  const canCalcularCuota = hasPermiso("F004");
 
   if (!loadingPermisos && !canVerModuloSolicitudes) {
     return (
@@ -221,12 +220,7 @@ const SolicitudesPage: React.FC = () => {
       <Paper sx={{ p: 2 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
           <Typography variant="subtitle2">Listado de solicitudes</Typography>
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-            <Chip size="small" label={`Total: ${data.length}`} />
-            {canCalcularCuota && (
-              <Button size="small" variant="outlined">Calcular cuota</Button>
-            )}
-          </Box>
+          <Chip size="small" label={`Total: ${data.length}`} />
         </Box>
 
         <TableContainer>
@@ -238,7 +232,7 @@ const SolicitudesPage: React.FC = () => {
                 <TableCell>Cliente</TableCell>
                 <TableCell>Monto (capital)</TableCell>
                 <TableCell>Cobrador</TableCell>
-                <TableCell>Cuota</TableCell>
+                <TableCell>Plazo</TableCell>
                 <TableCell>Estado</TableCell>
                 <TableCell align="center">Acciones</TableCell>
                 
@@ -255,7 +249,7 @@ const SolicitudesPage: React.FC = () => {
                     <TableCell>{s.clienteNombre}</TableCell>
                     <TableCell>{formatMoney(s.capitalSolicitado ?? 0)}</TableCell>
                     <TableCell>{s.cobradorNombre || '—'}</TableCell>
-                    <TableCell>{s.cuotaEstablecida != null ? formatMoney(s.cuotaEstablecida) : '—'}</TableCell>
+                    <TableCell>{s.plazoCuotas != null ? s.plazoCuotas : '—'}</TableCell>
                     <TableCell>
                       {renderEstadoChip(s.estadoSolicitud)}
                     </TableCell>

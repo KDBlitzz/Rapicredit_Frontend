@@ -15,6 +15,7 @@ export interface SolicitudResumen {
   estadoSolicitud: string;
   cobradorNombre?: string;
   cuotaEstablecida?: number;
+  plazoCuotas?: number;
 }
 
 export interface SolicitudesFilters {
@@ -230,6 +231,15 @@ export function useSolicitudes(filters: SolicitudesFilters, options: UseSolicitu
               ? asNumber(getNested(a, ['cuota']))
               : undefined;
 
+          const plazoCuotas =
+            getNested(a, ['plazoCuotas']) != null
+              ? asNumber(getNested(a, ['plazoCuotas']))
+              : getNested(a, ['plazo']) != null
+              ? asNumber(getNested(a, ['plazo']))
+              : getNested(a, ['cantidadCuotas']) != null
+              ? asNumber(getNested(a, ['cantidadCuotas']))
+              : undefined;
+
           return {
             id,
             codigoSolicitud,
@@ -240,6 +250,7 @@ export function useSolicitudes(filters: SolicitudesFilters, options: UseSolicitu
             estadoSolicitud,
             cobradorNombre,
             cuotaEstablecida,
+            plazoCuotas,
           };
         });
 

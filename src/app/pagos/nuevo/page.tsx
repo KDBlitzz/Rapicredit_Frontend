@@ -207,6 +207,17 @@ const NuevoPagoPage: React.FC = () => {
           return "";
         };
 
+        const pickNumber = (...vals: unknown[]) => {
+          for (const v of vals) {
+            if (typeof v === "number" && Number.isFinite(v)) return v;
+            if (typeof v === "string" && v.trim()) {
+              const n = Number(v);
+              if (Number.isFinite(n)) return n;
+            }
+          }
+          return undefined;
+        };
+
         const resObj = applyRes && typeof applyRes === "object" ? (applyRes as Record<string, unknown>) : null;
         const pagoObj =
           resObj && resObj["pago"] && typeof resObj["pago"] === "object"
@@ -235,11 +246,22 @@ const NuevoPagoPage: React.FC = () => {
           selected.clienteNombre ||
           "—";
         const asesorNombre = empleado?.nombreCompleto || empleado?.usuario || "—";
-        const saldoPendiente =
-          prestamoDetalle?.saldo ??
-          prestamoDetalle?.saldoActual ??
-          prestamoDetalle?.saldoPendiente ??
-          0;
+        const saldoPendiente = pickNumber(
+          pagoObj?.saldoPendiente,
+          pagoObj?.saldoActual,
+          pagoObj?.saldo,
+          resObj?.saldoPendiente,
+          resObj?.saldoActual,
+          resObj?.saldo,
+          prestamoDetalle?.saldoPendiente,
+          prestamoDetalle?.saldoActual,
+          prestamoDetalle?.saldo
+        );
+
+        const cuotasPendientes = pickNumber(
+          pagoObj?.cuotasPendientes,
+          resObj?.cuotasPendientes
+        );
 
         const comprobante = {
           pagoId: pagoId || undefined,
@@ -253,7 +275,7 @@ const NuevoPagoPage: React.FC = () => {
           observaciones: form.observaciones || undefined,
           monto,
           saldoPendiente,
-          cuotasPendientes: 0,
+          cuotasPendientes,
           cuotasPagadas: [
             {
               numero: 1,

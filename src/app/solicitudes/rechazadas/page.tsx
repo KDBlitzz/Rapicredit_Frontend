@@ -116,7 +116,7 @@ const SolicitudesRechazadasPage: React.FC = () => {
             sx={{ mt: { xs: 1, md: 0 } }}
             href="/solicitudes/aprobacion"
           >
-            Volver a pre-aprobación
+            Volver a Revision de Solicitudes
           </Button>
         </Grid>
       </Grid>

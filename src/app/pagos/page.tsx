@@ -187,6 +187,17 @@ export default function PagosPage() {
           return '';
         };
 
+        const pickNumber = (...vals: unknown[]) => {
+          for (const v of vals) {
+            if (typeof v === 'number' && Number.isFinite(v)) return v;
+            if (typeof v === 'string' && v.trim()) {
+              const n = Number(v);
+              if (Number.isFinite(n)) return n;
+            }
+          }
+          return undefined;
+        };
+
         const resObj = applyRes && typeof applyRes === 'object' ? (applyRes as Record<string, unknown>) : null;
         const pagoObj =
           resObj && resObj['pago'] && typeof resObj['pago'] === 'object'
@@ -215,11 +226,22 @@ export default function PagosPage() {
           selected.clienteNombre ||
           '—';
         const asesorNombre = empleado?.nombreCompleto || empleado?.usuario || '—';
-        const saldoPendiente =
-          prestamoDetalle?.saldo ??
-          prestamoDetalle?.saldoActual ??
-          prestamoDetalle?.saldoPendiente ??
-          0;
+        const saldoPendiente = pickNumber(
+          pagoObj?.saldoPendiente,
+          pagoObj?.saldoActual,
+          pagoObj?.saldo,
+          resObj?.saldoPendiente,
+          resObj?.saldoActual,
+          resObj?.saldo,
+          prestamoDetalle?.saldoPendiente,
+          prestamoDetalle?.saldoActual,
+          prestamoDetalle?.saldo
+        );
+
+        const cuotasPendientes = pickNumber(
+          pagoObj?.cuotasPendientes,
+          resObj?.cuotasPendientes
+        );
 
         const comprobante = {
           pagoId: pagoId || undefined,
@@ -233,7 +255,7 @@ export default function PagosPage() {
           observaciones: form.observaciones || undefined,
           monto,
           saldoPendiente,
-          cuotasPendientes: 0,
+          cuotasPendientes,
           cuotasPagadas: [
             {
               numero: 1,
@@ -327,6 +349,19 @@ export default function PagosPage() {
     return map;
   }, [prestamosAsignados]);
 
+  const codigoPorPrestamo = useMemo(() => {
+    const map = new Map<string, string>();
+
+    for (const prestamo of prestamosAsignados) {
+      const codigo = (prestamo.codigoPrestamo || '').trim();
+      if (!codigo) continue;
+      if (prestamo.id) map.set(`id:${prestamo.id}`, codigo);
+      map.set(`cod:${codigo}`, codigo);
+    }
+
+    return map;
+  }, [prestamosAsignados]);
+
   const getClientePago = (pago: {
     clienteNombre?: string;
     prestamoId?: string;
@@ -345,6 +380,22 @@ export default function PagosPage() {
       ? clientePorPrestamo.get(`cod:${pago.codigoPrestamo}`)
       : undefined;
     return byCodigo || '—';
+  };
+
+  const getCodigoPrestamoPago = (pago: {
+    codigoPrestamo?: string;
+    financiamientoId?: string;
+    prestamoId?: string;
+  }) => {
+    const directo = (pago.codigoPrestamo || '').trim();
+    if (directo) return directo;
+
+    const byId =
+      (pago.financiamientoId && codigoPorPrestamo.get(`id:${pago.financiamientoId}`)) ||
+      (pago.prestamoId && codigoPorPrestamo.get(`id:${pago.prestamoId}`));
+    if (byId) return byId;
+
+    return '—';
   };
 
   const renderEstadoChip = (estado?: string) => {
@@ -587,7 +638,7 @@ export default function PagosPage() {
                 <Typography variant="caption" color="text.secondary">
                   Préstamo
                 </Typography>
-                <Typography variant="body2">{dialogPago.codigoPrestamo}</Typography>
+                <Typography variant="body2">{getCodigoPrestamoPago(dialogPago)}</Typography>
               </Box>
               <Box>
                 <Typography variant="caption" color="text.secondary">
@@ -629,7 +680,9 @@ export default function PagosPage() {
                 <Typography variant="caption" color="text.secondary">
                   Estado
                 </Typography>
-                {renderEstadoChip(dialogPago.estadoPago)}
+                <Box sx={{ mt: 0.75 }}>
+                  {renderEstadoChip(dialogPago.estadoPago)}
+                </Box>
               </Box>
               {dialogPago.observaciones && (
                 <Box>
@@ -658,7 +711,7 @@ export default function PagosPage() {
                     const comprobante = {
                       pagoId: String(dialogPago.id || ''),
                       recibo,
-                      codigoPrestamo: String(dialogPago.codigoPrestamo || ''),
+                      codigoPrestamo: String(getCodigoPrestamoPago(dialogPago) || ''),
                       fecha: String(dialogPago.fecha || new Date().toISOString()),
                       cliente: String(getClientePago(dialogPago) || '—').toUpperCase(),
                       asesor: String(asesorNombre).toUpperCase(),
