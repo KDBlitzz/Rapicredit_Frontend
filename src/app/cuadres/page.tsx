@@ -109,11 +109,10 @@ export default function CuadresPage() {
         const res = await empleadosApi.list({ includeInactivos: false });
         const users = Array.isArray(res.users) ? res.users : [];
 
-        const byRol = users.filter((u) => {
+        const finalList = users.filter((u) => {
           const rol = String(u.rol || "").trim().toLowerCase();
-          return rol === "asesor" || rol === "cobrador";
+          return rol !== "caja";
         });
-        const finalList = byRol.length ? byRol : users;
 
         finalList.sort((a, b) =>
           String(a.nombreCompleto || a.usuario || a.codigoUsuario || "").localeCompare(

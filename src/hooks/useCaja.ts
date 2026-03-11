@@ -26,13 +26,14 @@ export function usePagos(
   refreshKey?: unknown
 ): HookState<CajaPagosResponse | null> {
   const [data, setData] = useState<CajaPagosResponse | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const range = getRangeOrNull(fechaInicio, fechaFin);
     if (!range) {
       setData(null);
+      setLoading(false);
       return;
     }
 
@@ -70,13 +71,14 @@ export function usePagosPorAsesor(
   refreshKey?: unknown
 ): HookState<CajaPagosResponse | null> {
   const [data, setData] = useState<CajaPagosResponse | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const range = getRangeOrNull(fechaInicio, fechaFin);
     if (!cobradorId || !range) {
       setData(null);
+      setLoading(false);
       return;
     }
 
@@ -117,13 +119,14 @@ export function useCuadre(
   refreshKey?: unknown
 ): HookState<CajaCuadreResponse | null> {
   const [data, setData] = useState<CajaCuadreResponse | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const range = getRangeOrNull(fechaInicio, fechaFin);
     if (!range) {
       setData(null);
+      setLoading(false);
       return;
     }
 
