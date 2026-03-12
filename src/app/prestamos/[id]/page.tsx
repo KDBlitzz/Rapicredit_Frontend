@@ -61,16 +61,6 @@ const PrestamoDetallePage: React.FC = () => {
   const [editMode, setEditMode] = useState<boolean>(initialEditMode);
   const [saving, setSaving] = useState(false);
 
-  const [form, setForm] = useState({
-    capitalSolicitado: "",
-    plazoCuotas: "",
-    fechaDesembolso: "",
-    fechaVencimiento: "",
-    observaciones: "",
-    estadoPrestamo: "",
-    activo: "true",
-  });
-
   const { data: tasas } = useTasasInteres();
   const { data: frecuencias } = useFrecuenciasPago();
 
@@ -98,6 +88,7 @@ const PrestamoDetallePage: React.FC = () => {
         const capital = asNumber(item.capital) ?? 0;
         const cuota = asNumber(item.cuota) ?? capital + interes;
         const saldo = asNumber(item.saldoCapital) ?? asNumber(item.saldo) ?? 0;
+        const estadoCuota = String(item.estadoCuota ?? "PENDIENTE").toUpperCase();
 
         return {
           id: String(item._id ?? item.id ?? `cuota-${cuotaNumero}`),
@@ -107,6 +98,7 @@ const PrestamoDetallePage: React.FC = () => {
           capital,
           cuota,
           saldo,
+          estadoCuota,
         };
       })
       .filter(
@@ -118,6 +110,7 @@ const PrestamoDetallePage: React.FC = () => {
           capital: number;
           cuota: number;
           saldo: number;
+          estadoCuota: string;
         } => x !== null
       )
       .sort((a, b) => a.cuotaNumero - b.cuotaNumero);
@@ -132,13 +125,25 @@ const PrestamoDetallePage: React.FC = () => {
     iso ? new Date(iso).toLocaleDateString("es-HN") : "-";
 
   const tasaInteresLabel = useMemo(() => {
-    const porcentaje = selectedTasa?.porcentajeInteres ?? data?.tasaInteresAnual;
-    const nombre = selectedTasa?.nombre ?? data?.tasaInteresNombre;
+    const raw = selectedTasa?.porcentajeInteres ?? data?.tasaInteresAnual;
+    if (raw == null) return "—";
 
-    if (nombre && porcentaje != null) return `${nombre} (${porcentaje}%)`;
-    if (nombre) return nombre;
-    if (porcentaje != null) return `${porcentaje}%`;
-    return "—";
+    const numeric = Number(raw);
+    if (!Number.isFinite(numeric)) return "—";
+
+    const porcentaje = numeric <= 1 ? numeric * 100 : numeric;
+    const decimal = numeric <= 1 ? numeric : numeric / 100;
+
+    const porcentajeLabel = porcentaje.toLocaleString("es-HN", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    });
+    const decimalLabel = decimal.toLocaleString("es-HN", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 4,
+    });
+
+    return `${porcentajeLabel}% (${decimalLabel})`;
   }, [selectedTasa, data]);
 
   const renderEstadoChip = (estado?: string) => {
@@ -153,27 +158,8 @@ const PrestamoDetallePage: React.FC = () => {
     return <Chip size="small" label={val || "—"} color={color} variant="outlined" />;
   };
 
-  const toDateInputValue = (iso?: string) => {
-    if (!iso) return "";
-    try {
-      const s = String(iso);
-      return s.length >= 10 ? s.slice(0, 10) : "";
-    } catch {
-      return "";
-    }
-  };
-
   useEffect(() => {
     if (!data) return;
-    setForm({
-      capitalSolicitado: data.capitalSolicitado != null ? String(data.capitalSolicitado) : "",
-      plazoCuotas: data.plazoCuotas != null ? String(data.plazoCuotas) : "",
-      fechaDesembolso: toDateInputValue(data.fechaDesembolso),
-      fechaVencimiento: toDateInputValue(data.fechaVencimiento),
-      observaciones: data.observaciones ?? "",
-      estadoPrestamo: (data.estadoPrestamo || "").toUpperCase(),
-      activo: data.activo === false ? "false" : "true",
-    });
 
     if (data.tasaInteresId) {
       const match = tasas.find((t) => String(t._id) === String(data.tasaInteresId) || String(t.codigoTasa ?? "") === String(data.tasaInteresId));
@@ -196,11 +182,6 @@ const PrestamoDetallePage: React.FC = () => {
     }
   }, [data, tasas, frecuencias]);
 
-  const onChangeForm = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-  };
-
   const onCancelEdit = () => {
     if (saving) return;
     setEditMode(false);
@@ -217,22 +198,9 @@ const PrestamoDetallePage: React.FC = () => {
       return;
     }
 
-    const toFiniteNumber = (v: string): number | null => {
-      const n = Number(v);
-      return Number.isFinite(n) ? n : null;
-    };
-
     if (!selectedFrecuencia?.nombre) {
       setToastSeverity("error");
       setToastMessage("Debes seleccionar una frecuencia de pago.");
-      setToastOpen(true);
-      return;
-    }
-
-    const plazo = toFiniteNumber(form.plazoCuotas);
-    if (plazo == null || plazo <= 0) {
-      setToastSeverity("error");
-      setToastMessage("El plazo (cuotas) debe ser mayor a cero.");
       setToastOpen(true);
       return;
     }
@@ -252,6 +220,13 @@ const PrestamoDetallePage: React.FC = () => {
           return null;
       }
     })();
+
+    const frecuenciaActualEnum = (() => {
+      const raw = String(data.frecuenciaPago || "").toUpperCase();
+      return raw === "DIARIO" ? "DIARIA" : raw;
+    })();
+
+    const changedFrecuencia = frecuenciaEnum !== frecuenciaActualEnum;
     if (!frecuenciaEnum) {
       setToastSeverity("error");
       setToastMessage("Frecuencia de pago inválida.");
@@ -259,35 +234,18 @@ const PrestamoDetallePage: React.FC = () => {
       return;
     }
 
-    const payload: Record<string, unknown> = {
-      // Campos requeridos por el modelo (por si el backend valida el documento completo)
-      clienteId: data.clienteId,
-      solicitudId: data.solicitudId,
-
-      tasaInteresId: data.tasaInteresId ?? selectedTasa?._id,
-      frecuenciaPago: frecuenciaEnum,
-      capitalSolicitado: data.capitalSolicitado,
-      cuotaFija: data.cuotaFija,
-      plazoCuotas: plazo,
-      fechaDesembolso: data.fechaDesembolso,
-      fechaVencimiento: data.fechaVencimiento,
-      estadoPrestamo: data.estadoPrestamo,
-      observaciones: data.observaciones ?? "",
-      activo: data.activo !== false,
-    };
-
-    if (!payload.clienteId || !payload.solicitudId) {
-      setToastSeverity("error");
-      setToastMessage("No se pudo determinar cliente/solicitud del préstamo. Recarga la página e inténtalo de nuevo.");
-      setToastOpen(true);
-      return;
-    }
-
     setSaving(true);
     try {
-      await apiFetch(`/prestamos/${encodeURIComponent(data.codigoPrestamo)}`, {
-        method: "PUT",
-        body: JSON.stringify(payload),
+      if (!changedFrecuencia) {
+        setToastSeverity("info");
+        setToastMessage("No hay cambios para guardar.");
+        setToastOpen(true);
+        return;
+      }
+
+      await apiFetch(`/prestamos/id/${encodeURIComponent(data.id)}/cambiar-frecuencia`, {
+        method: "POST",
+        body: JSON.stringify({ nuevaFrecuencia: frecuenciaEnum }),
       });
 
       setToastSeverity("success");
@@ -433,23 +391,10 @@ const PrestamoDetallePage: React.FC = () => {
                 <Typography>{formatMoney(data.cuotaFija)}</Typography>
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
-                {editMode ? (
-                  <TextField
-                    label="Plazo (cuotas)"
-                    fullWidth
-                    size="small"
-                    type="number"
-                    name="plazoCuotas"
-                    value={form.plazoCuotas}
-                    onChange={onChangeForm}
-                    inputProps={{ inputMode: "numeric", step: "1" }}
-                  />
-                ) : (
-                  <>
-                    <Typography variant="caption" color="text.secondary">Plazo (cuotas)</Typography>
-                    <Typography>{data.plazoCuotas}</Typography>
-                  </>
-                )}
+                <>
+                  <Typography variant="caption" color="text.secondary">Plazo (cuotas)</Typography>
+                  <Typography>{data.plazoCuotas}</Typography>
+                </>
               </Grid>
 
               <Grid size={{ xs: 12, sm: 6 }}>
@@ -539,23 +484,47 @@ const PrestamoDetallePage: React.FC = () => {
                 <TableCell>Capital</TableCell>
                 <TableCell>Cuota</TableCell>
                 <TableCell>Saldo</TableCell>
+                <TableCell>Estado</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {amortizacionRows.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell>{row.cuotaNumero}</TableCell>
-                  <TableCell>{formatDate(row.fechaProgramada)}</TableCell>
-                  <TableCell>{formatMoney(row.interes)}</TableCell>
-                  <TableCell>{formatMoney(row.capital)}</TableCell>
-                  <TableCell>{formatMoney(row.cuota)}</TableCell>
-                  <TableCell>{formatMoney(row.saldo)}</TableCell>
-                </TableRow>
-              ))}
+              {amortizacionRows.map((row) => {
+                const getEstadoColor = (estado: string) => {
+                  switch (estado) {
+                    case "PAGADA":
+                      return "success";
+                    case "ATRASADA":
+                      return "error";
+                    case "PARCIAL":
+                      return "warning";
+                    default:
+                      return "default";
+                  }
+                };
+
+                return (
+                  <TableRow key={row.id}>
+                    <TableCell>{row.cuotaNumero}</TableCell>
+                    <TableCell>{formatDate(row.fechaProgramada)}</TableCell>
+                    <TableCell>{formatMoney(row.interes)}</TableCell>
+                    <TableCell>{formatMoney(row.capital)}</TableCell>
+                    <TableCell>{formatMoney(row.cuota)}</TableCell>
+                    <TableCell>{formatMoney(row.saldo)}</TableCell>
+                    <TableCell>
+                      <Chip
+                        size="small"
+                        label={row.estadoCuota}
+                        color={getEstadoColor(row.estadoCuota) as any}
+                        variant="outlined"
+                      />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
 
               {amortizacionRows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} align="center">
+                  <TableCell colSpan={7} align="center">
                     No hay cuotas de amortización para este préstamo.
                   </TableCell>
                 </TableRow>
