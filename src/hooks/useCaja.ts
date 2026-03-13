@@ -187,7 +187,12 @@ export function useDesembolsosCaja(
           fechaFin: range.hasta,
           codigoCobradorId: codigoCobradorId || undefined,
         });
-        if (!cancelled) setData(res);
+        const onlyDesembolsos = res.filter((g) => {
+          const tipo = String(g.tipoGasto || "").trim().toUpperCase();
+          const codigo = String(g.codigoGasto || "").trim().toUpperCase();
+          return tipo === "DESEMBOLSO" || codigo.startsWith("DES-");
+        });
+        if (!cancelled) setData(onlyDesembolsos);
       } catch (err: unknown) {
         if (!cancelled) {
           setData([]);
@@ -236,7 +241,13 @@ export function useGastosCaja(
           codigoCobradorId: codigoCobradorId || undefined,
         });
 
-        const onlyGastos = res.filter((g) => String(g.tipoGasto || "").toUpperCase() !== "DESEMBOLSO");
+        const onlyGastos = res.filter((g) => {
+          const tipo = String(g.tipoGasto || "").trim().toUpperCase();
+          const codigo = String(g.codigoGasto || "").trim().toUpperCase();
+          if (tipo === "DESEMBOLSO") return false;
+          if (codigo.startsWith("DES-")) return false;
+          return true;
+        });
         if (!cancelled) setData(onlyGastos);
       } catch (err: unknown) {
         if (!cancelled) {

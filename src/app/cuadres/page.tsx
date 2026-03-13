@@ -293,10 +293,16 @@ export default function CuadresPage() {
         throw new Error("El asesor seleccionado no tiene codigoUsuario");
       }
 
-      const tipoGasto = (gastoForm.categoria || "").trim() || "GASTO";
+      const categoria = (gastoForm.categoria || "").trim();
+      const referencia = (gastoForm.referencia || "").trim();
+      const descripcionUsuario = (gastoForm.descripcion || "").trim();
+
+      const tipoGasto = "GASTO";
       const descripcionParts = [
-        (gastoForm.descripcion || "").trim(),
+        descripcionUsuario,
+        categoria ? `Categoría: ${categoria}` : "",
         gastoForm.origen ? `Origen: ${gastoForm.origen}` : "",
+        referencia ? `Ref: ${referencia}` : "",
       ].filter(Boolean);
 
       await gastosApi.create({
@@ -306,7 +312,6 @@ export default function CuadresPage() {
         descripcion: descripcionParts.join(" | ") || undefined,
         monto,
         codigoCobradorId,
-        codigoPrestamo: (gastoForm.referencia || "").trim() || undefined,
         codigoRegistradoPor,
       });
 
@@ -353,6 +358,44 @@ export default function CuadresPage() {
   const asRecord = (v: unknown): Record<string, unknown> | null => {
     if (!v || typeof v !== "object") return null;
     return v as Record<string, unknown>;
+  };
+
+  const extractDescripcionField = (descripcion: unknown, labels: string[]): string | undefined => {
+    if (typeof descripcion !== "string") return undefined;
+
+    const parts = descripcion
+      .split("|")
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    for (const part of parts) {
+      const lower = part.toLowerCase();
+      for (const label of labels) {
+        const prefix = `${label}:`.toLowerCase();
+        if (lower.startsWith(prefix)) {
+          const value = part.slice(prefix.length).trim();
+          if (value) return value;
+        }
+      }
+    }
+
+    return undefined;
+  };
+
+  const getGastoCategoria = (g: unknown): string | undefined => {
+    const rec = asRecord(g);
+    const rawTipo = rec && typeof rec["tipoGasto"] === "string" ? String(rec["tipoGasto"]).trim() : "";
+    const upper = rawTipo.toUpperCase();
+    if (rawTipo && upper !== "DESEMBOLSO" && upper !== "GASTO") return rawTipo;
+    return extractDescripcionField(rec?.["descripcion"], ["Categoría", "Categoria"]);
+  };
+
+  const getGastoReferencia = (g: unknown): string | undefined => {
+    const rec = asRecord(g);
+    const rawPrestamo =
+      rec && typeof rec["codigoPrestamo"] === "string" ? String(rec["codigoPrestamo"]).trim() : "";
+    if (rawPrestamo) return rawPrestamo;
+    return extractDescripcionField(rec?.["descripcion"], ["Ref", "Referencia"]);
   };
 
   const getPagoCobradorId = (pago: Pago): string | undefined => {
@@ -1241,10 +1284,10 @@ export default function CuadresPage() {
                       >
                         <TableCell>Fecha</TableCell>
                         <TableCell>Asesor</TableCell>
-                        <TableCell>Tipo</TableCell>
+                        <TableCell>Categoría</TableCell>
                         <TableCell>Descripción</TableCell>
                         <TableCell align="right">Monto</TableCell>
-                        <TableCell>Código préstamo</TableCell>
+                        <TableCell>Referencia</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -1252,12 +1295,12 @@ export default function CuadresPage() {
                         <TableRow key={String(g._id ?? g.codigoGasto ?? `${idx}`)}>
                           <TableCell>{formatDate(g.fechaGasto)}</TableCell>
                           <TableCell>{resolveAsesorNombrePorCodigoUsuario(g.codigoCobradorId)}</TableCell>
-                          <TableCell>{(g.tipoGasto as string) || "—"}</TableCell>
+                          <TableCell>{getGastoCategoria(g) || "—"}</TableCell>
                           <TableCell>{(g.descripcion as string) || "—"}</TableCell>
                           <TableCell align="right" sx={{ fontWeight: 600 }}>
                             {formatMoney(typeof g.monto === "number" ? g.monto : 0)}
                           </TableCell>
-                          <TableCell>{(g.codigoPrestamo as string) || "—"}</TableCell>
+                          <TableCell>{getGastoReferencia(g) || "—"}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

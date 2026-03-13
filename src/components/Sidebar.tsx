@@ -42,12 +42,7 @@ const navItems: NavSection[] = [
       // Créditos / préstamos y pagos
       { label: "Préstamos", href: "/prestamos", requiredPermisos: ["f001", "F002"] },
       { label: "Pagos", href: "/pagos", requiredPermisos: ["F005", "PERM-CAJA-001", "PERM-CAJA-002"] },
-      {
-        label: "Cuadres",
-        href: "/cuadres",
-        requiredPermisos: ["F005", "F009", "PERM-CAJA-004"],
-        hiddenForRoles: ["asesor", "caja"],
-      },
+      { label: "Cuadres", href: "/cuadres", requiredPermisos: ["F005", "F009", "PERM-CAJA-004"] },
       // Solicitudes de crédito (aprobación / gestión)
       // Ver módulo: F001/F002. Flujo de aprobación: F010.
       { label: "Solicitudes", href: "/solicitudes", requiredPermisos: ["F001", "F002", "F010"] },
@@ -75,17 +70,13 @@ const navItems: NavSection[] = [
     section: "Análisis",
     items: [
       {
-        label: "Trazabilidad de decisiones",
-        href: "/reportes/trazabilidad-decisiones",
-        hiddenForRoles: ["asesor", "caja"],
-      },
-      {
         label: "Reportes",
         href: "/reportes",
         submenu: [
           { label: "Central de Riesgos", href: "/reportes/central-riesgos" },
           { label: "Seguro de Vida", href: "/reportes/seguro-vida" },
           { label: "Pago al SAR", href: "/reportes/pago-sar" },
+          { label: "Trazabilidad de decisiones", href: "/reportes/trazabilidad-decisiones" },
         ],
         hiddenForRoles: ["caja"],
       },
