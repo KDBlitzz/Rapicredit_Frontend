@@ -32,13 +32,20 @@ export default function ClientLayout({ children }: Props) {
   const isCaja = rolActual === "caja";
   const cajaPathPermitido = pathname.startsWith("/cuadres");
 
+  const isContadora = rolActual === "contadora" || rolActual === "contador" || rolActual === "contabilidad";
+  const contabilidadPathPermitido = pathname.startsWith("/contabilidad");
+
   useEffect(() => {
     if (isPublicRoute) return;
     if (loading) return;
     if (isCaja && !cajaPathPermitido) {
       router.replace("/cuadres");
+      return;
     }
-  }, [cajaPathPermitido, isCaja, isPublicRoute, loading, router]);
+    if (isContadora && !contabilidadPathPermitido) {
+      router.replace("/contabilidad");
+    }
+  }, [cajaPathPermitido, contabilidadPathPermitido, isCaja, isContadora, isPublicRoute, loading, router]);
 
   if (isPublicRoute) return <>{children}</>;
 
@@ -46,6 +53,10 @@ export default function ClientLayout({ children }: Props) {
   if (!loading && !firebaseUser) return null;
 
   if (!loading && isCaja && !cajaPathPermitido) {
+    return null;
+  }
+
+  if (!loading && isContadora && !contabilidadPathPermitido) {
     return null;
   }
 

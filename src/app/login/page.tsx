@@ -49,7 +49,8 @@ export default function LoginPage() {
       showTemporaryMessage(setSuccessMessage, "¡Ingreso exitoso!", 800);
 
       const rolActual = String((empleado as any).rol || "").trim().toLowerCase();
-      const destinoInicio = rolActual === "caja" ? "/cuadres" : "/dashboard";
+      const isContadora = rolActual === "contadora" || rolActual === "contador" || rolActual === "contabilidad";
+      const destinoInicio = rolActual === "caja" ? "/cuadres" : isContadora ? "/contabilidad" : "/dashboard";
 
       //  navegación suave (evita carreras y recargas)
       router.push(destinoInicio);

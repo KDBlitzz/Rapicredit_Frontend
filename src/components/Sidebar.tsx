@@ -75,6 +75,13 @@ const navItems: NavSection[] = [
     section: "Análisis",
     items: [
       {
+        label: "Contabilidad",
+        href: "/contabilidad",
+        // Visible para perfiles con permisos de control/gestión; Contadora lo ve por menú dedicado.
+        requiredPermisos: ["S001", "S002", "F009"],
+        hiddenForRoles: ["asesor", "caja"],
+      },
+      {
         label: "Trazabilidad de decisiones",
         href: "/reportes/trazabilidad-decisiones",
         hiddenForRoles: ["asesor", "caja"],
@@ -118,6 +125,7 @@ export default function Sidebar() {
   const permisosActuales = (empleado?.permisos || []).map((p) => p.toUpperCase());
   const rolActual = (empleado?.rol || "").toLowerCase();
   const isCaja = rolActual === "caja";
+  const isContadora = rolActual === "contadora" || rolActual === "contador" || rolActual === "contabilidad";
 
   const hasPermisos = (required?: string[]) => {
     if (!required || required.length === 0) return true;
@@ -125,31 +133,46 @@ export default function Sidebar() {
     return required.some((code) => permisosActuales.includes(code.toUpperCase()));
   };
 
-  const sectionsToRender = navItems
-    .map((section) => {
-      if (isCaja) {
-        if (section.section === "General") {
-          return {
-            ...section,
-            items: section.items.filter((item) => item.href === "/cuadres"),
-          };
-        }
-        if (section.section === "Sistema") {
-          return {
-            ...section,
-            items: section.items.filter((item) => item.action === "logout"),
-          };
-        }
-        return { ...section, items: [] };
-      }
+  const sectionsToRender: NavSection[] = (() => {
+    if (isContadora) {
+      return [
+        {
+          section: "Contabilidad",
+          items: [{ label: "Contabilidad", href: "/contabilidad" }],
+        },
+        {
+          section: "Sistema",
+          items: [{ label: "Cerrar sesión", action: "logout" }],
+        },
+      ];
+    }
 
-      if (rolActual === "asesor" && section.section === "Personal") {
-        return { ...section, items: [] };
-      }
+    return navItems
+      .map((section) => {
+        if (isCaja) {
+          if (section.section === "General") {
+            return {
+              ...section,
+              items: section.items.filter((item) => item.href === "/cuadres"),
+            };
+          }
+          if (section.section === "Sistema") {
+            return {
+              ...section,
+              items: section.items.filter((item) => item.action === "logout"),
+            };
+          }
+          return { ...section, items: [] };
+        }
 
-      return section;
-    })
-    .filter((section) => section.items.length > 0);
+        if (rolActual === "asesor" && section.section === "Personal") {
+          return { ...section, items: [] };
+        }
+
+        return section;
+      })
+      .filter((section) => section.items.length > 0);
+  })();
 
   const handleSubmenuToggle = (label: string) => {
     setOpenSubmenu(openSubmenu === label ? null : label);
