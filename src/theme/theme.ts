@@ -196,6 +196,22 @@ export function createAppTheme(mode: PaletteMode) {
               : {},
         },
       },
+
+      MuiInputBase: {
+        styleOverrides: {
+          input: ({ theme }) => ({
+            // Make native date input controls follow the active color scheme.
+            "&[type='date']": {
+              colorScheme: theme.palette.mode,
+            },
+            "&[type='date']::-webkit-calendar-picker-indicator": {
+              cursor: "pointer",
+              opacity: theme.palette.mode === "dark" ? 0.9 : 0.7,
+              filter: theme.palette.mode === "dark" ? "invert(1) brightness(1.1)" : "none",
+            },
+          }),
+        },
+      },
     },
   });
 }
