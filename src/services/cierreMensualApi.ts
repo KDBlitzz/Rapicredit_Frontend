@@ -1,9 +1,9 @@
 'use client';
 
 import { ApiError, apiFetch } from '../lib/api';
-import { toRange } from '../lib/dateRange';
+import { parseDateInput, toRange } from '../lib/dateRange';
 import { cajaApi } from './cajaApi';
-import { gastosApi } from './gastosApi';
+import { gastosApi, type Gasto } from './gastosApi';
 
 type UnknownRecord = Record<string, unknown>;
 const isRecord = (v: unknown): v is UnknownRecord => typeof v === 'object' && v !== null;
@@ -17,9 +17,11 @@ const asNumber = (v: unknown): number | null => {
   return null;
 };
 
-const asString = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v : null);
+const asNonEmptyString = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v : null);
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
+
+const isValidDate = (d: Date) => !Number.isNaN(d.getTime());
 
 const toDateInput = (d: Date) => {
   const yyyy = d.getFullYear();
@@ -27,6 +29,14 @@ const toDateInput = (d: Date) => {
   const dd = pad2(d.getDate());
   return `${yyyy}-${mm}-${dd}`;
 };
+
+function normalizeDateInput(value: string): string {
+  const d = parseDateInput(value);
+  if (!isValidDate(d)) {
+    throw new Error('Periodo inválido: verifica las fechas');
+  }
+  return toDateInput(d);
+}
 
 export type CierreMensualPeriodo = {
   anio: number;
@@ -62,43 +72,138 @@ export type CierreMensualData = {
 };
 
 export type GetCierreMensualParams = {
-  anio: number;
-  mes: number; // 1..12
+  desde: string; // YYYY-MM-DD
+  hasta: string; // YYYY-MM-DD
 };
 
-function buildMonthRange(anio: number, mes: number) {
-  const start = new Date(anio, mes - 1, 1);
-  const end = new Date(anio, mes, 0);
-  const range = toRange(toDateInput(start), toDateInput(end));
+function sumMonto(items: Array<Record<string, unknown>>): number {
+  return items.reduce((acc, it) => {
+    const v = asNumber(it['monto']);
+    return acc + (typeof v === 'number' ? v : 0);
+  }, 0);
+}
+
+function normalizeReportesResumen(raw: unknown): { carteraVigente: number; carteraEnMora: number } | null {
+  if (!isRecord(raw)) return null;
+  const payload = raw;
+  const resumen = isRecord(payload['resumen']) ? (payload['resumen'] as UnknownRecord) : null;
+  if (!resumen) return null;
+
+  const carteraVigente = asNumber(resumen['carteraVigente']);
+  const carteraEnMora = asNumber(resumen['carteraEnMora']);
+  if (carteraVigente == null || carteraEnMora == null) return null;
+  return { carteraVigente, carteraEnMora };
+}
+
+async function buildFromExistingEndpoints(params: GetCierreMensualParams): Promise<CierreMensualData> {
+  const desdeInput = normalizeDateInput(params.desde);
+  const hastaInput = normalizeDateInput(params.hasta);
+
+  const desdeDate = parseDateInput(desdeInput);
+  const hastaDate = parseDateInput(hastaInput);
+  if (desdeDate.getTime() > hastaDate.getTime()) {
+    throw new Error('Periodo inválido: "Desde" no puede ser mayor que "Hasta"');
+  }
+
+  const range = toRange(desdeInput, hastaInput);
+  const anio = desdeDate.getFullYear();
+  const mes = desdeDate.getMonth() + 1;
+
+  const [cuadre, gastosAll, reportesResumen] = await Promise.all([
+    cajaApi.getCuadre(range),
+    gastosApi.list({ fechaInicio: range.desde, fechaFin: range.hasta }),
+    (async () => {
+      try {
+        const qs = new URLSearchParams();
+        qs.set('fechaInicio', desdeInput);
+        qs.set('fechaFin', hastaInput);
+        const res = await apiFetch<unknown>(`/reportes/cartera?${qs.toString()}`, { silent: true });
+        return normalizeReportesResumen(res);
+      } catch {
+        return null;
+      }
+    })(),
+  ]);
+
+  const gastosRecords = (gastosAll ?? []) as Gasto[];
+  const desembolsos = gastosRecords
+    .filter((g) => String(g.tipoGasto || '').toUpperCase() === 'DESEMBOLSO')
+    .map((g) => g as unknown as Record<string, unknown>);
+
+  const gastosPeriodoList = gastosRecords
+    .filter((g) => String(g.tipoGasto || '').toUpperCase() !== 'DESEMBOLSO')
+    .map((g) => g as unknown as Record<string, unknown>);
+
+  const carteraTotalColocada = sumMonto(desembolsos);
+  const gastosPeriodo = sumMonto(gastosPeriodoList);
+
+  const totalCobrado = typeof cuadre?.totales?.totalMonto === 'number' ? cuadre.totales.totalMonto : null;
+  const capitalCobrado = typeof cuadre?.totales?.totalCapital === 'number' ? cuadre.totales.totalCapital : null;
+  const interesesCobrados = typeof cuadre?.totales?.totalInteres === 'number' ? cuadre.totales.totalInteres : null;
+  const ingresosPorMultas = typeof cuadre?.totales?.totalMora === 'number' ? cuadre.totales.totalMora : null;
+
+  const interesesGenerados = interesesCobrados;
+
+  const utilidadNeta =
+    interesesGenerados != null && ingresosPorMultas != null
+      ? interesesGenerados + ingresosPorMultas - gastosPeriodo
+      : null;
+
+  const carteraVigente = reportesResumen?.carteraVigente ?? null;
+  const carteraEnMora = reportesResumen?.carteraEnMora ?? null;
+  const carteraActivaAlCierre =
+    carteraVigente != null && carteraEnMora != null ? carteraVigente + carteraEnMora : null;
+
+  const porcentajeMora = (() => {
+    if (carteraEnMora == null || carteraActivaAlCierre == null) return null;
+    if (carteraActivaAlCierre <= 0) return 0;
+    return (carteraEnMora / carteraActivaAlCierre) * 100;
+  })();
+
   return {
-    start,
-    end,
-    range,
+    periodo: {
+      anio,
+      mes,
+      desde: range.desde,
+      hasta: range.hasta,
+    },
+    resumen: {
+      utilidadNeta,
+      gastosPeriodo,
+      interesesGenerados,
+      interesesCobrados,
+      carteraTotalColocada,
+      ingresosPorMultas,
+      totalCobrado,
+      capitalCobrado,
+    },
+    indicadores: {
+      cantidadPrestamosDesembolsados: desembolsos.length,
+      cantidadPagosRecibidos:
+        typeof cuadre?.totales?.cantidadPagos === 'number' ? cuadre.totales.cantidadPagos : null,
+      carteraActivaAlCierre,
+      carteraEnMora,
+      porcentajeMora,
+      cantidadPrestamosCerrados: null,
+    },
   };
 }
 
 function normalizeCierreMensual(raw: unknown): CierreMensualData | null {
   if (!isRecord(raw)) return null;
-
   const root = raw;
-  const payload = (isRecord(root['data']) ? (root['data'] as UnknownRecord) : null) ??
-    (isRecord(root['cierre']) ? (root['cierre'] as UnknownRecord) : null) ??
-    root;
 
-  if (!isRecord(payload['periodo']) || !isRecord(payload['resumen']) || !isRecord(payload['indicadores'])) {
-    return null;
-  }
+  if (!isRecord(root['periodo']) || !isRecord(root['resumen']) || !isRecord(root['indicadores'])) return null;
 
-  const periodoRaw = payload['periodo'] as UnknownRecord;
-  const resumenRaw = payload['resumen'] as UnknownRecord;
-  const indicadoresRaw = payload['indicadores'] as UnknownRecord;
+  const periodoRaw = root['periodo'] as UnknownRecord;
+  const resumenRaw = root['resumen'] as UnknownRecord;
+  const indicadoresRaw = root['indicadores'] as UnknownRecord;
 
   const anio = asNumber(periodoRaw['anio']);
   const mes = asNumber(periodoRaw['mes']);
-  const desde = asString(periodoRaw['desde']);
-  const hasta = asString(periodoRaw['hasta']);
-
-  if (!anio || !mes || !desde || !hasta) return null;
+  const desde = asNonEmptyString(periodoRaw['desde']);
+  const hasta = asNonEmptyString(periodoRaw['hasta']);
+  if (anio == null || mes == null || !desde || !hasta) return null;
 
   return {
     periodo: {
@@ -128,137 +233,39 @@ function normalizeCierreMensual(raw: unknown): CierreMensualData | null {
   };
 }
 
-function sumByMonto(items: Array<Record<string, unknown>>): number {
-  return items.reduce((acc, it) => {
-    const v = asNumber(it['monto']);
-    return acc + (typeof v === 'number' ? v : 0);
-  }, 0);
-}
-
-function normalizeReportesResumen(raw: unknown): {
-  totalCartera: number;
-  carteraVigente: number;
-  carteraEnMora: number;
-  carteraPagada: number;
-} | null {
-  if (!isRecord(raw)) return null;
-  const root = raw;
-  const payload = (isRecord(root['data']) ? (root['data'] as UnknownRecord) : null) ?? root;
-
-  const resumenRaw = (isRecord(payload['resumen']) ? (payload['resumen'] as UnknownRecord) : null) ?? null;
-  if (!resumenRaw) return null;
-
-  const totalCartera = asNumber(resumenRaw['totalCartera']);
-  const carteraVigente = asNumber(resumenRaw['carteraVigente']);
-  const carteraEnMora = asNumber(resumenRaw['carteraEnMora']);
-  const carteraPagada = asNumber(resumenRaw['carteraPagada']);
-
-  if (totalCartera == null || carteraVigente == null || carteraEnMora == null || carteraPagada == null) return null;
-
-  return { totalCartera, carteraVigente, carteraEnMora, carteraPagada };
-}
-
-async function buildFromExistingEndpoints(params: GetCierreMensualParams): Promise<CierreMensualData> {
-  const { anio, mes } = params;
-  const { range, start, end } = buildMonthRange(anio, mes);
-
-  const [cuadre, gastosAll, reportes] = await Promise.all([
-    cajaApi.getCuadre(range),
-    gastosApi.list({ fechaInicio: range.desde, fechaFin: range.hasta }),
-    (async () => {
-      try {
-        const qs = new URLSearchParams();
-        qs.set('fechaInicio', toDateInput(start));
-        qs.set('fechaFin', toDateInput(end));
-        const res = await apiFetch<unknown>(`/reportes/cartera?${qs.toString()}`, { silent: true });
-        return normalizeReportesResumen(res);
-      } catch {
-        return null;
-      }
-    })(),
-  ]);
-
-  const desembolsos = gastosAll.filter((g) => String(g.tipoGasto || '').toUpperCase() === 'DESEMBOLSO') as Array<
-    Record<string, unknown>
-  >;
-  const gastosPeriodoList = gastosAll.filter(
-    (g) => String(g.tipoGasto || '').toUpperCase() !== 'DESEMBOLSO'
-  ) as Array<Record<string, unknown>>;
-
-  const carteraTotalColocada = sumByMonto(desembolsos);
-  const gastosPeriodo = sumByMonto(gastosPeriodoList);
-
-  const totalCobrado = cuadre?.totales?.totalMonto ?? 0;
-  const capitalCobrado = cuadre?.totales?.totalCapital ?? 0;
-  const interesesCobrados = cuadre?.totales?.totalInteres ?? 0;
-  const ingresosPorMultas = cuadre?.totales?.totalMora ?? 0;
-  const interesesGenerados = interesesCobrados;
-
-  const utilidadNeta = interesesCobrados + ingresosPorMultas - gastosPeriodo;
-
-  const carteraVigente = reportes?.carteraVigente ?? null;
-  const carteraEnMora = reportes?.carteraEnMora ?? null;
-  const carteraActivaAlCierre =
-    carteraVigente != null && carteraEnMora != null ? carteraVigente + carteraEnMora : null;
-
-  const porcentajeMora = (() => {
-    if (carteraEnMora == null || carteraActivaAlCierre == null) return null;
-    if (carteraActivaAlCierre <= 0) return 0;
-    return (carteraEnMora / carteraActivaAlCierre) * 100;
-  })();
-
-  return {
-    periodo: {
-      anio,
-      mes,
-      desde: range.desde,
-      hasta: range.hasta,
-    },
-    resumen: {
-      utilidadNeta,
-      gastosPeriodo,
-      interesesGenerados,
-      interesesCobrados,
-      carteraTotalColocada,
-      ingresosPorMultas,
-      totalCobrado,
-      capitalCobrado,
-    },
-    indicadores: {
-      cantidadPrestamosDesembolsados: desembolsos.length,
-      cantidadPagosRecibidos: cuadre?.totales?.cantidadPagos ?? null,
-      carteraActivaAlCierre,
-      carteraEnMora,
-      porcentajeMora,
-      cantidadPrestamosCerrados: null,
-    },
-  };
-}
-
 export const cierreMensualApi = {
-  /**
-   * Intenta cargar el cierre mensual desde un endpoint agregado.
-   * Si el backend aún no existe (404), compone el cierre desde endpoints existentes
-   * (cuadre de caja + gastos + resumen de reportes).
-   */
   async get(params: GetCierreMensualParams): Promise<CierreMensualData> {
-    const { anio, mes } = params;
+    const desdeInput = normalizeDateInput(params.desde);
+    const hastaInput = normalizeDateInput(params.hasta);
+
+    const desdeDate = parseDateInput(desdeInput);
+    const hastaDate = parseDateInput(hastaInput);
+    if (desdeDate.getTime() > hastaDate.getTime()) {
+      throw new Error('Periodo inválido: "Desde" no puede ser mayor que "Hasta"');
+    }
+
+    const anio = desdeDate.getFullYear();
+    const mes = desdeDate.getMonth() + 1;
+    const range = toRange(desdeInput, hastaInput);
 
     const qs = new URLSearchParams();
     qs.set('anio', String(anio));
     qs.set('mes', String(mes));
+    qs.set('desde', range.desde);
+    qs.set('hasta', range.hasta);
 
     try {
       const res = await apiFetch<unknown>(`/contabilidad/cierre-mensual?${qs.toString()}`, { silent: true });
       const normalized = normalizeCierreMensual(res);
       if (normalized) return normalized;
-      // Si la respuesta no calza, caemos a composición.
-      return await buildFromExistingEndpoints(params);
+
+      // Si la ruta existe pero no respeta la estructura, NO hacemos fallback.
+      // Esto fuerza al backend a responder exactamente {periodo, resumen, indicadores}.
+      throw new Error('Respuesta inválida: se esperaba { periodo, resumen, indicadores }');
     } catch (err: unknown) {
       if (err instanceof ApiError && err.status === 404) {
-        return await buildFromExistingEndpoints(params);
+        return await buildFromExistingEndpoints({ desde: desdeInput, hasta: hastaInput });
       }
-      // Si el backend responde pero falla (500/401/etc), respetamos el error.
       throw err;
     }
   },

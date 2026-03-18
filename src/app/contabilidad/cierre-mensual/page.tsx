@@ -13,17 +13,15 @@ import {
 } from '@mui/material';
 import { useEmpleadoActual } from '../../../hooks/useEmpleadoActual';
 import { useCierreMensual } from '../../../hooks/useCierreMensual';
+import { parseDateInput } from '../../../lib/dateRange';
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
-const parseMonthInput = (value: string): { anio: number; mes: number } | null => {
-  const m = /^\s*(\d{4})-(\d{2})\s*$/.exec(value);
-  if (!m) return null;
-  const anio = Number(m[1]);
-  const mes = Number(m[2]);
-  if (!Number.isFinite(anio) || !Number.isFinite(mes)) return null;
-  if (mes < 1 || mes > 12) return null;
-  return { anio, mes };
+const isoDate = (d: Date) => {
+  const yyyy = d.getFullYear();
+  const mm = pad2(d.getMonth() + 1);
+  const dd = pad2(d.getDate());
+  return `${yyyy}-${mm}-${dd}`;
 };
 
 const capitalizeFirst = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
@@ -50,43 +48,76 @@ const formatDate = (iso?: string | null) => {
 
 export default function CierreMensualPage() {
   const now = new Date();
-  const defaultMonth = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}`;
+  const defaultDesde = isoDate(new Date(now.getFullYear(), now.getMonth(), 1));
+  const defaultHasta = isoDate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
 
   const { empleado } = useEmpleadoActual();
 
-  const [periodInput, setPeriodInput] = useState(defaultMonth);
-  const [submitted, setSubmitted] = useState<{ anio: number; mes: number } | null>(null);
+  const [fechaInicioInput, setFechaInicioInput] = useState(defaultDesde);
+  const [fechaFinInput, setFechaFinInput] = useState(defaultHasta);
+  const [submitted, setSubmitted] = useState<{ desde: string; hasta: string } | null>(null);
   const [generatedAt, setGeneratedAt] = useState<Date | null>(null);
   const [refreshKey, setRefreshKey] = useState<number>(0);
 
-  const { data, loading, error } = useCierreMensual(submitted?.anio, submitted?.mes, {
+  const { data, loading, error } = useCierreMensual(submitted?.desde, submitted?.hasta, {
     enabled: !!submitted,
     refreshKey,
   });
 
-  const monthLabel = useMemo(() => {
-    const anio = data?.periodo.anio ?? submitted?.anio;
-    const mes = data?.periodo.mes ?? submitted?.mes;
-    if (!anio || !mes) return '—';
+  const periodLabel = useMemo(() => {
+    const start = (() => {
+      if (data?.periodo.desde) {
+        const d = new Date(data.periodo.desde);
+        return Number.isNaN(d.getTime()) ? null : d;
+      }
+      if (submitted?.desde) {
+        const d = parseDateInput(submitted.desde);
+        return Number.isNaN(d.getTime()) ? null : d;
+      }
+      return null;
+    })();
 
-    const label = new Intl.DateTimeFormat('es-HN', {
-      month: 'long',
-      year: 'numeric',
-    }).format(new Date(anio, mes - 1, 1));
+    const end = (() => {
+      if (data?.periodo.hasta) {
+        const d = new Date(data.periodo.hasta);
+        return Number.isNaN(d.getTime()) ? null : d;
+      }
+      if (submitted?.hasta) {
+        const d = parseDateInput(submitted.hasta);
+        return Number.isNaN(d.getTime()) ? null : d;
+      }
+      return null;
+    })();
 
-    return capitalizeFirst(label);
-  }, [data?.periodo.anio, data?.periodo.mes, submitted?.anio, submitted?.mes]);
+    if (!start || !end) return '—';
+
+    const fmt = new Intl.DateTimeFormat('es-HN', { month: 'long', year: 'numeric' });
+    const startLabel = capitalizeFirst(fmt.format(start));
+    const endLabel = capitalizeFirst(fmt.format(end));
+
+    if (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()) {
+      return startLabel;
+    }
+    return `${startLabel} — ${endLabel}`;
+  }, [data?.periodo.desde, data?.periodo.hasta, submitted?.desde, submitted?.hasta]);
 
   const usuarioLabel = useMemo(() => {
     return empleado?.nombreCompleto || empleado?.usuario || '—';
   }, [empleado?.nombreCompleto, empleado?.usuario]);
 
+  const isValidRange = useMemo(() => {
+    if (!fechaInicioInput || !fechaFinInput) return false;
+    const start = parseDateInput(fechaInicioInput);
+    const end = parseDateInput(fechaFinInput);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
+    return start.getTime() <= end.getTime();
+  }, [fechaInicioInput, fechaFinInput]);
+
   const handleGenerar = (e: React.FormEvent) => {
     e.preventDefault();
-    const parsed = parseMonthInput(periodInput);
-    if (!parsed) return;
+    if (!isValidRange) return;
 
-    setSubmitted(parsed);
+    setSubmitted({ desde: fechaInicioInput, hasta: fechaFinInput });
     setGeneratedAt(new Date());
     setRefreshKey(Date.now());
   };
@@ -105,7 +136,7 @@ export default function CierreMensualPage() {
         <Box>
           <Typography variant="h6">Cierre mensual</Typography>
           <Typography variant="caption" color="text.secondary">
-            Genera un reporte financiero consolidado del mes.
+            Genera un reporte financiero consolidado del periodo.
           </Typography>
         </Box>
 
@@ -115,14 +146,22 @@ export default function CierreMensualPage() {
           sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}
         >
           <TextField
-            type="month"
+            type="date"
             size="small"
-            label="Periodo"
+            label="Desde"
             InputLabelProps={{ shrink: true }}
-            value={periodInput}
-            onChange={(e) => setPeriodInput(e.target.value)}
+            value={fechaInicioInput}
+            onChange={(e) => setFechaInicioInput(e.target.value)}
           />
-          <Button type="submit" variant="contained" size="small" disabled={loading || !parseMonthInput(periodInput)}>
+          <TextField
+            type="date"
+            size="small"
+            label="Hasta"
+            InputLabelProps={{ shrink: true }}
+            value={fechaFinInput}
+            onChange={(e) => setFechaFinInput(e.target.value)}
+          />
+          <Button type="submit" variant="contained" size="small" disabled={loading || !isValidRange}>
             Generar cierre
           </Button>
         </Box>
@@ -142,7 +181,7 @@ export default function CierreMensualPage() {
       {!submitted && !data ? (
         <Paper sx={{ p: 2 }}>
           <Typography variant="body2" color="text.secondary">
-            Selecciona un mes y presiona “Generar cierre” para ver el resumen.
+            Selecciona un rango de fechas y presiona “Generar cierre” para ver el resumen.
           </Typography>
         </Paper>
       ) : null}
@@ -157,9 +196,9 @@ export default function CierreMensualPage() {
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                 <Typography variant="caption" color="text.secondary">
-                  Mes y año del cierre
+                  Periodo del cierre
                 </Typography>
-                <Typography>{monthLabel}</Typography>
+                <Typography>{periodLabel}</Typography>
               </Grid>
 
               <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -198,7 +237,7 @@ export default function CierreMensualPage() {
               <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                 <Paper variant="outlined" sx={{ p: 2 }}>
                   <Typography variant="body2" color="text.secondary">
-                    Cartera colocada
+                    Cartera total colocada
                   </Typography>
                   <Typography variant="h6" sx={{ mt: 0.5 }}>
                     {formatMoney(data.resumen.carteraTotalColocada)}
@@ -253,7 +292,7 @@ export default function CierreMensualPage() {
               <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                 <Paper variant="outlined" sx={{ p: 2 }}>
                   <Typography variant="body2" color="text.secondary">
-                    Multas cobradas
+                    Ingresos por multas
                   </Typography>
                   <Typography variant="h6" sx={{ mt: 0.5 }}>
                     {formatMoney(data.resumen.ingresosPorMultas)}
@@ -264,7 +303,7 @@ export default function CierreMensualPage() {
               <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                 <Paper variant="outlined" sx={{ p: 2 }}>
                   <Typography variant="body2" color="text.secondary">
-                    Gastos del período
+                    Gastos del periodo
                   </Typography>
                   <Typography variant="h6" sx={{ mt: 0.5 }}>
                     {formatMoney(data.resumen.gastosPeriodo)}
@@ -294,7 +333,7 @@ export default function CierreMensualPage() {
               <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                 <Paper variant="outlined" sx={{ p: 2 }}>
                   <Typography variant="body2" color="text.secondary">
-                    Saldo de cartera activa
+                    Cartera activa al cierre
                   </Typography>
                   <Typography variant="h6" sx={{ mt: 0.5 }}>
                     {formatMoney(data.indicadores.carteraActivaAlCierre)}
@@ -327,7 +366,7 @@ export default function CierreMensualPage() {
               <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                 <Paper variant="outlined" sx={{ p: 2 }}>
                   <Typography variant="body2" color="text.secondary">
-                    Préstamos desembolsados
+                    Cantidad de préstamos desembolsados
                   </Typography>
                   <Typography variant="h6" sx={{ mt: 0.5 }}>
                     {formatCount(data.indicadores.cantidadPrestamosDesembolsados)}
@@ -338,7 +377,7 @@ export default function CierreMensualPage() {
               <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                 <Paper variant="outlined" sx={{ p: 2 }}>
                   <Typography variant="body2" color="text.secondary">
-                    Préstamos cerrados
+                    Cantidad de préstamos cerrados
                   </Typography>
                   <Typography variant="h6" sx={{ mt: 0.5 }}>
                     {formatCount(data.indicadores.cantidadPrestamosCerrados)}
@@ -349,7 +388,7 @@ export default function CierreMensualPage() {
               <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                 <Paper variant="outlined" sx={{ p: 2 }}>
                   <Typography variant="body2" color="text.secondary">
-                    Pagos recibidos
+                    Cantidad de pagos recibidos
                   </Typography>
                   <Typography variant="h6" sx={{ mt: 0.5 }}>
                     {formatCount(data.indicadores.cantidadPagosRecibidos)}

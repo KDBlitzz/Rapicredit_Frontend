@@ -9,8 +9,8 @@ export type UseCierreMensualOptions = {
 };
 
 export function useCierreMensual(
-  anio?: number | null,
-  mes?: number | null,
+  desde?: string | null,
+  hasta?: string | null,
   options: UseCierreMensualOptions = {}
 ) {
   const enabled = options.enabled ?? true;
@@ -20,7 +20,7 @@ export function useCierreMensual(
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!enabled || !anio || !mes) {
+    if (!enabled || !desde || !hasta) {
       setData(null);
       setLoading(false);
       setError(null);
@@ -33,7 +33,7 @@ export function useCierreMensual(
       setLoading(true);
       setError(null);
       try {
-        const res = await cierreMensualApi.get({ anio, mes });
+        const res = await cierreMensualApi.get({ desde, hasta });
         if (!cancelled) setData(res);
       } catch (err: unknown) {
         if (!cancelled) {
@@ -51,7 +51,7 @@ export function useCierreMensual(
     return () => {
       cancelled = true;
     };
-  }, [anio, mes, enabled, options.refreshKey]);
+  }, [desde, hasta, enabled, options.refreshKey]);
 
   return { data, loading, error };
 }
