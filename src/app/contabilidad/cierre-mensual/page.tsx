@@ -164,6 +164,12 @@ export default function CierreMensualPage() {
           <Button type="submit" variant="contained" size="small" disabled={loading || !isValidRange}>
             Generar cierre
           </Button>
+          <Button type="button" variant="outlined" size="small" disabled={!data || loading}>
+            PDF
+          </Button>
+          <Button type="button" variant="outlined" size="small" disabled={!data || loading}>
+            Excel
+          </Button>
         </Box>
       </Box>
 
