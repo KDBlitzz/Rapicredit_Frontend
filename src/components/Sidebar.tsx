@@ -82,6 +82,12 @@ const navItems: NavSection[] = [
         hiddenForRoles: ["asesor", "caja"],
       },
       {
+        label: "Cierre mensual",
+        href: "/contabilidad/cierre-mensual",
+        requiredPermisos: ["S001", "S002", "F009"],
+        hiddenForRoles: ["asesor", "caja"],
+      },
+      {
         label: "Trazabilidad de decisiones",
         href: "/reportes/trazabilidad-decisiones",
         hiddenForRoles: ["asesor", "caja"],
@@ -138,7 +144,10 @@ export default function Sidebar() {
       return [
         {
           section: "Contabilidad",
-          items: [{ label: "Contabilidad", href: "/contabilidad" }],
+          items: [
+            { label: "Contabilidad", href: "/contabilidad" },
+            { label: "Cierre mensual", href: "/contabilidad/cierre-mensual" },
+          ],
         },
         {
           section: "Sistema",
@@ -225,6 +234,19 @@ export default function Sidebar() {
 
       <Box sx={{ flex: 1, overflow: "auto" }}>
         {sectionsToRender.map((section) => {
+          const visibleItems = section.items.filter((item) => {
+            if (item.hiddenForRoles && item.hiddenForRoles.includes(rolActual)) return false;
+            if (!isCaja && !hasPermisos(item.requiredPermisos)) return false;
+            return true;
+          });
+
+          const bestMatchHref =
+            visibleItems
+              .filter((item) => !!item.href && pathname.startsWith(item.href!))
+              .map((item) => item.href as string)
+              .sort((a, b) => b.length - a.length)[0] ??
+            null;
+
           return (
             <List
               key={section.section}
@@ -250,7 +272,7 @@ export default function Sidebar() {
                 }
                 if (!isCaja && !hasPermisos(item.requiredPermisos)) return null;
 
-                const active = item.href ? pathname.startsWith(item.href) : false;
+                const active = item.href ? item.href === bestMatchHref : false;
                 const hasSubmenu = !!item.submenu?.length;
                 const isOpen = openSubmenu === item.label;
                 const isAction = !!item.action;
