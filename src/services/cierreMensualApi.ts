@@ -16,6 +16,17 @@ const asNumber = (v: unknown): number | null => {
 
 const asNonEmptyString = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v : null);
 
+const extractMessage = (body: unknown): string | null => {
+  if (!body) return null;
+  if (typeof body === 'string') return body.trim() ? body : null;
+  if (typeof body === 'object' && body !== null) {
+    const rec = body as Record<string, unknown>;
+    const msg = rec['message'];
+    if (typeof msg === 'string' && msg.trim()) return msg;
+  }
+  return null;
+};
+
 export type CierreMensualPeriodo = {
   anio: number;
   mes: number; // 1..12
@@ -40,7 +51,6 @@ export type CierreMensualIndicadores = {
   porcentajeMora: number; // 0..100 (ya viene en %)
   cantidadPrestamosDesembolsados: number;
   cantidadPagosRecibidos: number;
-  // El backend NO lo entrega; mantener placeholder en la vista.
   cantidadPrestamosCerrados: number | null;
 };
 
@@ -95,6 +105,7 @@ function normalizeCierreMensualData(raw: unknown): CierreMensualData | null {
   const porcentajeMora = asNumber(indicadoresRaw['porcentajeMora']);
   const cantidadPrestamosDesembolsados = asNumber(indicadoresRaw['cantidadPrestamosDesembolsados']);
   const cantidadPagosRecibidos = asNumber(indicadoresRaw['cantidadPagosRecibidos']);
+  const cantidadPrestamosCerrados = asNumber(indicadoresRaw['cantidadPrestamosCerrados']);
 
   if (
     carteraActivaAlCierre == null ||
@@ -129,7 +140,7 @@ function normalizeCierreMensualData(raw: unknown): CierreMensualData | null {
       porcentajeMora,
       cantidadPrestamosDesembolsados,
       cantidadPagosRecibidos,
-      cantidadPrestamosCerrados: null,
+      cantidadPrestamosCerrados,
     },
   };
 }
@@ -169,3 +180,76 @@ export const cierreMensualApi = {
     return await apiFetch<Blob>(`/api/cierre-mensual/excel?${query}`, { responseType: 'blob' });
   },
 };
+
+export class FetchCierreMensualError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'FetchCierreMensualError';
+    this.status = status;
+  }
+}
+
+/**
+ * Llama al endpoint del backend con auth explícito y devuelve el KPI solicitado.
+ */
+export async function fetchCierreMensual(anio: number, mes: number, token: string): Promise<number> {
+  const anioNum = Number(anio);
+  const mesNum = Number(mes);
+
+  if (!Number.isFinite(anioNum) || anioNum < 2000 || anioNum > 3000) {
+    throw new FetchCierreMensualError(400, 'Parámetro inválido: anio debe estar entre 2000 y 3000');
+  }
+  if (!Number.isFinite(mesNum) || mesNum < 1 || mesNum > 12) {
+    throw new FetchCierreMensualError(400, 'Parámetro inválido: mes debe estar entre 1 y 12');
+  }
+  if (!token || !token.trim()) {
+    throw new FetchCierreMensualError(401, 'Unauthorized: falta token');
+  }
+
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || '';
+  if (!API_BASE_URL) {
+    throw new Error('API base URL not configured');
+  }
+
+  const qs = new URLSearchParams();
+  qs.set('anio', String(anioNum));
+  qs.set('mes', String(mesNum));
+
+  const base = API_BASE_URL.replace(/\/$/, '');
+  const baseHasApiSuffix = /\/api$/i.test(base);
+  const path = `/api/cierre-mensual?${qs.toString()}`;
+  const url = baseHasApiSuffix ? `${base}${path.slice(4)}` : `${base}${path}`;
+
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    },
+    cache: 'no-store',
+  });
+
+  const rawText = await res.text();
+  let body: unknown = null;
+  try {
+    body = rawText ? JSON.parse(rawText) : null;
+  } catch {
+    body = rawText;
+  }
+
+  if (res.status === 401) {
+    throw new FetchCierreMensualError(401, extractMessage(body) || 'Unauthorized');
+  }
+  if (!res.ok) {
+    throw new FetchCierreMensualError(res.status, extractMessage(body) || `Error ${res.status}: ${res.statusText}`);
+  }
+
+  const normalized = normalizeCierreMensualResponse(body);
+  const value = normalized?.indicadores.cantidadPrestamosCerrados;
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error('Respuesta inválida: falta data.indicadores.cantidadPrestamosCerrados');
+  }
+
+  return value;
+}
