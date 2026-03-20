@@ -351,6 +351,38 @@ export default function ContabilidadPage() {
     error: errorEstadoCuenta,
   } = usePrestamoDetalle(codigoPrestamoQuery, estadoCuentaReloadKey);
 
+  const estadoCuentaCliente = useMemo(() => {
+    if (!prestamoDetalle) return { nombre: '—', codigo: '—', identidad: '—' };
+
+    const codigoKey = normalizeKey(prestamoDetalle.codigoPrestamo || codigoPrestamoQuery);
+    const prestamoResumen = codigoKey ? prestamoByCodigo.get(codigoKey) : undefined;
+
+    const nombreFromDetalle = prestamoDetalle.cliente?.nombreCompleto?.trim();
+    const nombre =
+      (nombreFromDetalle && nombreFromDetalle !== 'Cliente' && nombreFromDetalle !== '—'
+        ? nombreFromDetalle
+        : undefined) ||
+      pickString((prestamoDetalle as unknown as Record<string, unknown>)['clienteNombre']) ||
+      (prestamoResumen?.clienteNombre && prestamoResumen.clienteNombre !== '—' ? prestamoResumen.clienteNombre : undefined) ||
+      '—';
+
+    const codigo =
+      pickString(
+        prestamoDetalle.cliente?.codigoCliente,
+        (prestamoDetalle as unknown as Record<string, unknown>)['clienteCodigo'],
+        prestamoResumen?.clienteCodigo
+      ) || '—';
+
+    const identidad =
+      pickString(
+        prestamoDetalle.cliente?.identidadCliente,
+        (prestamoDetalle as unknown as Record<string, unknown>)['clienteIdentidad'],
+        prestamoResumen?.clienteIdentidad
+      ) || '—';
+
+    return { nombre, codigo, identidad };
+  }, [prestamoDetalle, codigoPrestamoQuery, prestamoByCodigo]);
+
   const amortizacionRows = useMemo(() => {
     const raw = Array.isArray(prestamoDetalle?.amortizacionPreview)
       ? prestamoDetalle.amortizacionPreview
@@ -885,9 +917,9 @@ export default function ContabilidadPage() {
               <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
                 <Box>
                   <Typography variant="body2" color="text.secondary">Cliente</Typography>
-                  <Typography>{prestamoDetalle.cliente?.nombreCompleto || '—'}</Typography>
+                  <Typography>{estadoCuentaCliente.nombre}</Typography>
                   <Typography variant="caption" color="text.secondary">
-                    {(prestamoDetalle.cliente?.codigoCliente || '—') + ' · ' + (prestamoDetalle.cliente?.identidadCliente || '—')}
+                    {estadoCuentaCliente.codigo + ' · ' + estadoCuentaCliente.identidad}
                   </Typography>
                 </Box>
 
