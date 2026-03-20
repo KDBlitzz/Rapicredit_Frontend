@@ -1,6 +1,6 @@
 'use client';
 
-import { apiFetch } from '../lib/api';
+import { ApiError, apiFetch } from '../lib/api';
 
 export type Gasto = {
   _id?: string;
@@ -32,6 +32,8 @@ export type CreateGastoBody = {
   codigoPrestamo?: string;
   codigoRegistradoPor: string;
 };
+
+export type UpdateGastoBody = Partial<CreateGastoBody>;
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 
@@ -70,5 +72,33 @@ export const gastosApi = {
       method: 'POST',
       body: JSON.stringify(body),
     });
+  },
+
+  /**
+   * PUT/PATCH /api/gastos/:id
+   * Nota: algunos backends exponen PUT, otros PATCH. Intentamos PUT y caemos a PATCH si aplica.
+   */
+  async update(id: string, body: UpdateGastoBody): Promise<Gasto> {
+    const safeId = encodeURIComponent(String(id));
+    const url = `/api/gastos/${safeId}`;
+
+    try {
+      return await apiFetch<Gasto>(url, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+        silent: true,
+      });
+    } catch (err: unknown) {
+      const status = err instanceof ApiError ? err.status : undefined;
+      // Fallback típico cuando el backend solo soporta PATCH.
+      if (status === 404 || status === 405) {
+        return await apiFetch<Gasto>(url, {
+          method: 'PATCH',
+          body: JSON.stringify(body),
+          silent: true,
+        });
+      }
+      throw err;
+    }
   },
 };
