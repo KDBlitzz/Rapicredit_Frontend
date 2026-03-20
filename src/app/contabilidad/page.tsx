@@ -26,6 +26,7 @@ import { EstadoPrestamoFiltro, usePrestamos } from '../../hooks/usePrestamos';
 import { usePrestamoDetalle } from '../../hooks/usePrestamoDetalle';
 import type { MoraDetalleItem, Pago as CajaPago } from '../../services/cajaApi';
 import type { Gasto } from '../../services/gastosApi';
+import { parseDateInput } from '@/lib/dateRange';
 
 type TabKey = 'INGRESOS' | 'EGRESOS' | 'PRESTAMOS' | 'INTERESES' | 'MORA' | 'ESTADO_CUENTA';
 
@@ -45,18 +46,39 @@ const formatMoney = (v?: number) =>
     : 'L. 0.00';
 
 const formatDate = (iso?: string) => {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
+  const d = parseApiDate(iso);
+  if (!d) return '—';
   return d.toLocaleDateString('es-HN');
 };
 
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
 
+const parseApiDate = (iso?: string): Date | null => {
+  if (!iso) return null;
+  const s = String(iso).trim();
+  if (!s) return null;
+
+  const datePart = /^\s*(\d{4}-\d{2}-\d{2})/.exec(s)?.[1];
+  const isPlainDate = !!datePart && s.length === 10;
+  const isMidnightWithZone =
+    !!datePart &&
+    /^\d{4}-\d{2}-\d{2}T00:00:00(?:\.\d{3})?(?:Z|[+-]\d{2}:\d{2})$/.test(s);
+
+  // Muchas rutas mandan fechas "por día" como ISO a medianoche (a veces con 'Z').
+  // Si las parseamos con `new Date()` se pueden correr un día por timezone. Aquí las
+  // tratamos como fecha LOCAL (YYYY-MM-DD) para que UI y cálculos de días sean estables.
+  if ((isPlainDate || isMidnightWithZone) && datePart) {
+    return parseDateInput(datePart);
+  }
+
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
 const daysFromToday = (fechaVencimientoIso?: string) => {
   if (!fechaVencimientoIso) return 0;
-  const venc = new Date(fechaVencimientoIso);
-  if (Number.isNaN(venc.getTime())) return 0;
+  const venc = parseApiDate(fechaVencimientoIso);
+  if (!venc) return 0;
 
   const hoy = startOfDay(new Date()).getTime();
   const v = startOfDay(venc).getTime();
@@ -74,6 +96,22 @@ const pickString = (...vals: unknown[]): string | undefined => {
   return undefined;
 };
 
+const looksLikeCodigoPrestamo = (v: string) => {
+  const s = String(v || '').trim();
+  if (!s) return false;
+  // Formatos comunes:
+  // - P-2026-001 (con año)
+  // - PRE-000086 (correlativo con ceros)
+  return /^[A-Z]{1,8}-\d{4}-\d{1,}$/i.test(s) || /^[A-Z]{1,8}-\d{5,}$/i.test(s);
+};
+
+const extractCodigoPrestamo = (text: string): string | undefined => {
+  const s = String(text || '').trim();
+  if (!s) return undefined;
+  const m = /([A-Z]{1,8}-\d{4}-\d{1,}|[A-Z]{1,8}-\d{5,})/i.exec(s);
+  return m?.[1]?.trim();
+};
+
 const asNumber = (v: unknown): number | undefined => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
   if (typeof v === 'string' && v.trim()) {
@@ -84,7 +122,16 @@ const asNumber = (v: unknown): number | undefined => {
 };
 
 const getCodigoPrestamoFromCajaPago = (p: CajaPago): string => {
+  const direct = pickString(p['codigoPrestamo'], p['prestamoCodigo'], p['codigo']);
+  if (direct) return direct;
+
   const raw = p.prestamoId as unknown;
+  if (typeof raw === 'string' && raw.trim()) {
+    // A veces el backend envía el código directamente como string.
+    // Si parece ObjectId, no podemos resolverlo aquí.
+    const s = raw.trim();
+    if (!/^[a-f\d]{24}$/i.test(s)) return s;
+  }
   if (isRecord(raw)) {
     return String(raw.codigoPrestamo || '').trim() || '—';
   }
@@ -92,6 +139,9 @@ const getCodigoPrestamoFromCajaPago = (p: CajaPago): string => {
 };
 
 const getClienteCodigoFromCajaPago = (p: CajaPago): string => {
+  const direct = pickString(p['codigoCliente'], p['clienteCodigo']);
+  if (direct) return direct;
+
   const raw = p.clienteId as unknown;
   if (isRecord(raw)) {
     return String(raw.codigoCliente || '').trim() || '—';
@@ -100,6 +150,9 @@ const getClienteCodigoFromCajaPago = (p: CajaPago): string => {
 };
 
 const getClienteIdentidadFromCajaPago = (p: CajaPago): string => {
+  const direct = pickString(p['identidadCliente'], p['clienteIdentidad'], p['identidad']);
+  if (direct) return direct;
+
   const raw = p.clienteId as unknown;
   if (isRecord(raw)) {
     return String(raw.identidadCliente || '').trim() || '—';
@@ -107,12 +160,20 @@ const getClienteIdentidadFromCajaPago = (p: CajaPago): string => {
   return '—';
 };
 
-const getAsesorNombreFromCajaPago = (p: CajaPago): string => {
-  const raw = p.cobradorId as unknown;
+const getClienteNombreFromCajaPago = (p: CajaPago): string => {
+  const direct = pickString(p['clienteNombre'], p['nombreCliente'], p['nombreCompleto']);
+  if (direct) return direct;
+
+  const raw = p.clienteId as unknown;
   if (isRecord(raw)) {
-    const nombre = pickString(raw.nombreCompleto, raw.usuario, raw.codigoUsuario);
-    return nombre || '—';
+    const nombreCompleto = pickString(raw.nombreCompleto);
+    if (nombreCompleto) return nombreCompleto;
+    const nombre = typeof raw.nombre === 'string' ? raw.nombre.trim() : '';
+    const apellido = typeof raw.apellido === 'string' ? raw.apellido.trim() : '';
+    const joined = [nombre, apellido].filter(Boolean).join(' ');
+    if (joined) return joined;
   }
+
   return '—';
 };
 
@@ -242,7 +303,13 @@ export default function ContabilidadPage() {
           (typeof dRec['fechaVencimiento'] === 'string' ? String(dRec['fechaVencimiento']) : undefined) ||
           undefined;
 
-        const diasEnMora = daysFromToday(fechaVencimiento);
+        const diasEnMoraFromBackend = asNumber(
+          dRec['diasEnMora'] ??
+            dRec['diasMora'] ??
+            dRec['dias_mora'] ??
+            dRec['dias_en_mora']
+        );
+        const diasEnMora = Math.max(0, Math.floor(diasEnMoraFromBackend ?? daysFromToday(fechaVencimiento)));
         const saldoCapital =
           typeof (d as MoraDetalleItem).saldoCapital === 'number'
             ? (d as MoraDetalleItem).saldoCapital
@@ -429,30 +496,29 @@ export default function ContabilidadPage() {
                   <TableCell>Fecha</TableCell>
                   <TableCell>Código préstamo</TableCell>
                   <TableCell>Cliente</TableCell>
-                  <TableCell>Asesor/Cobrador</TableCell>
+                  <TableCell>Nombre</TableCell>
                   <TableCell>Método</TableCell>
-                  <TableCell>Comprobante</TableCell>
                   <TableCell align="right">Monto</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {pagos.map((p) => {
                   const codigoPrestamo = getCodigoPrestamoFromCajaPago(p);
+                  const codigoKey = normalizeKey(codigoPrestamo);
+                  const prestamo = codigoKey ? prestamoByCodigo.get(codigoKey) : undefined;
                   const cliente = `${getClienteCodigoFromCajaPago(p)} · ${getClienteIdentidadFromCajaPago(p)}`;
-                  const asesor = getAsesorNombreFromCajaPago(p);
+                  const nombreCliente = prestamo?.clienteNombre || getClienteNombreFromCajaPago(p);
                   const fecha = formatDate(p.fechaPago);
                   const metodo = String(p.metodoPago || '—');
-                  const comprobante = String(p.numeroComprobante || '—');
                   const monto = typeof p.montoPago === 'number' ? p.montoPago : 0;
 
                   return (
-                    <TableRow key={String(p._id || `${fecha}-${codigoPrestamo}-${comprobante}-${monto}`)}>
+                    <TableRow key={String(p._id || `${fecha}-${codigoPrestamo}-${metodo}-${monto}`)}>
                       <TableCell>{fecha}</TableCell>
                       <TableCell>{codigoPrestamo}</TableCell>
                       <TableCell>{cliente}</TableCell>
-                      <TableCell>{asesor}</TableCell>
+                      <TableCell>{nombreCliente}</TableCell>
                       <TableCell>{metodo}</TableCell>
-                      <TableCell>{comprobante}</TableCell>
                       <TableCell align="right">{formatMoney(monto)}</TableCell>
                     </TableRow>
                   );
@@ -460,7 +526,7 @@ export default function ContabilidadPage() {
 
                 {!loadingPagos && pagos.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7}>
+                    <TableCell colSpan={6}>
                       <Typography variant="caption" color="text.secondary">
                         No hay ingresos en el rango seleccionado.
                       </Typography>
@@ -498,6 +564,7 @@ export default function ContabilidadPage() {
                   <TableCell>Descripción</TableCell>
                   <TableCell>Cobrador</TableCell>
                   <TableCell>Código préstamo</TableCell>
+                  <TableCell>Referencia</TableCell>
                   <TableCell align="right">Monto</TableCell>
                 </TableRow>
               </TableHead>
@@ -507,7 +574,15 @@ export default function ContabilidadPage() {
                   const tipo = String(g.tipoGasto || '—');
                   const desc = String(g.descripcion || '—');
                   const cobrador = String(g.codigoCobradorId || '—');
-                  const codigoPrestamo = String(g.codigoPrestamo || '—');
+                  const referencia = String(g.codigoPrestamo || '').trim() || '—';
+                  const codigoExtraido = extractCodigoPrestamo(`${referencia} ${desc}`);
+                  const codigoCandidato =
+                    (codigoExtraido && looksLikeCodigoPrestamo(codigoExtraido) ? codigoExtraido : undefined) ||
+                    (referencia !== '—' && looksLikeCodigoPrestamo(referencia) ? referencia : undefined);
+
+                  const codigoKey = normalizeKey(codigoCandidato || '');
+                  const prestamo = codigoKey ? prestamoByCodigo.get(codigoKey) : undefined;
+                  const codigoPrestamo = prestamo?.codigoPrestamo || codigoCandidato || '—';
                   const monto = typeof g.monto === 'number' ? g.monto : 0;
 
                   return (
@@ -516,7 +591,21 @@ export default function ContabilidadPage() {
                       <TableCell>{tipo}</TableCell>
                       <TableCell>{desc}</TableCell>
                       <TableCell>{cobrador}</TableCell>
-                      <TableCell>{codigoPrestamo}</TableCell>
+                      <TableCell>
+                        {codigoPrestamo !== '—' ? (
+                          <Button
+                            size="small"
+                            variant="text"
+                            sx={{ minWidth: 0, p: 0, textTransform: 'none' }}
+                            onClick={() => handleSelectPrestamo(codigoPrestamo)}
+                          >
+                            {codigoPrestamo}
+                          </Button>
+                        ) : (
+                          '—'
+                        )}
+                      </TableCell>
+                      <TableCell>{referencia}</TableCell>
                       <TableCell align="right">{formatMoney(monto)}</TableCell>
                     </TableRow>
                   );
@@ -524,7 +613,7 @@ export default function ContabilidadPage() {
 
                 {!loadingGastos && gastos.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6}>
+                    <TableCell colSpan={7}>
                       <Typography variant="caption" color="text.secondary">
                         No hay egresos en el rango seleccionado.
                       </Typography>

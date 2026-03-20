@@ -8,6 +8,7 @@ import {
   Typography,
   Grid,
   TextField,
+  Autocomplete,
   MenuItem,
   Button,
   Snackbar,
@@ -32,6 +33,7 @@ import {
   useGastosCaja,
   useDesembolsosCaja,
 } from "../../hooks/useCaja";
+import { usePrestamos } from "../../hooks/usePrestamos";
 import type { Pago } from "../../services/cajaApi";
 import { empleadosApi, type EmpleadoMongo } from "../../services/empleadosApi";
 import { gastosApi } from "../../services/gastosApi";
@@ -55,6 +57,8 @@ const tabs = [
 ];
 
 const COMPROBANTE_STORAGE_KEY = "rapicredit:comprobanteAbono";
+
+const normalizeCodigo = (v: string) => String(v || "").trim().toUpperCase();
 
 export default function CuadresPage() {
   const router = useRouter();
@@ -94,6 +98,34 @@ export default function CuadresPage() {
   const { empleado: empleadoActual } = useEmpleadoActual();
   const rolActual = (empleadoActual?.rol || "").toLowerCase();
   const isAsesor = rolActual === "asesor";
+
+  const {
+    data: prestamosAll,
+    loading: loadingPrestamos,
+    error: errorPrestamos,
+  } = usePrestamos({ busqueda: "", estado: "TODOS" }, { refreshKey: undefined });
+
+  type PrestamoOption = { codigoPrestamo: string; clienteNombre: string };
+  const prestamoOptions = useMemo((): PrestamoOption[] => {
+    return (prestamosAll ?? [])
+      .filter((p) => !!p.codigoPrestamo)
+      .map((p) => ({
+        codigoPrestamo: String(p.codigoPrestamo).trim(),
+        clienteNombre: String(p.clienteNombre || "—").trim(),
+      }))
+      .filter((x) => !!x.codigoPrestamo)
+      .sort((a, b) => a.codigoPrestamo.localeCompare(b.codigoPrestamo, "es"));
+  }, [prestamosAll]);
+
+  const prestamoOptionByCodigo = useMemo(() => {
+    const m = new Map<string, PrestamoOption>();
+    for (const opt of prestamoOptions) {
+      const key = normalizeCodigo(opt.codigoPrestamo);
+      if (!key) continue;
+      if (!m.has(key)) m.set(key, opt);
+    }
+    return m;
+  }, [prestamoOptions]);
 
   const [asesores, setAsesores] = useState<EmpleadoMongo[]>([]);
   const [loadingAsesores, setLoadingAsesores] = useState(false);
@@ -1035,13 +1067,53 @@ export default function CuadresPage() {
                   }
                 />
 
-                <TextField
-                  size="small"
-                  label="Referencia"
-                  value={desembolsoForm.referencia}
-                  onChange={(e) =>
-                    setDesembolsoForm((prev) => ({ ...prev, referencia: e.target.value }))
-                  }
+                <Autocomplete
+                  options={prestamoOptions}
+                  getOptionLabel={(opt) => (typeof opt === "string" ? opt : opt.codigoPrestamo)}
+                  loading={loadingPrestamos}
+                  loadingText="Cargando préstamos…"
+                  noOptionsText={errorPrestamos ? "Sin acceso a préstamos" : "Sin resultados"}
+                  value={prestamoOptionByCodigo.get(normalizeCodigo(desembolsoForm.referencia)) ?? null}
+                  inputValue={desembolsoForm.referencia}
+                  onInputChange={(_e, v) => setDesembolsoForm((prev) => ({ ...prev, referencia: v }))}
+                  onChange={(_e, opt) => {
+                    if (typeof opt === "string") {
+                      setDesembolsoForm((prev) => ({ ...prev, referencia: opt }));
+                      return;
+                    }
+
+                    setDesembolsoForm((prev) => ({ ...prev, referencia: opt?.codigoPrestamo || "" }));
+                  }}
+                  renderOption={(props, opt) => {
+                    if (typeof opt === "string") {
+                      return (
+                        <Box component="li" {...props}>
+                          {opt}
+                        </Box>
+                      );
+                    }
+
+                    return (
+                      <Box component="li" {...props} sx={{ display: "flex", gap: 1, alignItems: "baseline" }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {opt.codigoPrestamo}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {opt.clienteNombre}
+                        </Typography>
+                      </Box>
+                    );
+                  }}
+                  freeSolo
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      size="small"
+                      label="Código préstamo"
+                      placeholder="Ej: P-2026-001"
+                      helperText="Opcional: selecciona o escribe el código del préstamo"
+                    />
+                  )}
                 />
 
                 <Button
@@ -1090,7 +1162,7 @@ export default function CuadresPage() {
                         <TableCell>Asesor</TableCell>
                         <TableCell>Descripción</TableCell>
                         <TableCell align="right">Monto</TableCell>
-                        <TableCell>Referencia</TableCell>
+                        <TableCell>Código préstamo</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -1190,11 +1262,53 @@ export default function CuadresPage() {
                   onChange={(e) => setGastoForm((prev) => ({ ...prev, descripcion: e.target.value }))}
                 />
 
-                <TextField
-                  size="small"
-                  label="Referencia"
-                  value={gastoForm.referencia}
-                  onChange={(e) => setGastoForm((prev) => ({ ...prev, referencia: e.target.value }))}
+                <Autocomplete
+                  options={prestamoOptions}
+                  getOptionLabel={(opt) => (typeof opt === "string" ? opt : opt.codigoPrestamo)}
+                  loading={loadingPrestamos}
+                  loadingText="Cargando préstamos…"
+                  noOptionsText={errorPrestamos ? "Sin acceso a préstamos" : "Sin resultados"}
+                  value={prestamoOptionByCodigo.get(normalizeCodigo(gastoForm.referencia)) ?? null}
+                  inputValue={gastoForm.referencia}
+                  onInputChange={(_e, v) => setGastoForm((prev) => ({ ...prev, referencia: v }))}
+                  onChange={(_e, opt) => {
+                    if (typeof opt === "string") {
+                      setGastoForm((prev) => ({ ...prev, referencia: opt }));
+                      return;
+                    }
+
+                    setGastoForm((prev) => ({ ...prev, referencia: opt?.codigoPrestamo || "" }));
+                  }}
+                  renderOption={(props, opt) => {
+                    if (typeof opt === "string") {
+                      return (
+                        <Box component="li" {...props}>
+                          {opt}
+                        </Box>
+                      );
+                    }
+
+                    return (
+                      <Box component="li" {...props} sx={{ display: "flex", gap: 1, alignItems: "baseline" }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {opt.codigoPrestamo}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {opt.clienteNombre}
+                        </Typography>
+                      </Box>
+                    );
+                  }}
+                  freeSolo
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      size="small"
+                      label="Código préstamo"
+                      placeholder="Ej: P-2026-001"
+                      helperText="Opcional: selecciona o escribe el código del préstamo"
+                    />
+                  )}
                 />
 
                 <Button
