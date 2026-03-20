@@ -96,22 +96,6 @@ const pickString = (...vals: unknown[]): string | undefined => {
   return undefined;
 };
 
-const looksLikeCodigoPrestamo = (v: string) => {
-  const s = String(v || '').trim();
-  if (!s) return false;
-  // Formatos comunes:
-  // - P-2026-001 (con año)
-  // - PRE-000086 (correlativo con ceros)
-  return /^[A-Z]{1,8}-\d{4}-\d{1,}$/i.test(s) || /^[A-Z]{1,8}-\d{5,}$/i.test(s);
-};
-
-const extractCodigoPrestamo = (text: string): string | undefined => {
-  const s = String(text || '').trim();
-  if (!s) return undefined;
-  const m = /([A-Z]{1,8}-\d{4}-\d{1,}|[A-Z]{1,8}-\d{5,})/i.exec(s);
-  return m?.[1]?.trim();
-};
-
 const asNumber = (v: unknown): number | undefined => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
   if (typeof v === 'string' && v.trim()) {
@@ -563,7 +547,6 @@ export default function ContabilidadPage() {
                   <TableCell>Tipo</TableCell>
                   <TableCell>Descripción</TableCell>
                   <TableCell>Cobrador</TableCell>
-                  <TableCell>Código préstamo</TableCell>
                   <TableCell>Referencia</TableCell>
                   <TableCell align="right">Monto</TableCell>
                 </TableRow>
@@ -575,14 +558,6 @@ export default function ContabilidadPage() {
                   const desc = String(g.descripcion || '—');
                   const cobrador = String(g.codigoCobradorId || '—');
                   const referencia = String(g.codigoPrestamo || '').trim() || '—';
-                  const codigoExtraido = extractCodigoPrestamo(`${referencia} ${desc}`);
-                  const codigoCandidato =
-                    (codigoExtraido && looksLikeCodigoPrestamo(codigoExtraido) ? codigoExtraido : undefined) ||
-                    (referencia !== '—' && looksLikeCodigoPrestamo(referencia) ? referencia : undefined);
-
-                  const codigoKey = normalizeKey(codigoCandidato || '');
-                  const prestamo = codigoKey ? prestamoByCodigo.get(codigoKey) : undefined;
-                  const codigoPrestamo = prestamo?.codigoPrestamo || codigoCandidato || '—';
                   const monto = typeof g.monto === 'number' ? g.monto : 0;
 
                   return (
@@ -591,20 +566,6 @@ export default function ContabilidadPage() {
                       <TableCell>{tipo}</TableCell>
                       <TableCell>{desc}</TableCell>
                       <TableCell>{cobrador}</TableCell>
-                      <TableCell>
-                        {codigoPrestamo !== '—' ? (
-                          <Button
-                            size="small"
-                            variant="text"
-                            sx={{ minWidth: 0, p: 0, textTransform: 'none' }}
-                            onClick={() => handleSelectPrestamo(codigoPrestamo)}
-                          >
-                            {codigoPrestamo}
-                          </Button>
-                        ) : (
-                          '—'
-                        )}
-                      </TableCell>
                       <TableCell>{referencia}</TableCell>
                       <TableCell align="right">{formatMoney(monto)}</TableCell>
                     </TableRow>
@@ -613,7 +574,7 @@ export default function ContabilidadPage() {
 
                 {!loadingGastos && gastos.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7}>
+                    <TableCell colSpan={6}>
                       <Typography variant="caption" color="text.secondary">
                         No hay egresos en el rango seleccionado.
                       </Typography>
