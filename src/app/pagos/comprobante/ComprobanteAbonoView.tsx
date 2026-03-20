@@ -8,11 +8,16 @@ import {
   Button,
   CircularProgress,
   Divider,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableRow,
+  TextField,
   Typography,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
@@ -52,13 +57,23 @@ export type ComprobanteAbonoData = {
 
 const STORAGE_KEY = "rapicredit:comprobanteAbono";
 
-const COMPANY = {
+type CompanyConfig = {
+  nombre: string;
+  rtn: string;
+  telefono: string;
+  correo: string;
+  direccion: string;
+};
+
+const COMPANY_STORAGE_KEY = "rapicredit:comprobanteHeader";
+
+const COMPANY_DEFAULT: CompanyConfig = {
   nombre: "RAPICREDIT S DE R.L DE C.V",
   rtn: "0501-9022-387459",
   telefono: "9694-1932",
   correo: "RAPICREDIT.HN@HOTMAIL.COM",
   direccion: "BARRIO EL CENTRO, CALLE PRINCIPAL, EL PROGRESO YORO",
-} as const;
+};
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -86,6 +101,41 @@ const asNumber = (v: unknown): number | undefined => {
     return Number.isFinite(n) ? n : undefined;
   }
   return undefined;
+};
+
+const normalizeCompanyConfig = (input: Partial<CompanyConfig>): CompanyConfig => {
+  const pick = (key: keyof CompanyConfig): string => {
+    const raw = input[key];
+    if (typeof raw !== "string") return COMPANY_DEFAULT[key];
+    const trimmed = raw.trim();
+    return trimmed || COMPANY_DEFAULT[key];
+  };
+
+  return {
+    nombre: pick("nombre"),
+    rtn: pick("rtn"),
+    telefono: pick("telefono"),
+    correo: pick("correo"),
+    direccion: pick("direccion"),
+  };
+};
+
+const parseCompanyStorage = (raw: string | null): CompanyConfig | null => {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!isRecord(parsed)) return null;
+
+    return normalizeCompanyConfig({
+      nombre: typeof parsed["nombre"] === "string" ? parsed["nombre"] : undefined,
+      rtn: typeof parsed["rtn"] === "string" ? parsed["rtn"] : undefined,
+      telefono: typeof parsed["telefono"] === "string" ? parsed["telefono"] : undefined,
+      correo: typeof parsed["correo"] === "string" ? parsed["correo"] : undefined,
+      direccion: typeof parsed["direccion"] === "string" ? parsed["direccion"] : undefined,
+    });
+  } catch {
+    return null;
+  }
 };
 
 const normalize = (v: string) => v.trim().toLowerCase();
@@ -257,6 +307,20 @@ const extractArray = (res: unknown): unknown[] => {
   return [];
 };
 
+const unwrapReciboPayload = (res: unknown): unknown => {
+  if (!isRecord(res)) return res;
+
+  const directKeys = ["recibo", "data", "result", "payload"] as const;
+  for (const key of directKeys) {
+    const value = res[key];
+    if (value != null) {
+      return value;
+    }
+  }
+
+  return res;
+};
+
 const matchesPagoRef = (p: unknown, ref: string): boolean => {
   if (!ref.trim()) return false;
   const target = normalize(ref);
@@ -411,7 +475,18 @@ async function resolveComprobanteByRef(ref: string): Promise<ComprobanteAbonoDat
   const target = String(ref || "").trim();
   if (!target) return null;
 
-  // 1) Intentar rutas puntuales (si existen en el backend)
+  // 1) Endpoint dedicado de recibo por codigo de pago
+  try {
+    const res = await apiFetch<unknown>(`/api/pagos/codigo/${encodeURIComponent(target)}/recibo`, {
+      silent: true,
+    });
+    const payload = unwrapReciboPayload(res);
+    if (payload) return mapPagoToComprobante(payload, target);
+  } catch {
+    // ignora para seguir con rutas legacy
+  }
+
+  // 2) Intentar rutas puntuales legacy (compatibilidad)
   const candidates = [
     `/pagos/${encodeURIComponent(target)}`,
     `/pagos/id/${encodeURIComponent(target)}`,
@@ -421,13 +496,14 @@ async function resolveComprobanteByRef(ref: string): Promise<ComprobanteAbonoDat
   for (const path of candidates) {
     try {
       const res = await apiFetch<unknown>(path, { silent: true });
-      if (res) return mapPagoToComprobante(res, target);
+      const payload = unwrapReciboPayload(res);
+      if (payload) return mapPagoToComprobante(payload, target);
     } catch {
       // ignora 404 u otros para probar siguientes
     }
   }
 
-  // 2) Fallback: listar pagos y buscar coincidencia local
+  // 3) Fallback: listar pagos y buscar coincidencia local
   try {
     const list = await apiFetch<unknown>("/pagos", { silent: true });
     const raw = extractArray(list);
@@ -446,22 +522,68 @@ export default function ComprobanteAbonoView({ refId }: { refId?: string }) {
   const [remote, setRemote] = useState<ComprobanteAbonoData | null>(null);
   const [loadingRemote, setLoadingRemote] = useState(false);
   const [errorRemote, setErrorRemote] = useState<string | null>(null);
+  const [company, setCompany] = useState<CompanyConfig>(COMPANY_DEFAULT);
+  const [companyDraft, setCompanyDraft] = useState<CompanyConfig>(COMPANY_DEFAULT);
+  const [companyDialogOpen, setCompanyDialogOpen] = useState(false);
 
   useEffect(() => {
     try {
       const fromSession = safeParseStorage(sessionStorage.getItem(STORAGE_KEY));
       const fromLocal = safeParseStorage(localStorage.getItem(STORAGE_KEY));
       setStored(fromSession ?? fromLocal);
+
+      const fromCompanyStorage = parseCompanyStorage(localStorage.getItem(COMPANY_STORAGE_KEY));
+      if (fromCompanyStorage) {
+        setCompany(fromCompanyStorage);
+        setCompanyDraft(fromCompanyStorage);
+      }
     } catch {
       setStored(null);
     }
   }, []);
 
+  const openCompanyEditor = () => {
+    setCompanyDraft(company);
+    setCompanyDialogOpen(true);
+  };
+
+  const closeCompanyEditor = () => {
+    setCompanyDialogOpen(false);
+  };
+
+  const saveCompanyEditor = () => {
+    const normalized = normalizeCompanyConfig(companyDraft);
+    setCompany(normalized);
+    setCompanyDraft(normalized);
+    setCompanyDialogOpen(false);
+    try {
+      localStorage.setItem(COMPANY_STORAGE_KEY, JSON.stringify(normalized));
+    } catch {
+      // ignore
+    }
+  };
+
+  const resetCompanyEditor = () => {
+    setCompany(COMPANY_DEFAULT);
+    setCompanyDraft(COMPANY_DEFAULT);
+    try {
+      localStorage.removeItem(COMPANY_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
 
     const load = async () => {
-      const ref = String(refId || "").trim();
+      const ref = String(
+        refId ||
+          stored?.referencia ||
+          stored?.recibo ||
+          stored?.pagoId ||
+          ""
+      ).trim();
       if (!ref) return;
 
       // Evitar llamadas a API si no hay sesión: el comprobante puede ser usado solo con storage.
@@ -502,7 +624,7 @@ export default function ComprobanteAbonoView({ refId }: { refId?: string }) {
     return () => {
       cancelled = true;
     };
-  }, [firebaseUser, refId]);
+  }, [firebaseUser, refId, stored?.pagoId, stored?.recibo, stored?.referencia]);
 
   const base = remote ?? stored;
 
@@ -515,7 +637,7 @@ export default function ComprobanteAbonoView({ refId }: { refId?: string }) {
     if (base.cuotasPendientes == null || Number(base.cuotasPendientes) <= 0) return true;
     if (!Array.isArray(base.cuotasPagadas) || base.cuotasPagadas.length === 0) return true;
     return false;
-  }, [base?.codigoPrestamo, base?.cuotasPagadas, base?.cuotasPendientes, base?.saldoPendiente, firebaseUser]);
+  }, [base?.cliente, base?.codigoPrestamo, base?.cuotasPagadas, base?.cuotasPendientes, base?.saldoPendiente, firebaseUser]);
 
   const prestamoCodigo = shouldLoadPrestamo ? String(base?.codigoPrestamo || "") : "";
   const { data: prestamoDetalle } = usePrestamoDetalle(prestamoCodigo);
@@ -618,6 +740,7 @@ export default function ComprobanteAbonoView({ refId }: { refId?: string }) {
     prestamoDetalle?.cuotaFija,
     prestamoDetalle?.saldo,
     prestamoDetalle?.saldoActual,
+    prestamoDetalle?.saldoCapital,
     prestamoDetalle?.saldoPendiente,
   ]);
 
@@ -653,12 +776,12 @@ export default function ComprobanteAbonoView({ refId }: { refId?: string }) {
     };
 
     doc.setFontSize(9);
-    writeWrap(COMPANY.nombre, centerX, 70, "center");
+    writeWrap(company.nombre, centerX, 70, "center");
     doc.setFontSize(8);
-    writeWrap(`RTN: ${COMPANY.rtn}`, centerX, 70, "center");
-    writeWrap(`TELEFONO: ${COMPANY.telefono}`, centerX, 70, "center");
-    writeWrap(`CORREO: ${COMPANY.correo}`, centerX, 70, "center");
-    writeWrap(COMPANY.direccion, centerX, 68, "center");
+    writeWrap(`RTN: ${company.rtn}`, centerX, 70, "center");
+    writeWrap(`TELEFONO: ${company.telefono}`, centerX, 70, "center");
+    writeWrap(`CORREO: ${company.correo}`, centerX, 70, "center");
+    writeWrap(company.direccion, centerX, 68, "center");
 
     y += 2;
     line();
@@ -731,7 +854,57 @@ export default function ComprobanteAbonoView({ refId }: { refId?: string }) {
         >
           Descargar PDF
         </Button>
+        <Button variant="outlined" onClick={openCompanyEditor}>
+          Editar encabezado
+        </Button>
       </Box>
+
+      <Dialog open={companyDialogOpen} onClose={closeCompanyEditor} maxWidth="sm" fullWidth>
+        <DialogTitle>Editar encabezado del comprobante</DialogTitle>
+        <DialogContent sx={{ pt: 1, display: "grid", gap: 1.5 }}>
+          <TextField
+            label="Nombre"
+            value={companyDraft.nombre}
+            onChange={(e) => setCompanyDraft((prev) => ({ ...prev, nombre: e.target.value }))}
+            fullWidth
+          />
+          <TextField
+            label="RTN"
+            value={companyDraft.rtn}
+            onChange={(e) => setCompanyDraft((prev) => ({ ...prev, rtn: e.target.value }))}
+            fullWidth
+          />
+          <TextField
+            label="Teléfono"
+            value={companyDraft.telefono}
+            onChange={(e) => setCompanyDraft((prev) => ({ ...prev, telefono: e.target.value }))}
+            fullWidth
+          />
+          <TextField
+            label="Correo"
+            value={companyDraft.correo}
+            onChange={(e) => setCompanyDraft((prev) => ({ ...prev, correo: e.target.value }))}
+            fullWidth
+          />
+          <TextField
+            label="Dirección"
+            value={companyDraft.direccion}
+            onChange={(e) => setCompanyDraft((prev) => ({ ...prev, direccion: e.target.value }))}
+            fullWidth
+            multiline
+            minRows={2}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={resetCompanyEditor} color="inherit">
+            Restaurar por defecto
+          </Button>
+          <Button onClick={closeCompanyEditor}>Cancelar</Button>
+          <Button variant="contained" onClick={saveCompanyEditor}>
+            Guardar
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {errorRemote ? (
         <Alert severity="warning" sx={{ maxWidth: 560, mx: "auto", mb: 2 }}>
@@ -764,19 +937,19 @@ export default function ComprobanteAbonoView({ refId }: { refId?: string }) {
           })}
         >
           <Typography variant="body2" sx={{ fontWeight: 700, textAlign: "center" }}>
-            {COMPANY.nombre}
+            {company.nombre}
           </Typography>
           <Typography variant="caption" sx={{ display: "block", textAlign: "center" }}>
-            RTN: {COMPANY.rtn}
+            RTN: {company.rtn}
           </Typography>
           <Typography variant="caption" sx={{ display: "block", textAlign: "center" }}>
-            TELEFONO: {COMPANY.telefono}
+            TELEFONO: {company.telefono}
           </Typography>
           <Typography variant="caption" sx={{ display: "block", textAlign: "center" }}>
-            CORREO: {COMPANY.correo}
+            CORREO: {company.correo}
           </Typography>
           <Typography variant="caption" sx={{ display: "block", textAlign: "center" }}>
-            {COMPANY.direccion}
+            {company.direccion}
           </Typography>
 
           <Divider sx={{ my: 1.5 }} />

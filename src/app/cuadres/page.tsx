@@ -926,7 +926,12 @@ export default function CuadresPage() {
                   {pagosData.map((pago, idx) => {
                     const estado = String(pago.estado ?? "—");
                     const monto = typeof pago.montoPago === "number" ? pago.montoPago : 0;
-                    const canOpenComprobante = Boolean(pago?.numeroComprobante || pago?._id);
+                    const canOpenComprobante = Boolean(
+                      pago?.numeroComprobante ||
+                      (pago as Record<string, unknown>)?.["codigoPago"] ||
+                      (pago as Record<string, unknown>)?.["referencia"] ||
+                      pago?._id
+                    );
                     return (
                       <TableRow key={String(pago._id ?? `${idx}`)}>
                         <TableCell>{formatDate(pago.fechaPago)}</TableCell>
@@ -974,7 +979,15 @@ export default function CuadresPage() {
                                 } catch {
                                   // ignore
                                 }
-                                router.push("/pagos/comprobante");
+                                const pagoRec = pago as Record<string, unknown>;
+                                const ref = String(
+                                  pagoRec["codigoPago"] ||
+                                  pagoRec["referencia"] ||
+                                  pago.numeroComprobante ||
+                                  pago._id ||
+                                  ""
+                                ).trim();
+                                router.push(ref ? `/pagos/${encodeURIComponent(ref)}/comprobante` : "/pagos/comprobante");
                               }}
                             >
                               {String(pago.numeroComprobante ?? "Ver")}

@@ -283,17 +283,29 @@ export default function PagosPage() {
             : null;
 
         const ref =
-          (typeof pagoObj?._id === 'string' && pagoObj._id.trim())
-            ? pagoObj._id.trim()
-            : (typeof pagoObj?.id === 'string' && pagoObj.id.trim())
-              ? pagoObj.id.trim()
-              : (typeof resObj?._id === 'string' && resObj._id.trim())
-                ? resObj._id.trim()
-                : (typeof resObj?.id === 'string' && resObj.id.trim())
-                  ? resObj.id.trim()
-                  : (typeof resObj?.pagoId === 'string' && resObj.pagoId.trim())
-                    ? resObj.pagoId.trim()
-                    : '';
+          (typeof pagoObj?.codigoPago === 'string' && pagoObj.codigoPago.trim())
+            ? pagoObj.codigoPago.trim()
+            : (typeof pagoObj?.numeroComprobante === 'string' && pagoObj.numeroComprobante.trim())
+              ? pagoObj.numeroComprobante.trim()
+              : (typeof pagoObj?.referencia === 'string' && pagoObj.referencia.trim())
+                ? pagoObj.referencia.trim()
+                : (typeof resObj?.codigoPago === 'string' && resObj.codigoPago.trim())
+                  ? resObj.codigoPago.trim()
+                  : (typeof resObj?.numeroComprobante === 'string' && resObj.numeroComprobante.trim())
+                    ? resObj.numeroComprobante.trim()
+                    : (typeof resObj?.referencia === 'string' && resObj.referencia.trim())
+                      ? resObj.referencia.trim()
+                      : (typeof pagoObj?._id === 'string' && pagoObj._id.trim())
+                        ? pagoObj._id.trim()
+                        : (typeof pagoObj?.id === 'string' && pagoObj.id.trim())
+                          ? pagoObj.id.trim()
+                          : (typeof resObj?._id === 'string' && resObj._id.trim())
+                            ? resObj._id.trim()
+                            : (typeof resObj?.id === 'string' && resObj.id.trim())
+                              ? resObj.id.trim()
+                              : (typeof resObj?.pagoId === 'string' && resObj.pagoId.trim())
+                                ? resObj.pagoId.trim()
+                                : '';
 
         router.push(ref ? `/pagos/${encodeURIComponent(ref)}/comprobante` : '/pagos/comprobante');
       }
@@ -734,7 +746,12 @@ export default function PagosPage() {
                   } catch {
                     // Ignorar
                   }
-                  const ref = String(dialogPago.id || '').trim();
+                  const ref = String(
+                    dialogPago.codigoPago ||
+                    dialogPago.referencia ||
+                    dialogPago.id ||
+                    ''
+                  ).trim();
                   router.push(ref ? `/pagos/${encodeURIComponent(ref)}/comprobante` : '/pagos/comprobante');
                 }}
               >

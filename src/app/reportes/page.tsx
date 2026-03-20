@@ -108,8 +108,26 @@ const ReportesPage: React.FC = () => {
         </Box>
       </Box>
 
-      {!isAsesor && (
-        <Box sx={{ display: "flex", justifyContent: "center" }}>
+      <Box sx={{ display: "flex", justifyContent: "center", gap: 1, flexWrap: "wrap" }}>
+        <Button
+          component={Link}
+          href="/reportes/impresion-carteras"
+          variant="contained"
+          size="small"
+        >
+          Impresión de carteras
+        </Button>
+
+        <Button
+          component={Link}
+          href="/reportes/estado-cuenta"
+          variant="contained"
+          size="small"
+        >
+          Estado de cuenta
+        </Button>
+
+        {!isAsesor && (
           <Button
             component={Link}
             href="/reportes/trazabilidad-decisiones"
@@ -118,8 +136,8 @@ const ReportesPage: React.FC = () => {
           >
             Trazabilidad de decisiones
           </Button>
-        </Box>
-      )}
+        )}
+      </Box>
 
       {/* Estado de carga / error */}
       {loading && (

@@ -93,21 +93,21 @@ const navItems: NavSection[] = [
         hiddenForRoles: ["asesor", "caja"],
       },
       {
-        label: "Reportes",
-        href: "/reportes",
-        submenu: [
-          { label: "Central de Riesgos", href: "/reportes/central-riesgos" },
-          { label: "Seguro de Vida", href: "/reportes/seguro-vida" },
-          { label: "Pago al SAR", href: "/reportes/pago-sar" },
-        ],
-        hiddenForRoles: ["caja"],
-      },
-      {
         label: "Estadísticas Asesor",
         href: "/empleados/estadisticas",
         requiredPermisos: ["F008", "F009"],
         hiddenForRoles: ["caja"],
       },
+    ],
+  },
+  {
+    section: "Reportes",
+    items: [
+      { label: "Impresión de Carteras", href: "/reportes/impresion-carteras", requiredPermisos: ["F001"], hiddenForRoles: ["caja"] },
+      { label: "Estado de Cuenta", href: "/reportes/estado-cuenta", hiddenForRoles: ["caja"] },
+      { label: "Central de Riesgos", href: "/reportes/central-riesgos", hiddenForRoles: ["caja"] },
+      { label: "Seguro de Vida", href: "/reportes/seguro-vida", hiddenForRoles: ["caja"] },
+      { label: "Pago al SAR", href: "/reportes/pago-sar", hiddenForRoles: ["caja"] },
     ],
   },
   {
@@ -253,6 +253,7 @@ export default function Sidebar() {
               dense
               subheader={
                 <ListSubheader
+                  disableSticky
                   sx={{
                     bgcolor: "transparent",
                     color: "text.secondary",
