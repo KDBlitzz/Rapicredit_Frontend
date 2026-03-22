@@ -301,7 +301,7 @@ const PrestamoDetallePage: React.FC = () => {
         </Box>
 
         <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
-          {isGerente && (data.estadoPrestamo || "").toUpperCase() === "VIGENTE" && (
+          {isGerente && (
             <Button
               size="small"
               variant="outlined"
@@ -328,11 +328,6 @@ const PrestamoDetallePage: React.FC = () => {
             ) : null
           )}
 
-          {data.cliente && (
-            <Button size="small" variant="outlined" component={Link} href={`/clientes/${data.cliente.id}`}>
-              Ver cliente
-            </Button>
-          )}
           <Button size="small" variant="outlined" component={Link} href="/prestamos">
             Volver a lista
           </Button>

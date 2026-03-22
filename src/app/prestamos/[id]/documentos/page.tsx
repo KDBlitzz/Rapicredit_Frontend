@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
 	Box,
@@ -16,6 +16,7 @@ import Link from "next/link";
 import { usePrestamoDetalle } from "../../../../hooks/usePrestamoDetalle";
 import { usePermisos } from "../../../../hooks/usePermisos";
 import { useTasasInteres } from "../../../../hooks/useTasasInteres";
+import { apiFetch } from "../../../../lib/api";
 
 const CLAUSULAS_CONTRATO_SIN_DESPLAZAMIENTO = [
 	"PRIMERO: Información: Declara el Deudor, que previo a la suscripción del presente contrato ha recibido a su satisfacción por parte del acreedor, la información relacionada con el presente contrato de préstamo, intereses, comisiones pactadas, así como las consecuencias por el incumplimiento de la obligación.",
@@ -204,6 +205,173 @@ const numeroALetrasES = (value: number): string => {
 	return apocoparUno(toWords(n)).replace(/\s+/g, " ").trim();
 };
 
+type SolicitudContratosResponse = {
+	tipoContrato?: string;
+	contratos?: string[];
+	data?: {
+		tipoContrato?: string;
+		contratos?: string[];
+	};
+};
+
+type ContratoPlantillaResponse = {
+	tipo?: string;
+	html?: string;
+};
+
+type NormalizedSolicitudContratos = {
+	tipoContrato: string;
+	contratos: string[];
+};
+
+const plantillaPathPorTipoContrato = (tipoContrato: string): string | null => {
+	if (tipoContrato === "Contrato sin desplazamiento") {
+		return "/contratos/plantillas/contrato-sin-desplazamiento";
+	}
+	if (tipoContrato === "Contrato con desplazamiento") {
+		return "/contratos/plantillas/contrato-con-desplazamiento";
+	}
+	return null;
+};
+
+const escapeHtml = (value: unknown): string => {
+	return String(value ?? "")
+		.replaceAll("&", "&amp;")
+		.replaceAll("<", "&lt;")
+		.replaceAll(">", "&gt;")
+		.replaceAll('"', "&quot;")
+		.replaceAll("'", "&#39;");
+};
+
+const getDeep = (obj: unknown, path: string): unknown => {
+	const parts = path.split(".");
+	let current: unknown = obj;
+	for (const key of parts) {
+		if (!current || typeof current !== "object") return undefined;
+		current = (current as Record<string, unknown>)[key];
+	}
+	return current;
+};
+
+const fillTemplateMustacheLike = (html: string, data: unknown): string => {
+	return html.replace(/{{\s*([\w.]+)\s*}}/g, (_m, key) => {
+		return escapeHtml(getDeep(data, key));
+	});
+};
+
+const safeParseContrato = (raw: string): Record<string, unknown> => {
+	try {
+		const parsed: unknown = JSON.parse(raw);
+		if (parsed && typeof parsed === "object") {
+			return parsed as Record<string, unknown>;
+		}
+		return {};
+	} catch {
+		return {};
+	}
+};
+
+const getContratoHtmlFromRaw = (raw: string): string | null => {
+	const trimmed = String(raw || "").trim();
+	if (!trimmed) return null;
+	if (/^<!doctype\s+html/i.test(trimmed) || /^<html/i.test(trimmed) || /^<div/i.test(trimmed) || /^<p/i.test(trimmed) || /^<table/i.test(trimmed)) {
+		return trimmed;
+	}
+
+	try {
+		const parsed: unknown = JSON.parse(trimmed);
+		if (parsed && typeof parsed === "object") {
+			const maybeHtml = (parsed as Record<string, unknown>).html;
+			if (typeof maybeHtml === "string" && maybeHtml.trim()) {
+				return maybeHtml;
+			}
+		}
+	} catch {
+		return null;
+	}
+
+	return null;
+};
+
+const normalizeSolicitudContratos = (value: unknown): NormalizedSolicitudContratos | null => {
+	if (!value || typeof value !== "object") return null;
+	const root = value as Record<string, unknown>;
+	const nested = root.data && typeof root.data === "object" ? (root.data as Record<string, unknown>) : null;
+
+	const tipoContrato =
+		typeof root.tipoContrato === "string"
+			? root.tipoContrato
+			: typeof nested?.tipoContrato === "string"
+				? nested.tipoContrato
+				: "";
+
+	const contratosRaw =
+		Array.isArray(root.contratos)
+			? root.contratos
+			: Array.isArray(nested?.contratos)
+				? nested.contratos
+				: [];
+
+	const contratos = contratosRaw
+		.map((item) => (typeof item === "string" ? item : null))
+		.filter((item): item is string => Boolean(item));
+
+	if (!tipoContrato || contratos.length === 0) return null;
+
+	return {
+		tipoContrato,
+		contratos,
+	};
+};
+
+const enrichContratoData = (contratoData: Record<string, unknown>, prestamoData: NonNullable<ReturnType<typeof usePrestamoDetalle>["data"]>) => {
+	const clienteFallback = {
+		nombreCompleto: prestamoData.cliente?.nombreCompleto || "",
+		identidadCliente: prestamoData.cliente?.identidadCliente || "",
+		codigoCliente: prestamoData.cliente?.codigoCliente || "",
+	};
+
+	const prestamoFallback = {
+		codigoPrestamo: prestamoData.codigoPrestamo || "",
+		capitalSolicitado: prestamoData.capitalSolicitado ?? "",
+		cuotaFija: prestamoData.cuotaFija ?? "",
+		plazoCuotas: prestamoData.plazoCuotas ?? "",
+		estadoPrestamo: prestamoData.estadoPrestamo || "",
+	};
+
+	const solicitudFallback = {
+		codigoSolicitud: prestamoData.solicitudCodigo || prestamoData.solicitudId || "",
+		id: prestamoData.solicitudId || "",
+	};
+
+	const contratoCliente =
+		contratoData.cliente && typeof contratoData.cliente === "object"
+			? (contratoData.cliente as Record<string, unknown>)
+			: {};
+	const contratoPrestamo =
+		contratoData.prestamo && typeof contratoData.prestamo === "object"
+			? (contratoData.prestamo as Record<string, unknown>)
+			: {};
+	const contratoSolicitud =
+		contratoData.solicitud && typeof contratoData.solicitud === "object"
+			? (contratoData.solicitud as Record<string, unknown>)
+			: {};
+
+	return {
+		cliente: { ...clienteFallback, ...contratoCliente },
+		prestamo: { ...prestamoFallback, ...contratoPrestamo },
+		solicitud: { ...solicitudFallback, ...contratoSolicitud },
+		nombreCliente: String(contratoData.nombreCliente ?? clienteFallback.nombreCompleto),
+		identidadCliente: String(contratoData.identidadCliente ?? clienteFallback.identidadCliente),
+		codigoSolicitud: String(contratoData.codigoSolicitud ?? solicitudFallback.codigoSolicitud),
+		codigoPrestamo: String(contratoData.codigoPrestamo ?? prestamoFallback.codigoPrestamo),
+		capitalSolicitado: contratoData.capitalSolicitado ?? prestamoFallback.capitalSolicitado,
+		cuotaFija: contratoData.cuotaFija ?? prestamoFallback.cuotaFija,
+		plazoCuotas: contratoData.plazoCuotas ?? prestamoFallback.plazoCuotas,
+		...contratoData,
+	};
+};
+
 const PrestamoDocumentosPage: React.FC = () => {
 	const params = useParams();
 	const codigoPrestamo = params?.id as string;
@@ -216,12 +384,133 @@ const PrestamoDocumentosPage: React.FC = () => {
 	const { data: tasas } = useTasasInteres();
 	type DocType = "sin" | "con" | "dacion" | "pagare";
 	const [generatingDoc, setGeneratingDoc] = useState<DocType | null>(null);
+	const [loadingContratosWeb, setLoadingContratosWeb] = useState(false);
+	const [contratosWeb, setContratosWeb] = useState<string[]>([]);
+	const [contratosWebError, setContratosWebError] = useState<string | null>(null);
+	const [tipoContratoSolicitud, setTipoContratoSolicitud] = useState<string>("");
+	const [selectedContratoIndex, setSelectedContratoIndex] = useState(0);
 	const generating = generatingDoc !== null;
 
 	const formatMoney = (v?: number) =>
 		v != null
 			? `L. ${v.toLocaleString("es-HN", { minimumFractionDigits: 2 })}`
 			: "L. 0.00";
+
+	useEffect(() => {
+		if (!data || !isGerente) {
+			setLoadingContratosWeb(false);
+			setContratosWeb([]);
+			setContratosWebError(null);
+			setTipoContratoSolicitud("");
+			setSelectedContratoIndex(0);
+			return;
+		}
+
+		let cancelled = false;
+
+		const loadContratosWeb = async () => {
+			setLoadingContratosWeb(true);
+			setContratosWeb([]);
+			setContratosWebError(null);
+			setTipoContratoSolicitud("");
+
+			try {
+				const solicitudCandidates = [data.solicitudCodigo, data.solicitudId]
+					.filter((value): value is string => Boolean(value && String(value).trim()))
+					.map((value) => value.trim());
+
+				if (data.solicitudId) {
+					try {
+						const byId = await apiFetch<unknown>(`/solicitudes/id/${encodeURIComponent(data.solicitudId)}`, { silent: true });
+						if (byId && typeof byId === "object") {
+							const codigoSolicitud = (byId as Record<string, unknown>).codigoSolicitud;
+							if (typeof codigoSolicitud === "string" && codigoSolicitud.trim()) {
+								solicitudCandidates.unshift(codigoSolicitud.trim());
+							}
+						}
+					} catch {
+						// endpoint puede no existir; seguimos con candidatos disponibles
+					}
+				}
+
+				const uniqueSolicitudCandidates = Array.from(new Set(solicitudCandidates));
+
+				if (uniqueSolicitudCandidates.length === 0) {
+					throw new Error("El préstamo no tiene solicitud asociada para consultar contratos.");
+				}
+
+				let solicitudContratos: NormalizedSolicitudContratos | null = null;
+				for (const solicitudRef of uniqueSolicitudCandidates) {
+					try {
+						const response = await apiFetch<SolicitudContratosResponse>(
+							`/solicitudes/${encodeURIComponent(solicitudRef)}/contratos`,
+							{ silent: true }
+						);
+						const normalized = normalizeSolicitudContratos(response);
+						if (normalized) {
+							solicitudContratos = normalized;
+							break;
+						}
+					} catch {
+						// si falla este candidate, intentamos el siguiente
+					}
+				}
+
+				if (!solicitudContratos) {
+					throw new Error("No se pudieron obtener contratos de la solicitud asociada.");
+				}
+
+				const tipoContrato = String(solicitudContratos.tipoContrato || "");
+				const templatePath = plantillaPathPorTipoContrato(tipoContrato);
+
+				if (!templatePath) {
+					throw new Error("La solicitud no tiene tipo de contrato compatible para plantilla.");
+				}
+
+				const templateResponse = await apiFetch<ContratoPlantillaResponse>(templatePath);
+				const templateHtml = typeof templateResponse?.html === "string" ? templateResponse.html : "";
+
+				if (!templateHtml) {
+					throw new Error("No se pudo cargar la plantilla del contrato.");
+				}
+
+				const contratosRaw = solicitudContratos.contratos;
+				const contratosRenderizados = contratosRaw.map((rawContrato) => {
+					const htmlDirecto = getContratoHtmlFromRaw(rawContrato);
+					if (htmlDirecto) {
+						return htmlDirecto;
+					}
+
+					const dataContrato = typeof rawContrato === "string" ? safeParseContrato(rawContrato) : {};
+					const payload = enrichContratoData(dataContrato, data);
+					return fillTemplateMustacheLike(templateHtml, payload);
+				});
+
+				if (cancelled) return;
+
+				setContratosWeb(contratosRenderizados);
+				setTipoContratoSolicitud(tipoContrato);
+				setSelectedContratoIndex(0);
+			} catch (err) {
+				if (cancelled) return;
+				const msg = err instanceof Error ? err.message : "No se pudieron cargar los contratos.";
+				setContratosWeb([]);
+				setTipoContratoSolicitud("");
+				setContratosWebError(msg);
+				setSelectedContratoIndex(0);
+			} finally {
+				if (!cancelled) {
+					setLoadingContratosWeb(false);
+				}
+			}
+		};
+
+		loadContratosWeb();
+
+		return () => {
+			cancelled = true;
+		};
+	}, [data, isGerente]);
 
 	const tasaInteresLabel = useMemo(() => {
 		if (!data) return "—";
@@ -792,6 +1081,20 @@ const PrestamoDocumentosPage: React.FC = () => {
 		}
 	};
 
+	const handleImprimirContratoWeb = () => {
+		const html = contratosWeb[selectedContratoIndex];
+		if (!html) return;
+
+		const printWindow = window.open("", "_blank", "noopener,noreferrer");
+		if (!printWindow) return;
+
+		printWindow.document.open();
+		printWindow.document.write(`<!doctype html><html><head><meta charset="utf-8" /><title>Contrato</title></head><body>${html}</body></html>`);
+		printWindow.document.close();
+		printWindow.focus();
+		printWindow.print();
+	};
+
 	if (loadingPermisos || (loading && !data)) {
 		return (
 			<Box sx={{ display: "flex", height: "100%", alignItems: "center", justifyContent: "center" }}>
@@ -891,6 +1194,61 @@ const PrestamoDocumentosPage: React.FC = () => {
 				<Alert severity="info" sx={{ mb: 2 }}>
 					Selecciona el documento a generar. Los contratos incluyen pagaré.
 				</Alert>
+
+				<Divider sx={{ my: 3 }} />
+
+				<Typography variant="subtitle1" sx={{ mb: 1 }}>
+					Contratos guardados de la solicitud (vista web)
+				</Typography>
+
+				{loadingContratosWeb ? (
+					<Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
+						<CircularProgress size={20} />
+						<Typography variant="body2" color="text.secondary">
+							Cargando contratos guardados...
+						</Typography>
+					</Box>
+				) : contratosWebError ? (
+					<Alert severity="warning" sx={{ mb: 2 }}>
+						{contratosWebError}
+					</Alert>
+				) : contratosWeb.length === 0 ? (
+					<Alert severity="info" sx={{ mb: 2 }}>
+						No hay contratos guardados para esta solicitud.
+					</Alert>
+				) : (
+					<>
+						<Alert severity="success" sx={{ mb: 2 }}>
+							Tipo de contrato: {tipoContratoSolicitud || "—"}. Registros disponibles: {contratosWeb.length}.
+						</Alert>
+
+						<Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", mb: 2 }}>
+							{contratosWeb.map((_contrato, index) => (
+								<Button
+									key={`contrato-web-${index + 1}`}
+									variant={selectedContratoIndex === index ? "contained" : "outlined"}
+									onClick={() => setSelectedContratoIndex(index)}
+								>
+									Contrato {index + 1}
+								</Button>
+							))}
+						</Box>
+
+						<Paper variant="outlined" sx={{ p: 2, mb: 2, maxHeight: 560, overflow: "auto", bgcolor: "#fff" }}>
+							<Box
+								sx={{
+									"& table": { width: "100%", borderCollapse: "collapse" },
+									"& td, & th": { border: "1px solid #ddd", p: 1 },
+								}}
+								dangerouslySetInnerHTML={{ __html: contratosWeb[selectedContratoIndex] || "" }}
+							/>
+						</Paper>
+
+						<Button variant="outlined" onClick={handleImprimirContratoWeb}>
+							Imprimir contrato visible
+						</Button>
+					</>
+				)}
 
 				<Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
 					<Button
