@@ -88,6 +88,12 @@ const navItems: NavSection[] = [
         hiddenForRoles: ["asesor", "caja"],
       },
       {
+        label: "Indicadores financieros",
+        href: "/contabilidad/indicadores-financieros",
+        requiredPermisos: ["S001", "S002", "F009"],
+        hiddenForRoles: ["asesor", "caja"],
+      },
+      {
         label: "Trazabilidad de decisiones",
         href: "/reportes/trazabilidad-decisiones",
         hiddenForRoles: ["asesor", "caja"],
@@ -147,6 +153,7 @@ export default function Sidebar() {
           items: [
             { label: "Contabilidad", href: "/contabilidad" },
             { label: "Cierre mensual", href: "/contabilidad/cierre-mensual" },
+            { label: "Indicadores financieros", href: "/contabilidad/indicadores-financieros" },
           ],
         },
         {
