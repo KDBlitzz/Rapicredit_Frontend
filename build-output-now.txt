@@ -1,0 +1,110 @@
+﻿
+> rapicredit-portal@0.1.0 build
+> next build
+
+npm.cmd : [baseline-browser-mapping] The data in this module is over two 
+months old.  To ensure accurate Baseline data, please update: `npm i 
+baseline-browser-mapping@latest -D`
+En línea: 1 Carácter: 1
++ npm.cmd run build 2>&1 | Out-File -FilePath build-output-now.txt -Enc ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([baseline-brows...ping@latest -D` 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+   Ôû▓ Next.js 16.0.7 (Turbopack)
+   - Environments: .env
+
+   Creating an optimized production build ...
+[baseline-browser-mapping] The data in this module is over two months old.  To 
+ensure accurate Baseline data, please update: `npm i 
+baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To 
+ensure accurate Baseline data, please update: `npm i 
+baseline-browser-mapping@latest -D`
+ Ô£ô Compiled successfully in 34.3s
+   Running TypeScript ...
+   Collecting page data using 7 workers ...
+[baseline-browser-mapping] The data in this module is over two months old.  To 
+ensure accurate Baseline data, please update: `npm i 
+baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To 
+ensure accurate Baseline data, please update: `npm i 
+baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To 
+ensure accurate Baseline data, please update: `npm i 
+baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To 
+ensure accurate Baseline data, please update: `npm i 
+baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To 
+ensure accurate Baseline data, please update: `npm i 
+baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To 
+ensure accurate Baseline data, please update: `npm i 
+baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To 
+ensure accurate Baseline data, please update: `npm i 
+baseline-browser-mapping@latest -D`
+   Generating static pages using 7 workers (0/38) ...
+[baseline-browser-mapping] The data in this module is over two months old.  To 
+ensure accurate Baseline data, please update: `npm i 
+baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To 
+ensure accurate Baseline data, please update: `npm i 
+baseline-browser-mapping@latest -D`
+   Generating static pages using 7 workers (9/38) 
+   Generating static pages using 7 workers (18/38) 
+   Generating static pages using 7 workers (28/38) 
+ Ô£ô Generating static pages using 7 workers (38/38) in 4.8s
+   Finalizing page optimization ...
+
+Route (app)
+Ôöî Ôùï /
+Ôö£ Ôùï /_not-found
+Ôö£ Ôùï /carteras
+Ôö£ Ôùï /clientes
+Ôö£ ãÆ /clientes/[id]
+Ôö£ Ôùï /clientes/nuevo
+Ôö£ Ôùï /cobradores
+Ôö£ ãÆ /cobradores/[id]
+Ôö£ Ôùï /cobradores/nuevo
+Ôö£ Ôùï /configuracion
+Ôö£ Ôùï /contabilidad
+Ôö£ Ôùï /contabilidad/cierre-mensual
+Ôö£ Ôùï /contabilidad/estado-cuenta
+Ôö£ Ôùï /contabilidad/indicadores-financieros
+Ôö£ Ôùï /contabilidad/utilidad-neta
+Ôö£ Ôùï /cuadres
+Ôö£ Ôùï /dashboard
+Ôö£ Ôùï /empleados
+Ôö£ ãÆ /empleados/[id]
+Ôö£ Ôùï /empleados/estadisticas
+Ôö£ Ôùï /empleados/nuevo
+Ôö£ Ôùï /login
+Ôö£ Ôùï /pagos
+Ôö£ ãÆ /pagos/[ref]/comprobante
+Ôö£ Ôùï /pagos/comprobante
+Ôö£ Ôùï /pagos/nuevo
+Ôö£ Ôùï /prestamos
+Ôö£ ãÆ /prestamos/[id]
+Ôö£ ãÆ /prestamos/[id]/documentos
+Ôö£ Ôùï /prestamos/nuevo
+Ôö£ Ôùï /reportes
+Ôö£ Ôùï /reportes/central-riesgos
+Ôö£ Ôùï /reportes/estado-cuenta
+Ôö£ Ôùï /reportes/impresion-carteras
+Ôö£ Ôùï /reportes/pago-sar
+Ôö£ Ôùï /reportes/seguro-vida
+Ôö£ Ôùï /reportes/trazabilidad-decisiones
+Ôö£ Ôùï /solicitudes
+Ôö£ ãÆ /solicitudes/[id]
+Ôö£ Ôùï /solicitudes/aprobacion
+Ôö£ Ôùï /solicitudes/nuevo
+Ôö£ Ôùï /solicitudes/rechazadas
+Ôöö Ôùï /tasas
+
+
+Ôùï  (Static)   prerendered as static content
+ãÆ  (Dynamic)  server-rendered on demand
+

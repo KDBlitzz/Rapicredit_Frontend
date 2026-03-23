@@ -138,7 +138,7 @@ export default function UtilidadNetaPage() {
       {error ? <Alert severity="error">{error}</Alert> : null}
 
       <Grid container spacing={2}>
-        <Grid item xs={12} md={7}>
+        <Grid size={{ xs: 12, md: 7 }}>
           <Paper sx={{ p: 2 }}>
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 1 }}>
               <Typography variant="subtitle1">Gastos por categoría</Typography>
@@ -185,7 +185,7 @@ export default function UtilidadNetaPage() {
           </Paper>
         </Grid>
 
-        <Grid item xs={12} md={5}>
+        <Grid size={{ xs: 12, md: 5 }}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="subtitle1">Resumen</Typography>
             <Box sx={{ mt: 1, display: "flex", flexDirection: "column", gap: 1 }}>

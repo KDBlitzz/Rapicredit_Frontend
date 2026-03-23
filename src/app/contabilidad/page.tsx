@@ -4,9 +4,9 @@ import React, { useMemo, useState } from 'react';
 import {
   Alert,
   Box,
+  Button,
   Chip,
   CircularProgress,
-  Button,
   Paper,
   MenuItem,
   Tab,
@@ -22,8 +22,8 @@ import {
   Grid,
 } from '@mui/material';
 import { useCuadre, useGastosCaja, usePagos as useCajaPagos } from '../../hooks/useCaja';
+import { useEstadoCuentaContabilidad } from '../../hooks/useEstadoCuentaContabilidad';
 import { EstadoPrestamoFiltro, usePrestamos } from '../../hooks/usePrestamos';
-import { usePrestamoDetalle } from '../../hooks/usePrestamoDetalle';
 import type { Pago as CajaPago } from '../../services/cajaApi';
 import type { Gasto } from '../../services/gastosApi';
 
@@ -39,7 +39,7 @@ function isoDate(date: Date) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-const formatMoney = (v?: number) =>
+const formatMoney = (v?: number | null) =>
   typeof v === 'number' && Number.isFinite(v)
     ? `L. ${v.toLocaleString('es-HN', { minimumFractionDigits: 2 })}`
     : 'L. 0.00';
@@ -50,6 +50,12 @@ const formatDate = (iso?: string) => {
   if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleDateString('es-HN');
 };
+
+const formatCount = (v?: number | null) =>
+  typeof v === 'number' && Number.isFinite(v) ? v.toLocaleString('es-HN') : '—';
+
+const formatPct = (v?: number | null) =>
+  typeof v === 'number' && Number.isFinite(v) ? `${v.toFixed(2)}%` : '—';
 
 const pickString = (...vals: unknown[]): string | undefined => {
   for (const v of vals) {
@@ -117,6 +123,8 @@ export default function ContabilidadPage() {
   const [fechaInicio, setFechaInicio] = useState(inicioMes);
   const [fechaFin, setFechaFin] = useState(hoy);
 
+  const [estadoCuentaRefreshKey, setEstadoCuentaRefreshKey] = useState<number>(0);
+
   const { data: pagosResp, loading: loadingPagos, error: errorPagos } = useCajaPagos(
     fechaInicio,
     fechaFin
@@ -144,72 +152,15 @@ export default function ContabilidadPage() {
     { refreshKey: undefined }
   );
 
-  const [codigoPrestamoInput, setCodigoPrestamoInput] = useState('');
-  const [codigoPrestamoQuery, setCodigoPrestamoQuery] = useState('');
-  const [estadoCuentaReloadKey, setEstadoCuentaReloadKey] = useState(0);
-
   const {
-    data: prestamoDetalle,
+    data: estadoCuentaData,
     loading: loadingEstadoCuenta,
     error: errorEstadoCuenta,
-  } = usePrestamoDetalle(codigoPrestamoQuery, estadoCuentaReloadKey);
-
-  const amortizacionRows = useMemo(() => {
-    const raw = Array.isArray(prestamoDetalle?.amortizacionPreview)
-      ? prestamoDetalle.amortizacionPreview
-      : [];
-
-    return raw
-      .map((item, index) => {
-        if (!isRecord(item)) return null;
-
-        const cuotaNumero =
-          asNumber(item.numeroCuota) ?? asNumber(item.cuotaNumero) ?? asNumber(item.nroCuota) ?? index + 1;
-
-        const interes = asNumber(item.interes) ?? 0;
-        const capital = asNumber(item.capital) ?? 0;
-        const cuota = asNumber(item.cuota) ?? capital + interes;
-        const saldo = asNumber(item.saldoCapital) ?? asNumber(item.saldo) ?? 0;
-
-        return {
-          id: String(item._id ?? item.id ?? `cuota-${cuotaNumero}`),
-          cuotaNumero,
-          fechaProgramada: typeof item.fechaProgramada === 'string' ? item.fechaProgramada : undefined,
-          interes,
-          capital,
-          cuota,
-          saldo,
-        };
-      })
-      .filter(
-        (x): x is {
-          id: string;
-          cuotaNumero: number;
-          fechaProgramada: string | undefined;
-          interes: number;
-          capital: number;
-          cuota: number;
-          saldo: number;
-        } => x !== null
-      )
-      .sort((a, b) => a.cuotaNumero - b.cuotaNumero);
-  }, [prestamoDetalle?.amortizacionPreview]);
-
-  const handleConsultarEstadoCuenta = () => {
-    const codigo = codigoPrestamoInput.trim();
-    setCodigoPrestamoQuery(codigo);
-    setEstadoCuentaReloadKey((k) => k + 1);
-  };
-
-  const handleSelectPrestamo = (codigoPrestamo: string) => {
-    const codigo = String(codigoPrestamo || '').trim();
-    if (!codigo) return;
-
-    setCodigoPrestamoInput(codigo);
-    setCodigoPrestamoQuery(codigo);
-    setEstadoCuentaReloadKey((k) => k + 1);
-    setTab('ESTADO_CUENTA');
-  };
+    generatedAt: estadoCuentaGeneratedAt,
+  } = useEstadoCuentaContabilidad(fechaInicio, fechaFin, {
+    enabled: tab === 'ESTADO_CUENTA',
+    refreshKey: estadoCuentaRefreshKey,
+  });
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -390,7 +341,16 @@ export default function ContabilidadPage() {
 
       {tab === 'PRESTAMOS' ? (
         <Paper sx={{ p: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', mb: 1 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 2,
+              flexWrap: 'wrap',
+              mb: 1,
+            }}
+          >
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
               <Typography variant="subtitle2">Préstamos</Typography>
               <Chip size="small" label={`Registros: ${prestamos.length}`} />
@@ -430,7 +390,9 @@ export default function ContabilidadPage() {
           {loadingPrestamos ? (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <CircularProgress size={18} />
-              <Typography variant="caption" color="text.secondary">Cargando préstamos…</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Cargando préstamos…
+              </Typography>
             </Box>
           ) : null}
           {errorPrestamos ? <Alert severity="error">{errorPrestamos}</Alert> : null}
@@ -445,7 +407,6 @@ export default function ContabilidadPage() {
                   <TableCell>Capital</TableCell>
                   <TableCell>Intereses</TableCell>
                   <TableCell>Pagado</TableCell>
-                  <TableCell align="right">Acción</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -461,22 +422,13 @@ export default function ContabilidadPage() {
                       <TableCell>{formatMoney(p.capitalSolicitado ?? 0)}</TableCell>
                       <TableCell>{formatMoney(p.totalIntereses ?? 0)}</TableCell>
                       <TableCell>{formatMoney(p.totalPagado ?? 0)}</TableCell>
-                      <TableCell align="right">
-                        <Button
-                          size="small"
-                          variant="text"
-                          onClick={() => handleSelectPrestamo(p.codigoPrestamo)}
-                        >
-                          Estado de cuenta
-                        </Button>
-                      </TableCell>
                     </TableRow>
                   );
                 })}
 
                 {!loadingPrestamos && prestamos.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7}>
+                    <TableCell colSpan={6}>
                       <Typography variant="caption" color="text.secondary">
                         No hay préstamos para los filtros seleccionados.
                       </Typography>
@@ -503,7 +455,9 @@ export default function ContabilidadPage() {
           {loadingCuadre ? (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <CircularProgress size={18} />
-              <Typography variant="caption" color="text.secondary">Cargando resumen…</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Cargando resumen…
+              </Typography>
             </Box>
           ) : null}
           {errorCuadre ? <Alert severity="error">{errorCuadre}</Alert> : null}
@@ -525,7 +479,11 @@ export default function ContabilidadPage() {
                 </TableHead>
                 <TableBody>
                   {(cuadre?.porAsesor ?? []).map((a) => {
-                    const nombre = a.asesor?.nombreCompleto || a.asesor?.usuario || a.asesor?.codigoUsuario || '—';
+                    const nombre =
+                      a.asesor?.nombreCompleto ||
+                      a.asesor?.usuario ||
+                      a.asesor?.codigoUsuario ||
+                      '—';
                     return (
                       <TableRow key={String(a.cobradorId || nombre)}>
                         <TableCell>{nombre}</TableCell>
@@ -555,119 +513,85 @@ export default function ContabilidadPage() {
 
       {tab === 'ESTADO_CUENTA' ? (
         <Paper sx={{ p: 2 }}>
-          <Typography variant="subtitle2" sx={{ mb: 1 }}>
-            Estado de cuenta (préstamo)
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap', mb: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+              <Typography variant="subtitle2">Estado de cuenta (mensual)</Typography>
+              <Chip size="small" label={`Meses: ${formatCount(estadoCuentaData?.rows.length ?? 0)}`} />
+              {estadoCuentaData?.source ? <Chip size="small" variant="outlined" label={`Fuente: ${estadoCuentaData.source}`} /> : null}
+            </Box>
 
-          <Box
-            component="form"
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleConsultarEstadoCuenta();
-            }}
-            sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', mb: 1 }}
-          >
-            <TextField
+            <Button
               size="small"
-              label="Código de préstamo"
-              placeholder="Ej: P-2026-001"
-              value={codigoPrestamoInput}
-              onChange={(e) => setCodigoPrestamoInput(e.target.value)}
-            />
-            <Button variant="contained" type="submit">
-              Consultar
+              variant="text"
+              disabled={loadingEstadoCuenta}
+              onClick={() => setEstadoCuentaRefreshKey(Date.now())}
+            >
+              Actualizar
             </Button>
           </Box>
 
           {loadingEstadoCuenta ? (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
               <CircularProgress size={18} />
-              <Typography variant="caption" color="text.secondary">Cargando estado de cuenta…</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Cargando estado de cuenta…
+              </Typography>
             </Box>
           ) : null}
           {errorEstadoCuenta ? <Alert severity="error">{errorEstadoCuenta}</Alert> : null}
-
-          {prestamoDetalle ? (
-            <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
-                <Box>
-                  <Typography variant="body2" color="text.secondary">Cliente</Typography>
-                  <Typography>{prestamoDetalle.cliente?.nombreCompleto || '—'}</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {(prestamoDetalle.cliente?.codigoCliente || '—') + ' · ' + (prestamoDetalle.cliente?.identidadCliente || '—')}
-                  </Typography>
-                </Box>
-
-                <Box>
-                  <Typography variant="body2" color="text.secondary">Préstamo</Typography>
-                  <Typography>{prestamoDetalle.codigoPrestamo}</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Estado: {String(prestamoDetalle.estadoPrestamo || '—').toUpperCase()}
-                  </Typography>
-                </Box>
-
-                <Box>
-                  <Typography variant="body2" color="text.secondary">Capital</Typography>
-                  <Typography>{formatMoney(prestamoDetalle.capitalSolicitado)}</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Cuota: {formatMoney(prestamoDetalle.cuotaFija)} · Plazo: {prestamoDetalle.plazoCuotas}
-                  </Typography>
-                </Box>
-
-                <Box>
-                  <Typography variant="body2" color="text.secondary">Saldo</Typography>
-                  <Typography>{formatMoney(prestamoDetalle.saldo ?? prestamoDetalle.saldoPendiente ?? prestamoDetalle.saldoActual ?? 0)}</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Desembolso: {formatDate(prestamoDetalle.fechaDesembolso)} · Vence: {formatDate(prestamoDetalle.fechaVencimiento)}
-                  </Typography>
-                </Box>
-              </Box>
-            </Paper>
+          {estadoCuentaData?.source === 'mock' ? (
+            <Alert severity="info" sx={{ mb: 1 }}>
+              Backend no disponible o sin endpoint: mostrando datos de ejemplo.
+            </Alert>
           ) : null}
 
-          <Typography variant="subtitle2" sx={{ mb: 1 }}>
-            Plan de pagos / amortización
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+            Generado: {estadoCuentaGeneratedAt ? estadoCuentaGeneratedAt.toLocaleString('es-HN') : '—'}
           </Typography>
 
           <TableContainer>
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>Cuota</TableCell>
-                  <TableCell>Fecha</TableCell>
-                  <TableCell align="right">Interés</TableCell>
-                  <TableCell align="right">Capital</TableCell>
-                  <TableCell align="right">Cuota</TableCell>
-                  <TableCell align="right">Saldo</TableCell>
+                  <TableCell>MESES</TableCell>
+                  <TableCell align="right">INGRESOS TOTALES</TableCell>
+                  <TableCell align="right">GASTOS TOTALES</TableCell>
+                  <TableCell align="right">UTILIDAD NETA</TableCell>
+                  <TableCell align="right">RECUPERACION TOTAL</TableCell>
+                  <TableCell align="right">TOTAL CARTERA</TableCell>
+                  <TableCell align="right">#PRESTAMOS</TableCell>
+                  <TableCell align="right">NUEVOS</TableCell>
+                  <TableCell align="right">RECURRENTES</TableCell>
+                  <TableCell align="right">RESERVA MORA</TableCell>
+                  <TableCell align="right">RESERVA LAB</TableCell>
+                  <TableCell align="right">TASA INTERES PROMEDIO MENSUAL</TableCell>
+                  <TableCell align="right">% DE UTILIDAD</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {amortizacionRows.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell>{r.cuotaNumero}</TableCell>
-                    <TableCell>{formatDate(r.fechaProgramada)}</TableCell>
-                    <TableCell align="right">{formatMoney(r.interes)}</TableCell>
-                    <TableCell align="right">{formatMoney(r.capital)}</TableCell>
-                    <TableCell align="right">{formatMoney(r.cuota)}</TableCell>
-                    <TableCell align="right">{formatMoney(r.saldo)}</TableCell>
+                {(estadoCuentaData?.rows ?? []).map((r, idx) => (
+                  <TableRow key={`${r.mes}-${idx}`}>
+                    <TableCell>{r.mes}</TableCell>
+                    <TableCell align="right">{formatMoney(r.ingresosTotales)}</TableCell>
+                    <TableCell align="right">{formatMoney(r.gastosTotales)}</TableCell>
+                    <TableCell align="right">{formatMoney(r.utilidadNeta)}</TableCell>
+                    <TableCell align="right">{formatMoney(r.recuperacionTotal)}</TableCell>
+                    <TableCell align="right">{formatMoney(r.totalCartera)}</TableCell>
+                    <TableCell align="right">{formatCount(r.cantidadPrestamos)}</TableCell>
+                    <TableCell align="right">{formatCount(r.nuevos)}</TableCell>
+                    <TableCell align="right">{formatCount(r.recurrentes)}</TableCell>
+                    <TableCell align="right">{formatMoney(r.reservaMora)}</TableCell>
+                    <TableCell align="right">{formatMoney(r.reservaLab)}</TableCell>
+                    <TableCell align="right">{formatPct(r.tasaInteresPromedioMensual)}</TableCell>
+                    <TableCell align="right">{formatPct(r.porcentajeUtilidad)}</TableCell>
                   </TableRow>
                 ))}
 
-                {!loadingEstadoCuenta && codigoPrestamoQuery && amortizacionRows.length === 0 ? (
+                {!loadingEstadoCuenta && (estadoCuentaData?.rows ?? []).length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6}>
+                    <TableCell colSpan={13}>
                       <Typography variant="caption" color="text.secondary">
-                        No hay plan de pagos disponible para este préstamo.
-                      </Typography>
-                    </TableCell>
-                  </TableRow>
-                ) : null}
-
-                {!codigoPrestamoQuery ? (
-                  <TableRow>
-                    <TableCell colSpan={6}>
-                      <Typography variant="caption" color="text.secondary">
-                        Ingresa un código de préstamo para consultar.
+                        No hay datos para el rango seleccionado.
                       </Typography>
                     </TableCell>
                   </TableRow>
