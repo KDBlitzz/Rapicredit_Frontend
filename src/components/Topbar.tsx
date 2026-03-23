@@ -22,22 +22,10 @@ export default function Topbar() {
   const { mode, toggleColorMode } = useColorMode();
   const { empleado } = useEmpleadoActual();
 
-  const rolActual = String(empleado?.rol || "").trim().toLowerCase();
-  const isContadora = rolActual === "contadora" || rolActual === "contador" || rolActual === "contabilidad";
-
   const permisosActuales = (empleado?.permisos || []).map((p) => p.toUpperCase());
   const canCrearSolicitudes = permisosActuales.includes("F002");
-  const canVerContabilidad =
-    isContadora ||
-    permisosActuales.includes("S001") ||
-    permisosActuales.includes("S002") ||
-    permisosActuales.includes("F009");
 
-  const showNuevaSolicitud =
-    !isContadora &&
-    !pathname.startsWith("/prestamos") &&
-    !pathname.startsWith("/solicitudes") &&
-    !pathname.startsWith("/contabilidad");
+  const showNuevaSolicitud = !pathname.startsWith("/prestamos") && !pathname.startsWith("/solicitudes");
 
   const title = (() => {
     if (pathname.startsWith("/solicitudes")) return "Solicitudes";
@@ -51,7 +39,6 @@ export default function Topbar() {
     if (pathname.startsWith("/reportes")) return "Reportes";
     if (pathname.startsWith("/tasas")) return "Tasas";
     if (pathname.startsWith("/configuracion")) return "Configuración";
-    if (pathname.startsWith("/contabilidad")) return "Contabilidad";
     if (pathname.startsWith("/dashboard")) return "Dashboard";
     return "Dashboard";
   })();
@@ -87,22 +74,6 @@ export default function Topbar() {
               {mode === "dark" ? <LightMode fontSize="small" /> : <DarkMode fontSize="small" />}
             </IconButton>
           </Tooltip>
-
-          {canVerContabilidad && !pathname.startsWith("/contabilidad") ? (
-            <Button
-              component={Link}
-              href="/contabilidad"
-              size="small"
-              variant="outlined"
-              sx={{
-                borderRadius: 999,
-                textTransform: "none",
-                display: { xs: "inline-flex", md: "none" },
-              }}
-            >
-              Contabilidad
-            </Button>
-          ) : null}
 
           {showNuevaSolicitud && canCrearSolicitudes ? (
             <Button
