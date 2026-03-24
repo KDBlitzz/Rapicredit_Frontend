@@ -4,9 +4,9 @@ import React, { useMemo, useState } from 'react';
 import {
   Alert,
   Box,
+  Button,
   Chip,
   CircularProgress,
-  Button,
   Paper,
   MenuItem,
   Tab,
@@ -21,14 +21,13 @@ import {
   Typography,
   Grid,
 } from '@mui/material';
-import { useCuadre, useGastosCaja, useMoraDetallada, usePagos as useCajaPagos } from '../../hooks/useCaja';
+import { useCuadre, useGastosCaja, usePagos as useCajaPagos } from '../../hooks/useCaja';
+import { useEstadoCuentaContabilidad } from '../../hooks/useEstadoCuentaContabilidad';
 import { EstadoPrestamoFiltro, usePrestamos } from '../../hooks/usePrestamos';
-import { usePrestamoDetalle } from '../../hooks/usePrestamoDetalle';
-import type { MoraDetalleItem, Pago as CajaPago } from '../../services/cajaApi';
+import type { Pago as CajaPago } from '../../services/cajaApi';
 import type { Gasto } from '../../services/gastosApi';
-import { parseDateInput } from '@/lib/dateRange';
 
-type TabKey = 'INGRESOS' | 'EGRESOS' | 'PRESTAMOS' | 'INTERESES' | 'MORA' | 'ESTADO_CUENTA';
+type TabKey = 'INGRESOS' | 'EGRESOS' | 'PRESTAMOS' | 'INTERESES' | 'ESTADO_CUENTA';
 
 type UnknownRecord = Record<string, unknown>;
 const isRecord = (v: unknown): v is UnknownRecord => typeof v === 'object' && v !== null;
@@ -40,53 +39,23 @@ function isoDate(date: Date) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-const formatMoney = (v?: number) =>
+const formatMoney = (v?: number | null) =>
   typeof v === 'number' && Number.isFinite(v)
     ? `L. ${v.toLocaleString('es-HN', { minimumFractionDigits: 2 })}`
     : 'L. 0.00';
 
 const formatDate = (iso?: string) => {
-  const d = parseApiDate(iso);
-  if (!d) return '—';
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleDateString('es-HN');
 };
 
-const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+const formatCount = (v?: number | null) =>
+  typeof v === 'number' && Number.isFinite(v) ? v.toLocaleString('es-HN') : '—';
 
-const parseApiDate = (iso?: string): Date | null => {
-  if (!iso) return null;
-  const s = String(iso).trim();
-  if (!s) return null;
-
-  const datePart = /^\s*(\d{4}-\d{2}-\d{2})/.exec(s)?.[1];
-  const isPlainDate = !!datePart && s.length === 10;
-  const isMidnightWithZone =
-    !!datePart &&
-    /^\d{4}-\d{2}-\d{2}T00:00:00(?:\.\d{3})?(?:Z|[+-]\d{2}:\d{2})$/.test(s);
-
-  // Muchas rutas mandan fechas "por día" como ISO a medianoche (a veces con 'Z').
-  // Si las parseamos con `new Date()` se pueden correr un día por timezone. Aquí las
-  // tratamos como fecha LOCAL (YYYY-MM-DD) para que UI y cálculos de días sean estables.
-  if ((isPlainDate || isMidnightWithZone) && datePart) {
-    return parseDateInput(datePart);
-  }
-
-  const d = new Date(s);
-  return Number.isNaN(d.getTime()) ? null : d;
-};
-
-const daysFromToday = (fechaVencimientoIso?: string) => {
-  if (!fechaVencimientoIso) return 0;
-  const venc = parseApiDate(fechaVencimientoIso);
-  if (!venc) return 0;
-
-  const hoy = startOfDay(new Date()).getTime();
-  const v = startOfDay(venc).getTime();
-  const diff = Math.floor((hoy - v) / (1000 * 60 * 60 * 24));
-  return diff > 0 ? diff : 0;
-};
-
-const normalizeKey = (v: string) => String(v || '').trim().toUpperCase();
+const formatPct = (v?: number | null) =>
+  typeof v === 'number' && Number.isFinite(v) ? `${v.toFixed(2)}%` : '—';
 
 const pickString = (...vals: unknown[]): string | undefined => {
   for (const v of vals) {
@@ -106,16 +75,7 @@ const asNumber = (v: unknown): number | undefined => {
 };
 
 const getCodigoPrestamoFromCajaPago = (p: CajaPago): string => {
-  const direct = pickString(p['codigoPrestamo'], p['prestamoCodigo'], p['codigo']);
-  if (direct) return direct;
-
   const raw = p.prestamoId as unknown;
-  if (typeof raw === 'string' && raw.trim()) {
-    // A veces el backend envía el código directamente como string.
-    // Si parece ObjectId, no podemos resolverlo aquí.
-    const s = raw.trim();
-    if (!/^[a-f\d]{24}$/i.test(s)) return s;
-  }
   if (isRecord(raw)) {
     return String(raw.codigoPrestamo || '').trim() || '—';
   }
@@ -123,9 +83,6 @@ const getCodigoPrestamoFromCajaPago = (p: CajaPago): string => {
 };
 
 const getClienteCodigoFromCajaPago = (p: CajaPago): string => {
-  const direct = pickString(p['codigoCliente'], p['clienteCodigo']);
-  if (direct) return direct;
-
   const raw = p.clienteId as unknown;
   if (isRecord(raw)) {
     return String(raw.codigoCliente || '').trim() || '—';
@@ -134,9 +91,6 @@ const getClienteCodigoFromCajaPago = (p: CajaPago): string => {
 };
 
 const getClienteIdentidadFromCajaPago = (p: CajaPago): string => {
-  const direct = pickString(p['identidadCliente'], p['clienteIdentidad'], p['identidad']);
-  if (direct) return direct;
-
   const raw = p.clienteId as unknown;
   if (isRecord(raw)) {
     return String(raw.identidadCliente || '').trim() || '—';
@@ -144,20 +98,12 @@ const getClienteIdentidadFromCajaPago = (p: CajaPago): string => {
   return '—';
 };
 
-const getClienteNombreFromCajaPago = (p: CajaPago): string => {
-  const direct = pickString(p['clienteNombre'], p['nombreCliente'], p['nombreCompleto']);
-  if (direct) return direct;
-
-  const raw = p.clienteId as unknown;
+const getAsesorNombreFromCajaPago = (p: CajaPago): string => {
+  const raw = p.cobradorId as unknown;
   if (isRecord(raw)) {
-    const nombreCompleto = pickString(raw.nombreCompleto);
-    if (nombreCompleto) return nombreCompleto;
-    const nombre = typeof raw.nombre === 'string' ? raw.nombre.trim() : '';
-    const apellido = typeof raw.apellido === 'string' ? raw.apellido.trim() : '';
-    const joined = [nombre, apellido].filter(Boolean).join(' ');
-    if (joined) return joined;
+    const nombre = pickString(raw.nombreCompleto, raw.usuario, raw.codigoUsuario);
+    return nombre || '—';
   }
-
   return '—';
 };
 
@@ -177,11 +123,13 @@ export default function ContabilidadPage() {
   const [fechaInicio, setFechaInicio] = useState(inicioMes);
   const [fechaFin, setFechaFin] = useState(hoy);
 
+  const [estadoCuentaRefreshKey, setEstadoCuentaRefreshKey] = useState<number>(0);
+
   const { data: pagosResp, loading: loadingPagos, error: errorPagos } = useCajaPagos(
     fechaInicio,
     fechaFin
   );
-  const pagos = useMemo(() => pagosResp?.pagos ?? [], [pagosResp?.pagos]);
+  const pagos = pagosResp?.pagos ?? [];
   const totalIngresos = useMemo(() => sumMontoPagos(pagos), [pagos]);
 
   const { data: gastos, loading: loadingGastos, error: errorGastos } = useGastosCaja(
@@ -196,249 +144,23 @@ export default function ContabilidadPage() {
   const [busquedaPrestamo, setBusquedaPrestamo] = useState('');
   const [estadoPrestamo, setEstadoPrestamo] = useState<EstadoPrestamoFiltro>('TODOS');
   const {
-    data: prestamosAll,
+    data: prestamos,
     loading: loadingPrestamos,
     error: errorPrestamos,
-  } = usePrestamos({ busqueda: '', estado: 'TODOS' }, { refreshKey: undefined });
-
-  const prestamosFiltrados = useMemo(() => {
-    let filtered = [...prestamosAll];
-
-    if (estadoPrestamo !== 'TODOS') {
-      filtered = filtered.filter((p) => (p.estadoPrestamo || '').toUpperCase() === estadoPrestamo);
-    }
-
-    if (busquedaPrestamo.trim()) {
-      const q = busquedaPrestamo.trim().toLowerCase();
-      filtered = filtered.filter((p) => {
-        return (
-          p.codigoPrestamo.toLowerCase().includes(q) ||
-          p.clienteNombre.toLowerCase().includes(q) ||
-          (p.clienteIdentidad || '').toLowerCase().includes(q)
-        );
-      });
-    }
-
-    return filtered;
-  }, [prestamosAll, busquedaPrestamo, estadoPrestamo]);
-
-  const prestamoByCodigo = useMemo(() => {
-    const m = new Map<string, (typeof prestamosAll)[number]>();
-    for (const p of prestamosAll) {
-      const key = normalizeKey(p.codigoPrestamo);
-      if (!key) continue;
-      if (!m.has(key)) m.set(key, p);
-    }
-    return m;
-  }, [prestamosAll]);
-
-  const [moraDiasMinInput, setMoraDiasMinInput] = useState('1');
-  const moraDiasMin = useMemo(() => {
-    const n = Number(String(moraDiasMinInput || '').trim());
-    if (!Number.isFinite(n) || n <= 0) return 1;
-    return Math.floor(n);
-  }, [moraDiasMinInput]);
+  } = usePrestamos(
+    { busqueda: busquedaPrestamo, estado: estadoPrestamo },
+    { refreshKey: undefined }
+  );
 
   const {
-    data: moraData,
-    loading: loadingMora,
-    error: errorMora,
-  } = useMoraDetallada(undefined, undefined, undefined, moraDiasMin);
-
-  type MoraRow = {
-    key: string;
-    nombre: string;
-    estatus: string;
-    diasEnMora: number;
-    fechaApertura?: string;
-    fechaVencimiento?: string;
-    saldoCapital: number;
-    intereses: number;
-    mora: number;
-  };
-
-  const moraRows = useMemo((): MoraRow[] => {
-    const groups = moraData?.porAsesor ?? [];
-    const rows: MoraRow[] = [];
-    const seen = new Set<string>();
-
-    for (const g of groups) {
-      for (const d of g.detalle ?? []) {
-        const codigoKey = normalizeKey((d as MoraDetalleItem).codigoPrestamo);
-        const prestamo = codigoKey ? prestamoByCodigo.get(codigoKey) : undefined;
-        const dRec = d as unknown as Record<string, unknown>;
-
-        const nombre =
-          prestamo?.clienteNombre ||
-          (prestamo?.clienteCodigo ? String(prestamo.clienteCodigo) : '') ||
-          (d.cliente?.codigoCliente ? String(d.cliente.codigoCliente) : '') ||
-          '—';
-
-        const estatus = String(prestamo?.estadoPrestamo || 'MORA').toUpperCase() || 'MORA';
-        const fechaApertura =
-          prestamo?.fechaDesembolso ||
-          (typeof dRec['fechaApertura'] === 'string' ? String(dRec['fechaApertura']) : undefined) ||
-          (typeof dRec['fechaDesembolso'] === 'string' ? String(dRec['fechaDesembolso']) : undefined) ||
-          undefined;
-
-        const fechaVencimiento =
-          (d as MoraDetalleItem).fechaVencimiento ||
-          prestamo?.fechaVencimiento ||
-          (typeof dRec['fechaVencimiento'] === 'string' ? String(dRec['fechaVencimiento']) : undefined) ||
-          undefined;
-
-        const diasEnMoraFromBackend = asNumber(
-          dRec['diasEnMora'] ??
-            dRec['diasMora'] ??
-            dRec['dias_mora'] ??
-            dRec['dias_en_mora']
-        );
-        const diasEnMora = Math.max(0, Math.floor(diasEnMoraFromBackend ?? daysFromToday(fechaVencimiento)));
-        const saldoCapital =
-          typeof (d as MoraDetalleItem).saldoCapital === 'number'
-            ? (d as MoraDetalleItem).saldoCapital
-            : (prestamo?.saldoCapital ?? 0);
-
-        const intereses =
-          asNumber(dRec['intereses'] ?? dRec['interes'] ?? dRec['totalInteres'] ?? dRec['totalIntereses']) ??
-          (typeof prestamo?.totalIntereses === 'number' ? prestamo.totalIntereses : 0);
-
-        const mora =
-          typeof (d as MoraDetalleItem).totalMoraPlan === 'number' ? (d as MoraDetalleItem).totalMoraPlan : 0;
-
-        const key = codigoKey || String((d as MoraDetalleItem).prestamoId || `${nombre}-${fechaVencimiento || ''}`);
-        if (!key || seen.has(key)) continue;
-        seen.add(key);
-
-        rows.push({
-          key,
-          nombre,
-          estatus,
-          diasEnMora,
-          fechaApertura,
-          fechaVencimiento,
-          saldoCapital,
-          intereses,
-          mora,
-        });
-      }
-    }
-
-    rows.sort((a, b) => b.diasEnMora - a.diasEnMora);
-    return rows;
-  }, [moraData?.porAsesor, prestamoByCodigo]);
-
-  const moraTotales = useMemo(() => {
-    return moraRows.reduce(
-      (acc, r) => {
-        return {
-          saldoCapital: acc.saldoCapital + (Number.isFinite(r.saldoCapital) ? r.saldoCapital : 0),
-          intereses: acc.intereses + (Number.isFinite(r.intereses) ? r.intereses : 0),
-          mora: acc.mora + (Number.isFinite(r.mora) ? r.mora : 0),
-        };
-      },
-      { saldoCapital: 0, intereses: 0, mora: 0 }
-    );
-  }, [moraRows]);
-
-  const [codigoPrestamoInput, setCodigoPrestamoInput] = useState('');
-  const [codigoPrestamoQuery, setCodigoPrestamoQuery] = useState('');
-  const [estadoCuentaReloadKey, setEstadoCuentaReloadKey] = useState(0);
-
-  const {
-    data: prestamoDetalle,
+    data: estadoCuentaData,
     loading: loadingEstadoCuenta,
     error: errorEstadoCuenta,
-  } = usePrestamoDetalle(codigoPrestamoQuery, estadoCuentaReloadKey);
-
-  const estadoCuentaCliente = useMemo(() => {
-    if (!prestamoDetalle) return { nombre: '—', codigo: '—', identidad: '—' };
-
-    const codigoKey = normalizeKey(prestamoDetalle.codigoPrestamo || codigoPrestamoQuery);
-    const prestamoResumen = codigoKey ? prestamoByCodigo.get(codigoKey) : undefined;
-
-    const nombreFromDetalle = prestamoDetalle.cliente?.nombreCompleto?.trim();
-    const nombre =
-      (nombreFromDetalle && nombreFromDetalle !== 'Cliente' && nombreFromDetalle !== '—'
-        ? nombreFromDetalle
-        : undefined) ||
-      pickString((prestamoDetalle as unknown as Record<string, unknown>)['clienteNombre']) ||
-      (prestamoResumen?.clienteNombre && prestamoResumen.clienteNombre !== '—' ? prestamoResumen.clienteNombre : undefined) ||
-      '—';
-
-    const codigo =
-      pickString(
-        prestamoDetalle.cliente?.codigoCliente,
-        (prestamoDetalle as unknown as Record<string, unknown>)['clienteCodigo'],
-        prestamoResumen?.clienteCodigo
-      ) || '—';
-
-    const identidad =
-      pickString(
-        prestamoDetalle.cliente?.identidadCliente,
-        (prestamoDetalle as unknown as Record<string, unknown>)['clienteIdentidad'],
-        prestamoResumen?.clienteIdentidad
-      ) || '—';
-
-    return { nombre, codigo, identidad };
-  }, [prestamoDetalle, codigoPrestamoQuery, prestamoByCodigo]);
-
-  const amortizacionRows = useMemo(() => {
-    const raw = Array.isArray(prestamoDetalle?.amortizacionPreview)
-      ? prestamoDetalle.amortizacionPreview
-      : [];
-
-    return raw
-      .map((item, index) => {
-        if (!isRecord(item)) return null;
-
-        const cuotaNumero =
-          asNumber(item.numeroCuota) ?? asNumber(item.cuotaNumero) ?? asNumber(item.nroCuota) ?? index + 1;
-
-        const interes = asNumber(item.interes) ?? 0;
-        const capital = asNumber(item.capital) ?? 0;
-        const cuota = asNumber(item.cuota) ?? capital + interes;
-        const saldo = asNumber(item.saldoCapital) ?? asNumber(item.saldo) ?? 0;
-
-        return {
-          id: String(item._id ?? item.id ?? `cuota-${cuotaNumero}`),
-          cuotaNumero,
-          fechaProgramada: typeof item.fechaProgramada === 'string' ? item.fechaProgramada : undefined,
-          interes,
-          capital,
-          cuota,
-          saldo,
-        };
-      })
-      .filter(
-        (x): x is {
-          id: string;
-          cuotaNumero: number;
-          fechaProgramada: string | undefined;
-          interes: number;
-          capital: number;
-          cuota: number;
-          saldo: number;
-        } => x !== null
-      )
-      .sort((a, b) => a.cuotaNumero - b.cuotaNumero);
-    }, [prestamoDetalle]);
-
-  const handleConsultarEstadoCuenta = () => {
-    const codigo = codigoPrestamoInput.trim();
-    setCodigoPrestamoQuery(codigo);
-    setEstadoCuentaReloadKey((k) => k + 1);
-  };
-
-  const handleSelectPrestamo = (codigoPrestamo: string) => {
-    const codigo = String(codigoPrestamo || '').trim();
-    if (!codigo) return;
-
-    setCodigoPrestamoInput(codigo);
-    setCodigoPrestamoQuery(codigo);
-    setEstadoCuentaReloadKey((k) => k + 1);
-    setTab('ESTADO_CUENTA');
-  };
+    generatedAt: estadoCuentaGeneratedAt,
+  } = useEstadoCuentaContabilidad(fechaInicio, fechaFin, {
+    enabled: tab === 'ESTADO_CUENTA',
+    refreshKey: estadoCuentaRefreshKey,
+  });
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -466,7 +188,6 @@ export default function ContabilidadPage() {
               InputLabelProps={{ shrink: true }}
             />
             <Chip size="small" label={`Ingresos: ${formatMoney(totalIngresos)}`} />
-            <Chip size="small" label={`Mora cobrada: ${formatMoney(cuadre?.totales.totalMora ?? 0)}`} />
             <Chip size="small" label={`Egresos: ${formatMoney(totalEgresos)}`} />
           </Box>
         </Box>
@@ -483,7 +204,6 @@ export default function ContabilidadPage() {
           <Tab value="EGRESOS" label="Egresos" />
           <Tab value="PRESTAMOS" label="Préstamos" />
           <Tab value="INTERESES" label="Intereses" />
-          <Tab value="MORA" label="Mora" />
           <Tab value="ESTADO_CUENTA" label="Estado de cuenta" />
         </Tabs>
       </Paper>
@@ -494,7 +214,6 @@ export default function ContabilidadPage() {
             <Typography variant="subtitle2">Ingresos (pagos)</Typography>
             <Chip size="small" label={`Registros: ${pagos.length}`} />
             <Chip size="small" label={`Total: ${formatMoney(totalIngresos)}`} />
-            <Chip size="small" label={`Ingresos por mora: ${formatMoney(cuadre?.totales.totalMora ?? 0)}`} />
           </Box>
 
           {loadingPagos ? (
@@ -512,29 +231,30 @@ export default function ContabilidadPage() {
                   <TableCell>Fecha</TableCell>
                   <TableCell>Código préstamo</TableCell>
                   <TableCell>Cliente</TableCell>
-                  <TableCell>Nombre</TableCell>
+                  <TableCell>Asesor/Cobrador</TableCell>
                   <TableCell>Método</TableCell>
+                  <TableCell>Comprobante</TableCell>
                   <TableCell align="right">Monto</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {pagos.map((p) => {
                   const codigoPrestamo = getCodigoPrestamoFromCajaPago(p);
-                  const codigoKey = normalizeKey(codigoPrestamo);
-                  const prestamo = codigoKey ? prestamoByCodigo.get(codigoKey) : undefined;
                   const cliente = `${getClienteCodigoFromCajaPago(p)} · ${getClienteIdentidadFromCajaPago(p)}`;
-                  const nombreCliente = prestamo?.clienteNombre || getClienteNombreFromCajaPago(p);
+                  const asesor = getAsesorNombreFromCajaPago(p);
                   const fecha = formatDate(p.fechaPago);
                   const metodo = String(p.metodoPago || '—');
+                  const comprobante = String(p.numeroComprobante || '—');
                   const monto = typeof p.montoPago === 'number' ? p.montoPago : 0;
 
                   return (
-                    <TableRow key={String(p._id || `${fecha}-${codigoPrestamo}-${metodo}-${monto}`)}>
+                    <TableRow key={String(p._id || `${fecha}-${codigoPrestamo}-${comprobante}-${monto}`)}>
                       <TableCell>{fecha}</TableCell>
                       <TableCell>{codigoPrestamo}</TableCell>
                       <TableCell>{cliente}</TableCell>
-                      <TableCell>{nombreCliente}</TableCell>
+                      <TableCell>{asesor}</TableCell>
                       <TableCell>{metodo}</TableCell>
+                      <TableCell>{comprobante}</TableCell>
                       <TableCell align="right">{formatMoney(monto)}</TableCell>
                     </TableRow>
                   );
@@ -542,7 +262,7 @@ export default function ContabilidadPage() {
 
                 {!loadingPagos && pagos.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6}>
+                    <TableCell colSpan={7}>
                       <Typography variant="caption" color="text.secondary">
                         No hay ingresos en el rango seleccionado.
                       </Typography>
@@ -579,7 +299,7 @@ export default function ContabilidadPage() {
                   <TableCell>Tipo</TableCell>
                   <TableCell>Descripción</TableCell>
                   <TableCell>Cobrador</TableCell>
-                  <TableCell>Referencia</TableCell>
+                  <TableCell>Código préstamo</TableCell>
                   <TableCell align="right">Monto</TableCell>
                 </TableRow>
               </TableHead>
@@ -589,7 +309,7 @@ export default function ContabilidadPage() {
                   const tipo = String(g.tipoGasto || '—');
                   const desc = String(g.descripcion || '—');
                   const cobrador = String(g.codigoCobradorId || '—');
-                  const referencia = String(g.codigoPrestamo || '').trim() || '—';
+                  const codigoPrestamo = String(g.codigoPrestamo || '—');
                   const monto = typeof g.monto === 'number' ? g.monto : 0;
 
                   return (
@@ -598,7 +318,7 @@ export default function ContabilidadPage() {
                       <TableCell>{tipo}</TableCell>
                       <TableCell>{desc}</TableCell>
                       <TableCell>{cobrador}</TableCell>
-                      <TableCell>{referencia}</TableCell>
+                      <TableCell>{codigoPrestamo}</TableCell>
                       <TableCell align="right">{formatMoney(monto)}</TableCell>
                     </TableRow>
                   );
@@ -621,10 +341,19 @@ export default function ContabilidadPage() {
 
       {tab === 'PRESTAMOS' ? (
         <Paper sx={{ p: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', mb: 1 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 2,
+              flexWrap: 'wrap',
+              mb: 1,
+            }}
+          >
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
               <Typography variant="subtitle2">Préstamos</Typography>
-              <Chip size="small" label={`Registros: ${prestamosFiltrados.length}`} />
+              <Chip size="small" label={`Registros: ${prestamos.length}`} />
             </Box>
           </Box>
 
@@ -661,7 +390,9 @@ export default function ContabilidadPage() {
           {loadingPrestamos ? (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <CircularProgress size={18} />
-              <Typography variant="caption" color="text.secondary">Cargando préstamos…</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Cargando préstamos…
+              </Typography>
             </Box>
           ) : null}
           {errorPrestamos ? <Alert severity="error">{errorPrestamos}</Alert> : null}
@@ -676,11 +407,10 @@ export default function ContabilidadPage() {
                   <TableCell>Capital</TableCell>
                   <TableCell>Intereses</TableCell>
                   <TableCell>Pagado</TableCell>
-                  <TableCell align="right">Acción</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {prestamosFiltrados.map((p) => {
+                {prestamos.map((p) => {
                   const estado = String(p.estadoPrestamo || '').toUpperCase() || '—';
                   return (
                     <TableRow key={p.id}>
@@ -692,22 +422,13 @@ export default function ContabilidadPage() {
                       <TableCell>{formatMoney(p.capitalSolicitado ?? 0)}</TableCell>
                       <TableCell>{formatMoney(p.totalIntereses ?? 0)}</TableCell>
                       <TableCell>{formatMoney(p.totalPagado ?? 0)}</TableCell>
-                      <TableCell align="right">
-                        <Button
-                          size="small"
-                          variant="text"
-                          onClick={() => handleSelectPrestamo(p.codigoPrestamo)}
-                        >
-                          Estado de cuenta
-                        </Button>
-                      </TableCell>
                     </TableRow>
                   );
                 })}
 
-                {!loadingPrestamos && prestamosFiltrados.length === 0 ? (
+                {!loadingPrestamos && prestamos.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7}>
+                    <TableCell colSpan={6}>
                       <Typography variant="caption" color="text.secondary">
                         No hay préstamos para los filtros seleccionados.
                       </Typography>
@@ -734,7 +455,9 @@ export default function ContabilidadPage() {
           {loadingCuadre ? (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <CircularProgress size={18} />
-              <Typography variant="caption" color="text.secondary">Cargando resumen…</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Cargando resumen…
+              </Typography>
             </Box>
           ) : null}
           {errorCuadre ? <Alert severity="error">{errorCuadre}</Alert> : null}
@@ -756,7 +479,11 @@ export default function ContabilidadPage() {
                 </TableHead>
                 <TableBody>
                   {(cuadre?.porAsesor ?? []).map((a) => {
-                    const nombre = a.asesor?.nombreCompleto || a.asesor?.usuario || a.asesor?.codigoUsuario || '—';
+                    const nombre =
+                      a.asesor?.nombreCompleto ||
+                      a.asesor?.usuario ||
+                      a.asesor?.codigoUsuario ||
+                      '—';
                     return (
                       <TableRow key={String(a.cobradorId || nombre)}>
                         <TableCell>{nombre}</TableCell>
@@ -784,215 +511,87 @@ export default function ContabilidadPage() {
         </Paper>
       ) : null}
 
-      {tab === 'MORA' ? (
-        <Paper sx={{ p: 2 }}>
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 2,
-              flexWrap: 'wrap',
-              mb: 1,
-            }}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-              <Typography variant="subtitle2">Reporte de mora</Typography>
-              <Chip size="small" label={`${moraRows.length} registros`} />
-            </Box>
-
-            <TextField
-              size="small"
-              label="Días en mora (mínimo)"
-              type="number"
-              value={moraDiasMinInput}
-              onChange={(e) => setMoraDiasMinInput(e.target.value)}
-              inputProps={{ min: 1 }}
-              helperText={`Mostrando a partir de ${moraDiasMin} día(s)`}
-            />
-          </Box>
-
-          {loadingMora ? (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <CircularProgress size={18} />
-              <Typography variant="caption" color="text.secondary">
-                Cargando mora…
-              </Typography>
-            </Box>
-          ) : null}
-          {errorMora ? <Alert severity="error">{errorMora}</Alert> : null}
-
-          {!loadingMora && !errorMora && moraRows.length === 0 ? (
-            <Alert severity="success">No hay préstamos en mora para este filtro.</Alert>
-          ) : null}
-
-          {moraRows.length > 0 ? (
-            <TableContainer sx={{ maxHeight: 560 }}>
-              <Table stickyHeader size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Nombre</TableCell>
-                    <TableCell>Estatus</TableCell>
-                    <TableCell align="right">Días en mora</TableCell>
-                    <TableCell>Apertura</TableCell>
-                    <TableCell>Vencimiento</TableCell>
-                    <TableCell align="right">Saldo capital</TableCell>
-                    <TableCell align="right">Intereses</TableCell>
-                    <TableCell align="right">Mora</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {moraRows.map((r) => (
-                    <TableRow key={r.key}>
-                      <TableCell>{r.nombre}</TableCell>
-                      <TableCell>{r.estatus}</TableCell>
-                      <TableCell align="right">{r.diasEnMora}</TableCell>
-                      <TableCell>{formatDate(r.fechaApertura)}</TableCell>
-                      <TableCell>{formatDate(r.fechaVencimiento)}</TableCell>
-                      <TableCell align="right">{formatMoney(r.saldoCapital)}</TableCell>
-                      <TableCell align="right">{formatMoney(r.intereses)}</TableCell>
-                      <TableCell align="right">{formatMoney(r.mora)}</TableCell>
-                    </TableRow>
-                  ))}
-
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 700 }}>Totales</TableCell>
-                    <TableCell />
-                    <TableCell />
-                    <TableCell />
-                    <TableCell />
-                    <TableCell align="right" sx={{ fontWeight: 700 }}>
-                      {formatMoney(moraTotales.saldoCapital)}
-                    </TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 700 }}>
-                      {formatMoney(moraTotales.intereses)}
-                    </TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 700 }}>
-                      {formatMoney(moraTotales.mora)}
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </TableContainer>
-          ) : null}
-        </Paper>
-      ) : null}
-
       {tab === 'ESTADO_CUENTA' ? (
         <Paper sx={{ p: 2 }}>
-          <Typography variant="subtitle2" sx={{ mb: 1 }}>
-            Estado de cuenta (préstamo)
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap', mb: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+              <Typography variant="subtitle2">Estado de cuenta (mensual)</Typography>
+              <Chip size="small" label={`Meses: ${formatCount(estadoCuentaData?.rows.length ?? 0)}`} />
+              {estadoCuentaData?.source ? <Chip size="small" variant="outlined" label={`Fuente: ${estadoCuentaData.source}`} /> : null}
+            </Box>
 
-          <Box
-            component="form"
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleConsultarEstadoCuenta();
-            }}
-            sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', mb: 1 }}
-          >
-            <TextField
+            <Button
               size="small"
-              label="Código de préstamo"
-              placeholder="Ej: P-2026-001"
-              value={codigoPrestamoInput}
-              onChange={(e) => setCodigoPrestamoInput(e.target.value)}
-            />
-            <Button variant="contained" type="submit">
-              Consultar
+              variant="text"
+              disabled={loadingEstadoCuenta}
+              onClick={() => setEstadoCuentaRefreshKey(Date.now())}
+            >
+              Actualizar
             </Button>
           </Box>
 
           {loadingEstadoCuenta ? (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
               <CircularProgress size={18} />
-              <Typography variant="caption" color="text.secondary">Cargando estado de cuenta…</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Cargando estado de cuenta…
+              </Typography>
             </Box>
           ) : null}
           {errorEstadoCuenta ? <Alert severity="error">{errorEstadoCuenta}</Alert> : null}
-
-          {prestamoDetalle ? (
-            <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
-                <Box>
-                  <Typography variant="body2" color="text.secondary">Cliente</Typography>
-                  <Typography>{estadoCuentaCliente.nombre}</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {estadoCuentaCliente.codigo + ' · ' + estadoCuentaCliente.identidad}
-                  </Typography>
-                </Box>
-
-                <Box>
-                  <Typography variant="body2" color="text.secondary">Préstamo</Typography>
-                  <Typography>{prestamoDetalle.codigoPrestamo}</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Estado: {String(prestamoDetalle.estadoPrestamo || '—').toUpperCase()}
-                  </Typography>
-                </Box>
-
-                <Box>
-                  <Typography variant="body2" color="text.secondary">Capital</Typography>
-                  <Typography>{formatMoney(prestamoDetalle.capitalSolicitado)}</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Cuota: {formatMoney(prestamoDetalle.cuotaFija)} · Plazo: {prestamoDetalle.plazoCuotas}
-                  </Typography>
-                </Box>
-
-                <Box>
-                  <Typography variant="body2" color="text.secondary">Saldo</Typography>
-                  <Typography>{formatMoney(prestamoDetalle.saldo ?? prestamoDetalle.saldoPendiente ?? prestamoDetalle.saldoActual ?? 0)}</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Desembolso: {formatDate(prestamoDetalle.fechaDesembolso)} · Vence: {formatDate(prestamoDetalle.fechaVencimiento)}
-                  </Typography>
-                </Box>
-              </Box>
-            </Paper>
+          {estadoCuentaData?.source === 'mock' ? (
+            <Alert severity="info" sx={{ mb: 1 }}>
+              Backend no disponible o sin endpoint: mostrando datos de ejemplo.
+            </Alert>
           ) : null}
 
-          <Typography variant="subtitle2" sx={{ mb: 1 }}>
-            Plan de pagos / amortización
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+            Generado: {estadoCuentaGeneratedAt ? estadoCuentaGeneratedAt.toLocaleString('es-HN') : '—'}
           </Typography>
 
           <TableContainer>
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>Cuota</TableCell>
-                  <TableCell>Fecha</TableCell>
-                  <TableCell align="right">Interés</TableCell>
-                  <TableCell align="right">Capital</TableCell>
-                  <TableCell align="right">Cuota</TableCell>
-                  <TableCell align="right">Saldo</TableCell>
+                  <TableCell>MESES</TableCell>
+                  <TableCell align="right">INGRESOS TOTALES</TableCell>
+                  <TableCell align="right">GASTOS TOTALES</TableCell>
+                  <TableCell align="right">UTILIDAD NETA</TableCell>
+                  <TableCell align="right">RECUPERACION TOTAL</TableCell>
+                  <TableCell align="right">TOTAL CARTERA</TableCell>
+                  <TableCell align="right">#PRESTAMOS</TableCell>
+                  <TableCell align="right">NUEVOS</TableCell>
+                  <TableCell align="right">RECURRENTES</TableCell>
+                  <TableCell align="right">RESERVA MORA</TableCell>
+                  <TableCell align="right">RESERVA LAB</TableCell>
+                  <TableCell align="right">TASA INTERES PROMEDIO MENSUAL</TableCell>
+                  <TableCell align="right">% DE UTILIDAD</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {amortizacionRows.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell>{r.cuotaNumero}</TableCell>
-                    <TableCell>{formatDate(r.fechaProgramada)}</TableCell>
-                    <TableCell align="right">{formatMoney(r.interes)}</TableCell>
-                    <TableCell align="right">{formatMoney(r.capital)}</TableCell>
-                    <TableCell align="right">{formatMoney(r.cuota)}</TableCell>
-                    <TableCell align="right">{formatMoney(r.saldo)}</TableCell>
+                {(estadoCuentaData?.rows ?? []).map((r, idx) => (
+                  <TableRow key={`${r.mes}-${idx}`}>
+                    <TableCell>{r.mes}</TableCell>
+                    <TableCell align="right">{formatMoney(r.ingresosTotales)}</TableCell>
+                    <TableCell align="right">{formatMoney(r.gastosTotales)}</TableCell>
+                    <TableCell align="right">{formatMoney(r.utilidadNeta)}</TableCell>
+                    <TableCell align="right">{formatMoney(r.recuperacionTotal)}</TableCell>
+                    <TableCell align="right">{formatMoney(r.totalCartera)}</TableCell>
+                    <TableCell align="right">{formatCount(r.cantidadPrestamos)}</TableCell>
+                    <TableCell align="right">{formatCount(r.nuevos)}</TableCell>
+                    <TableCell align="right">{formatCount(r.recurrentes)}</TableCell>
+                    <TableCell align="right">{formatMoney(r.reservaMora)}</TableCell>
+                    <TableCell align="right">{formatMoney(r.reservaLab)}</TableCell>
+                    <TableCell align="right">{formatPct(r.tasaInteresPromedioMensual)}</TableCell>
+                    <TableCell align="right">{formatPct(r.porcentajeUtilidad)}</TableCell>
                   </TableRow>
                 ))}
 
-                {!loadingEstadoCuenta && codigoPrestamoQuery && amortizacionRows.length === 0 ? (
+                {!loadingEstadoCuenta && (estadoCuentaData?.rows ?? []).length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6}>
+                    <TableCell colSpan={13}>
                       <Typography variant="caption" color="text.secondary">
-                        No hay plan de pagos disponible para este préstamo.
-                      </Typography>
-                    </TableCell>
-                  </TableRow>
-                ) : null}
-
-                {!codigoPrestamoQuery ? (
-                  <TableRow>
-                    <TableCell colSpan={6}>
-                      <Typography variant="caption" color="text.secondary">
-                        Ingresa un código de préstamo para consultar.
+                        No hay datos para el rango seleccionado.
                       </Typography>
                     </TableCell>
                   </TableRow>
