@@ -21,13 +21,13 @@ import {
   Typography,
   Grid,
 } from '@mui/material';
-import { useCuadre, useGastosCaja, usePagos as useCajaPagos } from '../../hooks/useCaja';
+import { useCuadre, useGastosCaja, useMoraDetallada, usePagos as useCajaPagos } from '../../hooks/useCaja';
 import { useEstadoCuentaContabilidad } from '../../hooks/useEstadoCuentaContabilidad';
 import { EstadoPrestamoFiltro, usePrestamos } from '../../hooks/usePrestamos';
 import type { Pago as CajaPago } from '../../services/cajaApi';
 import type { Gasto } from '../../services/gastosApi';
 
-type TabKey = 'INGRESOS' | 'EGRESOS' | 'PRESTAMOS' | 'INTERESES' | 'ESTADO_CUENTA';
+type TabKey = 'INGRESOS' | 'EGRESOS' | 'PRESTAMOS' | 'INTERESES' | 'MORA' | 'ESTADO_CUENTA';
 
 type UnknownRecord = Record<string, unknown>;
 const isRecord = (v: unknown): v is UnknownRecord => typeof v === 'object' && v !== null;
@@ -56,6 +56,15 @@ const formatCount = (v?: number | null) =>
 
 const formatPct = (v?: number | null) =>
   typeof v === 'number' && Number.isFinite(v) ? `${v.toFixed(2)}%` : '—';
+
+const daysDiff = (fromIso?: string, toIso?: string) => {
+  if (!fromIso || !toIso) return 0;
+  const from = new Date(fromIso);
+  const to = new Date(toIso);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return 0;
+  const ms = to.getTime() - from.getTime();
+  return Math.floor(ms / (24 * 60 * 60 * 1000));
+};
 
 const pickString = (...vals: unknown[]): string | undefined => {
   for (const v of vals) {
@@ -141,6 +150,67 @@ export default function ContabilidadPage() {
 
   const { data: cuadre, loading: loadingCuadre, error: errorCuadre } = useCuadre(fechaInicio, fechaFin);
 
+  const [diasMora, setDiasMora] = useState<number>(1);
+  const { data: moraResp, loading: loadingMora, error: errorMora } = useMoraDetallada(
+    undefined,
+    undefined,
+    undefined,
+    diasMora,
+    tab === 'MORA'
+  );
+
+  const {
+    data: prestamosAll,
+    loading: loadingPrestamosAll,
+    error: errorPrestamosAll,
+  } = usePrestamos(
+    { busqueda: '', estado: 'TODOS' },
+    { refreshKey: undefined }
+  );
+
+  const moraRows = useMemo(() => {
+    const detalle = (moraResp?.porAsesor ?? []).flatMap((a) => a.detalle ?? []);
+
+    const byId = new Map<string, (typeof prestamosAll)[number]>();
+    const byCodigo = new Map<string, (typeof prestamosAll)[number]>();
+    for (const p of prestamosAll) {
+      if (p.id) byId.set(String(p.id), p);
+      if (p.codigoPrestamo) byCodigo.set(String(p.codigoPrestamo).trim().toLowerCase(), p);
+    }
+
+    const seen = new Set<string>();
+    const todayIso = isoDate(new Date());
+
+    return detalle
+      .map((d) => {
+        const prestamo = byId.get(String(d.prestamoId)) || byCodigo.get(String(d.codigoPrestamo || '').trim().toLowerCase()) || null;
+        const fechaVencimiento = d.fechaVencimiento || prestamo?.fechaVencimiento || '';
+        const diasEnMora = Math.max(0, daysDiff(fechaVencimiento, todayIso));
+
+        const moraPendiente = Math.max(0, (d.totalMoraPlan ?? 0) - (d.totalMoraCobrada ?? 0));
+
+        return {
+          key: String(d.prestamoId || d.codigoPrestamo || ''),
+          nombre: prestamo?.clienteNombre || '—',
+          estatus: String(prestamo?.estadoPrestamo || 'MORA').toUpperCase(),
+          diasEnMora,
+          fechaApertura: prestamo?.fechaDesembolso || null,
+          fechaVencimiento: fechaVencimiento || null,
+          saldoCapital: d.saldoCapital ?? prestamo?.saldoCapital ?? 0,
+          intereses: prestamo?.totalIntereses ?? 0,
+          mora: moraPendiente,
+          codigoPrestamo: d.codigoPrestamo || prestamo?.codigoPrestamo || '—',
+        };
+      })
+      .filter((r) => {
+        if (!r.key) return false;
+        if (seen.has(r.key)) return false;
+        seen.add(r.key);
+        return true;
+      })
+      .sort((a, b) => b.diasEnMora - a.diasEnMora);
+  }, [moraResp?.porAsesor, prestamosAll]);
+
   const [busquedaPrestamo, setBusquedaPrestamo] = useState('');
   const [estadoPrestamo, setEstadoPrestamo] = useState<EstadoPrestamoFiltro>('TODOS');
   const {
@@ -189,6 +259,7 @@ export default function ContabilidadPage() {
             />
             <Chip size="small" label={`Ingresos: ${formatMoney(totalIngresos)}`} />
             <Chip size="small" label={`Egresos: ${formatMoney(totalEgresos)}`} />
+            <Chip size="small" label={`Ingresos por mora: ${formatMoney(cuadre?.totales.totalMora ?? 0)}`} />
           </Box>
         </Box>
       </Paper>
@@ -204,6 +275,7 @@ export default function ContabilidadPage() {
           <Tab value="EGRESOS" label="Egresos" />
           <Tab value="PRESTAMOS" label="Préstamos" />
           <Tab value="INTERESES" label="Intereses" />
+          <Tab value="MORA" label="Mora" />
           <Tab value="ESTADO_CUENTA" label="Estado de cuenta" />
         </Tabs>
       </Paper>
@@ -508,6 +580,100 @@ export default function ContabilidadPage() {
               </Table>
             </TableContainer>
           </Box>
+        </Paper>
+      ) : null}
+
+      {tab === 'MORA' ? (
+        <Paper sx={{ p: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap', mb: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+              <Typography variant="subtitle2">Reporte de mora</Typography>
+              <Chip size="small" label={`Préstamos: ${formatCount(moraRows.length)}`} />
+            </Box>
+
+            <TextField
+              size="small"
+              label="Desde (días en mora)"
+              type="number"
+              value={diasMora}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                setDiasMora(Number.isFinite(n) ? n : 1);
+              }}
+              onBlur={() => {
+                setDiasMora((v) => {
+                  const n = Number(v);
+                  if (!Number.isFinite(n)) return 1;
+                  return Math.max(1, Math.floor(n));
+                });
+              }}
+              inputProps={{ min: 1, step: 1 }}
+              InputLabelProps={{ shrink: true }}
+              helperText="Mínimo 1"
+              sx={{ width: 220 }}
+            />
+          </Box>
+
+          {loadingMora || loadingPrestamosAll ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+              <CircularProgress size={18} />
+              <Typography variant="caption" color="text.secondary">
+                Cargando mora…
+              </Typography>
+            </Box>
+          ) : null}
+          {errorMora ? <Alert severity="error">{errorMora}</Alert> : null}
+          {errorPrestamosAll ? <Alert severity="error">{errorPrestamosAll}</Alert> : null}
+
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Nombre</TableCell>
+                  <TableCell>Estatus</TableCell>
+                  <TableCell align="right">Días en mora</TableCell>
+                  <TableCell>Fecha de apertura</TableCell>
+                  <TableCell>Fecha de vencimiento</TableCell>
+                  <TableCell align="right">Saldo capital</TableCell>
+                  <TableCell align="right">Intereses</TableCell>
+                  <TableCell align="right">Mora</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {moraRows.map((r) => (
+                  <TableRow key={r.key}>
+                    <TableCell>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {r.nombre}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {r.codigoPrestamo}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Chip size="small" label={r.estatus} variant="outlined" />
+                    </TableCell>
+                    <TableCell align="right">{formatCount(r.diasEnMora)}</TableCell>
+                    <TableCell>{formatDate(r.fechaApertura || undefined)}</TableCell>
+                    <TableCell>{formatDate(r.fechaVencimiento || undefined)}</TableCell>
+                    <TableCell align="right">{formatMoney(r.saldoCapital)}</TableCell>
+                    <TableCell align="right">{formatMoney(r.intereses)}</TableCell>
+                    <TableCell align="right">{formatMoney(r.mora)}</TableCell>
+                  </TableRow>
+                ))}
+
+                {!loadingMora && !loadingPrestamosAll && moraRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8}>
+                      <Typography variant="caption" color="text.secondary">
+                        No hay préstamos en mora a partir de {diasMora} día(s).
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : null}
+              </TableBody>
+            </Table>
+          </TableContainer>
         </Paper>
       ) : null}
 
