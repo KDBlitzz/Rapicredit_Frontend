@@ -268,7 +268,8 @@ export function useMoraDetallada(
   cobradorId?: string,
   _clienteId?: string,
   refreshKey?: unknown,
-  dias?: number
+  dias?: number,
+  enabled: boolean = true
 ): HookState<CajaMoraResponse | null> {
   const [data, setData] = useState<CajaMoraResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -277,7 +278,21 @@ export function useMoraDetallada(
   useEffect(() => {
     let cancelled = false;
 
-    const diasSafe = Number.isFinite(dias as number) && (dias as number) > 0 ? (dias as number) : 30;
+    if (!enabled) {
+      setData(null);
+      setError(null);
+      setLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const diasSafe =
+      dias == null
+        ? 30
+        : Number.isFinite(dias as number) && (dias as number) >= 1
+        ? (dias as number)
+        : 1;
 
     const load = async () => {
       setLoading(true);
@@ -309,7 +324,7 @@ export function useMoraDetallada(
     return () => {
       cancelled = true;
     };
-  }, [cobradorId, refreshKey, dias]);
+  }, [cobradorId, refreshKey, dias, enabled]);
 
   return { data, loading, error };
 }
