@@ -40,7 +40,12 @@ type SolicitudDetalle = {
   frecuenciaPago?: string;
   plazoCuotas?: number;
   tasaInteres?: unknown;
+  tasaInteresId?: unknown;
+  tasaInteresAnual?: unknown;
   tasInteresId?: unknown;
+  tipoContrato?: string;
+  contratoTipo?: string;
+  contrato?: unknown;
   finalidadCredito?: string;
   observaciones?: string;
   estadoSolicitud?: string;
@@ -142,7 +147,12 @@ const RevisionPage: React.FC = () => {
       }
       if (typeof v === "object" && v) {
         const o = v as Record<string, unknown>;
-        const candidate = o["porcentajeInteres"] ?? o["tasaInteres"] ?? o["porcentaje"];
+        const candidate =
+          o["porcentajeInteres"] ??
+          o["tasaInteres"] ??
+          o["tasaInteresAnual"] ??
+          o["porcentaje"] ??
+          o["valor"];
         return tryNumber(candidate);
       }
       return null;
@@ -150,6 +160,37 @@ const RevisionPage: React.FC = () => {
 
     const pct = tryNumber(value) ?? tryNumber(tasaRef);
     return pct != null ? `${pct}%` : "-";
+  };
+
+  const normalizeTipoContrato = (raw: unknown): string => {
+    const value = String(raw ?? "").trim();
+    if (!value) return "-";
+
+    const normalized = value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toUpperCase()
+      .trim();
+
+    if (
+      normalized === "CONTRATO CON DESPLAZAMIENTO" ||
+      normalized === "CONTRATO_CON_DESPLAZAMIENTO" ||
+      normalized === "CON DESPLAZAMIENTO"
+    ) {
+      return "Contrato con desplazamiento";
+    }
+    if (
+      normalized === "CONTRATO SIN DESPLAZAMIENTO" ||
+      normalized === "CONTRATO_SIN_DESPLAZAMIENTO" ||
+      normalized === "SIN DESPLAZAMIENTO"
+    ) {
+      return "Contrato sin desplazamiento";
+    }
+    if (normalized === "NO HAY CONTRATO" || normalized === "SIN CONTRATO" || normalized === "NINGUNO") {
+      return "No hay contrato";
+    }
+
+    return value;
   };
 
   const openConfirm = (a: SolicitudAccion, id: string, codigoSolicitud: string) => {
@@ -167,7 +208,26 @@ const RevisionPage: React.FC = () => {
 
     try {
       const res = await apiFetch(`/solicitudes/${encodeURIComponent(codigoSolicitud)}`);
-      setDetailData(res as SolicitudDetalle);
+      const root = (res && typeof res === "object") ? (res as Record<string, unknown>) : null;
+      const payload = root && root.data && typeof root.data === "object"
+        ? (root.data as Record<string, unknown>)
+        : root;
+
+      const contrato = payload && typeof payload["contrato"] === "object"
+        ? (payload["contrato"] as Record<string, unknown>)
+        : null;
+
+      const tipoContrato = normalizeTipoContrato(
+        payload?.["tipoContrato"] ??
+          payload?.["contratoTipo"] ??
+          contrato?.["tipoContrato"] ??
+          contrato?.["contratoTipo"]
+      );
+
+      setDetailData({
+        ...((payload ?? {}) as SolicitudDetalle),
+        tipoContrato,
+      });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "No se pudo cargar el detalle.";
       setDetailError(msg);
@@ -393,7 +453,18 @@ const RevisionPage: React.FC = () => {
                 </Grid>
                 <Grid size={{ xs: 12, sm: 6 }}>
                   <Typography variant="caption" color="text.secondary">Tasa de interés</Typography>
-                  <Typography variant="body2">{describeTasa(detailData.tasaInteres, detailData.tasInteresId)}</Typography>
+                  <Typography variant="body2">
+                    {
+                      describeTasa(
+                        detailData.tasaInteres ?? detailData.tasaInteresAnual,
+                        detailData.tasaInteresId ?? detailData.tasInteresId
+                      )
+                    }
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
+                    Tipo de contrato
+                  </Typography>
+                  <Typography variant="body2">{detailData.tipoContrato ?? '-'}</Typography>
                 </Grid>
 
                 <Grid size={{ xs: 12 }}>

@@ -11,12 +11,17 @@ import {
 	Divider,
 	Alert,
 	Button,
+	FormControl,
+	InputLabel,
+	MenuItem,
+	Select,
 } from "@mui/material";
 import Link from "next/link";
 import { usePrestamoDetalle } from "../../../../hooks/usePrestamoDetalle";
 import { usePermisos } from "../../../../hooks/usePermisos";
 import { useTasasInteres } from "../../../../hooks/useTasasInteres";
 import { apiFetch } from "../../../../lib/api";
+import { fillContrato, fillPagare, type ClienteCompleto, type PrestamoData as PrestamoFillData } from "../../../../lib/documentFill";
 
 const CLAUSULAS_CONTRATO_SIN_DESPLAZAMIENTO = [
 	"PRIMERO: Información: Declara el Deudor, que previo a la suscripción del presente contrato ha recibido a su satisfacción por parte del acreedor, la información relacionada con el presente contrato de préstamo, intereses, comisiones pactadas, así como las consecuencias por el incumplimiento de la obligación.",
@@ -224,6 +229,14 @@ type NormalizedSolicitudContratos = {
 	contratos: string[];
 };
 
+type PrestamoDetalleData = NonNullable<ReturnType<typeof usePrestamoDetalle>["data"]>;
+
+const TIPO_CONTRATO_OPTIONS = [
+	"Contrato sin desplazamiento",
+	"Contrato con desplazamiento",
+	"No hay contrato",
+] as const;
+
 const plantillaPathPorTipoContrato = (tipoContrato: string): string | null => {
 	if (tipoContrato === "Contrato sin desplazamiento") {
 		return "/contratos/plantillas/contrato-sin-desplazamiento";
@@ -297,13 +310,23 @@ const normalizeSolicitudContratos = (value: unknown): NormalizedSolicitudContrat
 	if (!value || typeof value !== "object") return null;
 	const root = value as Record<string, unknown>;
 	const nested = root.data && typeof root.data === "object" ? (root.data as Record<string, unknown>) : null;
+	const nestedSolicitud = nested?.solicitud && typeof nested.solicitud === "object"
+		? (nested.solicitud as Record<string, unknown>)
+		: null;
+	const rootSolicitud = root.solicitud && typeof root.solicitud === "object"
+		? (root.solicitud as Record<string, unknown>)
+		: null;
 
 	const tipoContrato =
-		typeof root.tipoContrato === "string"
-			? root.tipoContrato
-			: typeof nested?.tipoContrato === "string"
-				? nested.tipoContrato
-				: "";
+		normalizeTipoContrato(root.tipoContrato) ||
+		normalizeTipoContrato((root as Record<string, unknown>).contratoTipo) ||
+		normalizeTipoContrato(nested?.tipoContrato) ||
+		normalizeTipoContrato((nested as Record<string, unknown> | null)?.contratoTipo) ||
+		normalizeTipoContrato(rootSolicitud?.tipoContrato) ||
+		normalizeTipoContrato((rootSolicitud as Record<string, unknown> | null)?.contratoTipo) ||
+		normalizeTipoContrato(nestedSolicitud?.tipoContrato) ||
+		normalizeTipoContrato((nestedSolicitud as Record<string, unknown> | null)?.contratoTipo) ||
+		"";
 
 	const contratosRaw =
 		Array.isArray(root.contratos)
@@ -316,12 +339,304 @@ const normalizeSolicitudContratos = (value: unknown): NormalizedSolicitudContrat
 		.map((item) => (typeof item === "string" ? item : null))
 		.filter((item): item is string => Boolean(item));
 
-	if (!tipoContrato || contratos.length === 0) return null;
+	if (!tipoContrato) return null;
 
 	return {
 		tipoContrato,
 		contratos,
 	};
+};
+
+const parseJsonUnknown = (raw: unknown): Record<string, unknown> | null => {
+	if (!raw || typeof raw !== "object") return null;
+	return raw as Record<string, unknown>;
+};
+
+const normalizeTipoContrato = (raw: unknown): string => {
+	const unwrapTipoContrato = (value: unknown, depth = 0): unknown => {
+		if (depth > 4 || value == null) return value;
+		if (typeof value !== "object") return value;
+
+		const record = value as Record<string, unknown>;
+		const preferredKeys = [
+			"tipoContrato",
+			"contratoTipo",
+			"nombreTipoContrato",
+			"nombreTipo",
+			"nombre",
+			"descripcion",
+			"valor",
+			"value",
+			"codigo",
+			"tipo",
+		] as const;
+
+		for (const key of preferredKeys) {
+			const candidate = record[key];
+			if (candidate == null) continue;
+
+			if (typeof candidate === "object") {
+				const nested = unwrapTipoContrato(candidate, depth + 1);
+				if (typeof nested !== "object" && toSafeString(nested)) return nested;
+				continue;
+			}
+
+			if (toSafeString(candidate)) return candidate;
+		}
+
+		return value;
+	};
+
+	const unwrapped = unwrapTipoContrato(raw);
+	const value = toSafeString(unwrapped);
+	if (!value) return "";
+	const normalized = value
+		.normalize("NFD")
+		.replace(/[\u0300-\u036f]/g, "")
+		.toUpperCase()
+		.replace(/\s+/g, " ")
+		.trim();
+
+	if (
+		normalized === "CONTRATO CON DESPLAZAMIENTO" ||
+		normalized === "CONTRATO_CON_DESPLAZAMIENTO" ||
+		normalized === "CON_DESPLAZAMIENTO" ||
+		normalized === "CONDESPLAZAMIENTO"
+	) {
+		return "Contrato con desplazamiento";
+	}
+	if (
+		normalized === "CONTRATO SIN DESPLAZAMIENTO" ||
+		normalized === "CONTRATO_SIN_DESPLAZAMIENTO" ||
+		normalized === "SIN_DESPLAZAMIENTO" ||
+		normalized === "SINDESPLAZAMIENTO"
+	) {
+		return "Contrato sin desplazamiento";
+	}
+	if (
+		normalized === "NO HAY CONTRATO" ||
+		normalized === "NO TIENE CONTRATO" ||
+		normalized === "SIN CONTRATO" ||
+		normalized === "NINGUNO" ||
+		normalized === "NONE"
+	) {
+		return "No hay contrato";
+	}
+
+	if (normalized.includes("SIN") && normalized.includes("DESPLAZ")) {
+		return "Contrato sin desplazamiento";
+	}
+	if (normalized.includes("CON") && normalized.includes("DESPLAZ")) {
+		return "Contrato con desplazamiento";
+	}
+	if ((normalized.includes("NO") || normalized.includes("SIN")) && normalized.includes("CONTRATO")) {
+		return "No hay contrato";
+	}
+
+	return value;
+};
+
+const getCandidateRecords = (value: unknown): Record<string, unknown>[] => {
+	if (!value || typeof value !== "object") return [];
+	const root = value as Record<string, unknown>;
+	const data = parseJsonUnknown(root.data);
+	const solicitud = parseJsonUnknown(root.solicitud);
+	const solicitudId = parseJsonUnknown(root.solicitudId);
+	const dataSolicitud = data ? parseJsonUnknown(data.solicitud) : null;
+	const dataSolicitudId = data ? parseJsonUnknown(data.solicitudId) : null;
+	const contrato = parseJsonUnknown(root.contrato);
+	const dataContrato = data ? parseJsonUnknown(data.contrato) : null;
+
+	return [
+		root,
+		data,
+		solicitud,
+		solicitudId,
+		dataSolicitud,
+		dataSolicitudId,
+		contrato,
+		dataContrato,
+	].filter((item): item is Record<string, unknown> => Boolean(item));
+};
+
+const getSolicitudContratoMeta = (solicitud: unknown): {
+	tipoContrato: string;
+	nombreProducto: string;
+	vehiculo: Record<string, unknown>;
+} => {
+	const candidates = getCandidateRecords(solicitud);
+
+	let tipoContrato = "";
+	let nombreProducto = "";
+	let datosVehiculo: Record<string, unknown> = {};
+
+	for (const current of candidates) {
+		const contrato = parseJsonUnknown(current.contrato);
+
+		if (!tipoContrato) {
+			tipoContrato =
+				normalizeTipoContrato(current.tipoContrato) ||
+				normalizeTipoContrato(current.contratoTipo) ||
+				normalizeTipoContrato(current.tipoContratoSolicitud) ||
+				normalizeTipoContrato(current.tipoContratoId) ||
+				normalizeTipoContrato(current.tipo) ||
+				normalizeTipoContrato(contrato?.tipoContrato) ||
+				normalizeTipoContrato(contrato?.contratoTipo) ||
+				normalizeTipoContrato(contrato?.nombreTipoContrato) ||
+				normalizeTipoContrato(contrato?.tipo) ||
+				"";
+		}
+
+		if (!nombreProducto) {
+			nombreProducto =
+				toSafeString(current.nombreProducto) ||
+				toSafeString(current.producto) ||
+				"";
+		}
+
+		if (Object.keys(datosVehiculo).length === 0) {
+			datosVehiculo =
+				parseJsonUnknown(current.datosVehiculo) ||
+				parseJsonUnknown(current.vehiculo) ||
+				{};
+		}
+
+		if (tipoContrato && nombreProducto && Object.keys(datosVehiculo).length > 0) {
+			break;
+		}
+	}
+
+	return {
+		tipoContrato,
+		nombreProducto,
+		vehiculo: datosVehiculo,
+	};
+};
+
+const buildSolicitudCandidates = async (prestamoData: PrestamoDetalleData): Promise<string[]> => {
+	const solicitudCandidates = [prestamoData.solicitudCodigo, prestamoData.solicitudId]
+		.filter((value): value is string => Boolean(value && String(value).trim()))
+		.map((value) => value.trim());
+
+	if (prestamoData.solicitudId) {
+		try {
+			const byId = await apiFetch<unknown>(`/solicitudes/id/${encodeURIComponent(prestamoData.solicitudId)}`, { silent: true });
+			if (byId && typeof byId === "object") {
+				const codigoSolicitud = (byId as Record<string, unknown>).codigoSolicitud;
+				if (typeof codigoSolicitud === "string" && codigoSolicitud.trim()) {
+					solicitudCandidates.unshift(codigoSolicitud.trim());
+				}
+			}
+		} catch {
+			// Endpoint opcional; mantenemos los candidatos que ya tenemos.
+		}
+	}
+
+	return Array.from(new Set(solicitudCandidates));
+};
+
+const fetchSolicitudContratos = async (prestamoData: PrestamoDetalleData): Promise<NormalizedSolicitudContratos | null> => {
+	const candidates = await buildSolicitudCandidates(prestamoData);
+	if (candidates.length === 0) return null;
+
+	for (const solicitudRef of candidates) {
+		try {
+			const response = await apiFetch<SolicitudContratosResponse>(
+				`/solicitudes/${encodeURIComponent(solicitudRef)}/contratos`,
+				{ silent: true }
+			);
+			const normalized = normalizeSolicitudContratos(response);
+			if (normalized) return normalized;
+		} catch {
+			// Intentamos el siguiente candidato.
+		}
+	}
+
+	return null;
+};
+
+const fetchSolicitudDetalle = async (prestamoData: PrestamoDetalleData): Promise<Record<string, unknown> | null> => {
+	const candidates = await buildSolicitudCandidates(prestamoData);
+	if (candidates.length === 0) return null;
+
+	for (const solicitudRef of candidates) {
+		try {
+			const res = await apiFetch<unknown>(`/solicitudes/${encodeURIComponent(solicitudRef)}`, { silent: true });
+			const parsed = parseJsonUnknown(res);
+			if (parsed) return parsed;
+		} catch {
+			// Intentamos variantes por id.
+		}
+
+		try {
+			const byId = await apiFetch<unknown>(`/solicitudes/id/${encodeURIComponent(solicitudRef)}`, { silent: true });
+			const parsedById = parseJsonUnknown(byId);
+			if (parsedById) return parsedById;
+		} catch {
+			// Continuamos con el siguiente candidato.
+		}
+	}
+
+	return null;
+};
+
+const toSafeString = (value: unknown): string => {
+	if (typeof value === "string") return value.trim();
+	if (value == null) return "";
+	return String(value).trim();
+};
+
+const resolveClienteCompleto = async (prestamoData: PrestamoDetalleData): Promise<ClienteCompleto> => {
+	const fallback: ClienteCompleto = {
+		nombreCompleto: prestamoData.cliente?.nombreCompleto || "",
+		identidad: prestamoData.cliente?.identidadCliente || "",
+		direccion: "",
+		municipio: "",
+		departamento: "",
+	};
+
+	const hydrate = (raw: unknown): ClienteCompleto => {
+		if (!raw || typeof raw !== "object") return fallback;
+		const record = raw as Record<string, unknown>;
+		const nombre =
+			toSafeString(record.nombreCompleto) ||
+			[toSafeString(record.nombre), toSafeString(record.apellido)].filter(Boolean).join(" ") ||
+			fallback.nombreCompleto;
+
+		return {
+			nombreCompleto: nombre,
+			identidad: toSafeString(record.identidadCliente) || toSafeString(record.identidad) || fallback.identidad,
+			direccion: toSafeString(record.direccion),
+			municipio: toSafeString(record.municipioResidencia) || toSafeString(record.municipio),
+			departamento: toSafeString(record.departamentoResidencia) || toSafeString(record.departamento),
+		};
+	};
+
+	if (prestamoData.cliente?.codigoCliente) {
+		try {
+			const byCodigo = await apiFetch<unknown>(`/clientes/${encodeURIComponent(prestamoData.cliente.codigoCliente)}`, {
+				silent: true,
+			});
+			const hydrated = hydrate(byCodigo);
+			if (hydrated.nombreCompleto || hydrated.identidad || hydrated.direccion) return hydrated;
+		} catch {
+			// Probamos por id.
+		}
+	}
+
+	if (prestamoData.clienteId) {
+		try {
+			const byId = await apiFetch<unknown>(`/clientes/id/${encodeURIComponent(prestamoData.clienteId)}`, {
+				silent: true,
+			});
+			const hydrated = hydrate(byId);
+			if (hydrated.nombreCompleto || hydrated.identidad || hydrated.direccion) return hydrated;
+		} catch {
+			// Devolvemos fallback.
+		}
+	}
+
+	return fallback;
 };
 
 const enrichContratoData = (contratoData: Record<string, unknown>, prestamoData: NonNullable<ReturnType<typeof usePrestamoDetalle>["data"]>) => {
@@ -388,6 +703,7 @@ const PrestamoDocumentosPage: React.FC = () => {
 	const [contratosWeb, setContratosWeb] = useState<string[]>([]);
 	const [contratosWebError, setContratosWebError] = useState<string | null>(null);
 	const [tipoContratoSolicitud, setTipoContratoSolicitud] = useState<string>("");
+	const [tipoContratoManual, setTipoContratoManual] = useState<string>("");
 	const [selectedContratoIndex, setSelectedContratoIndex] = useState(0);
 	const generating = generatingDoc !== null;
 
@@ -402,6 +718,7 @@ const PrestamoDocumentosPage: React.FC = () => {
 			setContratosWeb([]);
 			setContratosWebError(null);
 			setTipoContratoSolicitud("");
+			setTipoContratoManual("");
 			setSelectedContratoIndex(0);
 			return;
 		}
@@ -413,54 +730,33 @@ const PrestamoDocumentosPage: React.FC = () => {
 			setContratosWeb([]);
 			setContratosWebError(null);
 			setTipoContratoSolicitud("");
+			setTipoContratoManual("");
 
 			try {
-				const solicitudCandidates = [data.solicitudCodigo, data.solicitudId]
-					.filter((value): value is string => Boolean(value && String(value).trim()))
-					.map((value) => value.trim());
+				const [solicitudContratos, solicitudDetalle] = await Promise.all([
+					fetchSolicitudContratos(data),
+					fetchSolicitudDetalle(data),
+				]);
 
-				if (data.solicitudId) {
-					try {
-						const byId = await apiFetch<unknown>(`/solicitudes/id/${encodeURIComponent(data.solicitudId)}`, { silent: true });
-						if (byId && typeof byId === "object") {
-							const codigoSolicitud = (byId as Record<string, unknown>).codigoSolicitud;
-							if (typeof codigoSolicitud === "string" && codigoSolicitud.trim()) {
-								solicitudCandidates.unshift(codigoSolicitud.trim());
-							}
-						}
-					} catch {
-						// endpoint puede no existir; seguimos con candidatos disponibles
-					}
+				const metaSolicitud = getSolicitudContratoMeta(solicitudDetalle);
+				const tipoContrato =
+					normalizeTipoContrato(metaSolicitud.tipoContrato) ||
+					normalizeTipoContrato(solicitudContratos?.tipoContrato || "") ||
+					normalizeTipoContrato(data.tipoContratoSolicitud || "");
+
+				if (!tipoContrato) {
+					throw new Error("El préstamo no tiene tipo de contrato configurado en la solicitud.");
 				}
 
-				const uniqueSolicitudCandidates = Array.from(new Set(solicitudCandidates));
+				setTipoContratoSolicitud(tipoContrato);
 
-				if (uniqueSolicitudCandidates.length === 0) {
-					throw new Error("El préstamo no tiene solicitud asociada para consultar contratos.");
+				if (!solicitudContratos || solicitudContratos.contratos.length === 0) {
+					if (cancelled) return;
+					setContratosWeb([]);
+					setSelectedContratoIndex(0);
+					return;
 				}
 
-				let solicitudContratos: NormalizedSolicitudContratos | null = null;
-				for (const solicitudRef of uniqueSolicitudCandidates) {
-					try {
-						const response = await apiFetch<SolicitudContratosResponse>(
-							`/solicitudes/${encodeURIComponent(solicitudRef)}/contratos`,
-							{ silent: true }
-						);
-						const normalized = normalizeSolicitudContratos(response);
-						if (normalized) {
-							solicitudContratos = normalized;
-							break;
-						}
-					} catch {
-						// si falla este candidate, intentamos el siguiente
-					}
-				}
-
-				if (!solicitudContratos) {
-					throw new Error("No se pudieron obtener contratos de la solicitud asociada.");
-				}
-
-				const tipoContrato = String(solicitudContratos.tipoContrato || "");
 				const templatePath = plantillaPathPorTipoContrato(tipoContrato);
 
 				if (!templatePath) {
@@ -474,6 +770,8 @@ const PrestamoDocumentosPage: React.FC = () => {
 					throw new Error("No se pudo cargar la plantilla del contrato.");
 				}
 
+				const clienteCompleto = await resolveClienteCompleto(data);
+
 				const contratosRaw = solicitudContratos.contratos;
 				const contratosRenderizados = contratosRaw.map((rawContrato) => {
 					const htmlDirecto = getContratoHtmlFromRaw(rawContrato);
@@ -483,13 +781,43 @@ const PrestamoDocumentosPage: React.FC = () => {
 
 					const dataContrato = typeof rawContrato === "string" ? safeParseContrato(rawContrato) : {};
 					const payload = enrichContratoData(dataContrato, data);
-					return fillTemplateMustacheLike(templateHtml, payload);
+
+					const clienteData = payload.cliente && typeof payload.cliente === "object"
+						? (payload.cliente as Record<string, unknown>)
+						: {};
+
+					const clienteParaFill: ClienteCompleto = {
+						nombreCompleto: toSafeString(clienteData.nombreCompleto) || clienteCompleto.nombreCompleto,
+						identidad:
+							toSafeString(clienteData.identidadCliente) ||
+							toSafeString(clienteData.identidad) ||
+							clienteCompleto.identidad,
+						direccion: toSafeString(clienteData.direccion) || clienteCompleto.direccion,
+						municipio:
+							toSafeString(clienteData.municipioResidencia) ||
+							toSafeString(clienteData.municipio) ||
+							clienteCompleto.municipio,
+						departamento:
+							toSafeString(clienteData.departamentoResidencia) ||
+							toSafeString(clienteData.departamento) ||
+							clienteCompleto.departamento,
+					};
+
+					const nombreProducto = toSafeString(dataContrato.nombreProducto) || toSafeString(dataContrato.producto);
+					const prestamoParaFill: PrestamoFillData = {
+						capitalSolicitado: Number(payload.capitalSolicitado ?? data.capitalSolicitado ?? 0),
+						plazoCuotas: Number(payload.plazoCuotas ?? data.plazoCuotas ?? 0),
+						cuotaFija: Number(payload.cuotaFija ?? data.cuotaFija ?? 0),
+						interes: Number(data.tasaInteresAnual ?? 0),
+					};
+
+					const htmlFilled = fillContrato(templateHtml, prestamoParaFill, clienteParaFill, nombreProducto);
+					return fillTemplateMustacheLike(htmlFilled, payload);
 				});
 
 				if (cancelled) return;
 
 				setContratosWeb(contratosRenderizados);
-				setTipoContratoSolicitud(tipoContrato);
 				setSelectedContratoIndex(0);
 			} catch (err) {
 				if (cancelled) return;
@@ -771,10 +1099,148 @@ const PrestamoDocumentosPage: React.FC = () => {
 		return out;
 	};
 
+	const abrirVistaImpresion = (title: string, html: string) => {
+		const iframe = document.createElement("iframe");
+		iframe.style.position = "fixed";
+		iframe.style.right = "0";
+		iframe.style.bottom = "0";
+		iframe.style.width = "0";
+		iframe.style.height = "0";
+		iframe.style.border = "0";
+		document.body.appendChild(iframe);
+
+		const frameDoc = iframe.contentDocument;
+		if (!frameDoc) {
+			document.body.removeChild(iframe);
+			throw new Error("No se pudo preparar la vista de impresión.");
+		}
+
+		frameDoc.open();
+		frameDoc.write(`<!doctype html><html><head><meta charset="utf-8" /><title>${title}</title></head><body>${html}</body></html>`);
+		frameDoc.close();
+
+		setTimeout(() => {
+			const w = iframe.contentWindow;
+			w?.focus();
+			w?.print();
+			setTimeout(() => {
+				if (document.body.contains(iframe)) {
+					document.body.removeChild(iframe);
+				}
+			}, 1200);
+		}, 120);
+	};
+
+	const obtenerNombreProductoContrato = (
+		solicitudContratos: NormalizedSolicitudContratos | null,
+		solicitudDetalle: Record<string, unknown> | null
+	): string => {
+		const metaSolicitud = getSolicitudContratoMeta(solicitudDetalle);
+		if (metaSolicitud.nombreProducto) return metaSolicitud.nombreProducto;
+
+		if (!solicitudContratos?.contratos?.length) return "";
+
+		for (const raw of solicitudContratos.contratos) {
+			const parsed = safeParseContrato(raw);
+			if (!parsed || Object.keys(parsed).length === 0) continue;
+
+			const nombreDirecto = toSafeString(parsed.nombreProducto) || toSafeString(parsed.producto);
+			if (nombreDirecto) return nombreDirecto;
+
+			const prestamoContrato = parsed.prestamo && typeof parsed.prestamo === "object"
+				? (parsed.prestamo as Record<string, unknown>)
+				: null;
+			if (prestamoContrato) {
+				const nombrePrestamo = toSafeString(prestamoContrato.nombreProducto) || toSafeString(prestamoContrato.producto);
+				if (nombrePrestamo) return nombrePrestamo;
+			}
+		}
+
+		return "";
+	};
+
+	const obtenerVehiculoContrato = (
+		solicitudContratos: NormalizedSolicitudContratos | null,
+		solicitudDetalle: Record<string, unknown> | null
+	): Record<string, unknown> => {
+		const metaSolicitud = getSolicitudContratoMeta(solicitudDetalle);
+		if (Object.keys(metaSolicitud.vehiculo).length > 0) {
+			return metaSolicitud.vehiculo;
+		}
+
+		if (!solicitudContratos?.contratos?.length) return {};
+
+		for (const raw of solicitudContratos.contratos) {
+			const parsed = safeParseContrato(raw);
+			if (!parsed || Object.keys(parsed).length === 0) continue;
+
+			const datosVehiculo = parseJsonUnknown(parsed.datosVehiculo) ??
+				(parseJsonUnknown(parsed.contrato)?.vehiculo as Record<string, unknown> | undefined) ??
+				{};
+
+			if (Object.keys(datosVehiculo).length > 0) return datosVehiculo;
+		}
+
+		return {};
+	};
+
+	const generarDesdePlantilla = async (docType: "sin" | "con" | "pagare"): Promise<boolean> => {
+		if (!data) return false;
+
+		try {
+			const clienteCompleto = await resolveClienteCompleto(data);
+			const [solicitudContratos, solicitudDetalle] = await Promise.all([
+				fetchSolicitudContratos(data),
+				fetchSolicitudDetalle(data),
+			]);
+			const nombreProducto = obtenerNombreProductoContrato(solicitudContratos, solicitudDetalle);
+			const vehiculo = obtenerVehiculoContrato(solicitudContratos, solicitudDetalle);
+
+			const prestamoParaFill: PrestamoFillData = {
+				capitalSolicitado: Number(data.capitalSolicitado ?? 0),
+				interes: Number(data.tasaInteresAnual ?? 0),
+				plazoCuotas: Number(data.plazoCuotas ?? 0),
+				cuotaFija: Number(data.cuotaFija ?? 0),
+				datosVehiculo: vehiculo,
+				...vehiculo,
+			};
+
+			if (docType === "pagare") {
+				const pagareTemplate = await apiFetch<ContratoPlantillaResponse>("/contratos/plantillas/pagare", { silent: true });
+				const html = typeof pagareTemplate?.html === "string" ? pagareTemplate.html : "";
+				if (!html) throw new Error("No se pudo cargar la plantilla de pagaré.");
+
+				const finalHtml = fillPagare(html, prestamoParaFill, clienteCompleto);
+				abrirVistaImpresion(`Pagare_${data.codigoPrestamo || "prestamo"}`, finalHtml);
+				return true;
+			}
+
+			const tipoContrato = docType === "con" ? "Contrato con desplazamiento" : "Contrato sin desplazamiento";
+			const templatePath = plantillaPathPorTipoContrato(tipoContrato);
+			if (!templatePath) throw new Error("Tipo de contrato no soportado.");
+
+			const templateResponse = await apiFetch<ContratoPlantillaResponse>(templatePath, { silent: true });
+			const templateHtml = typeof templateResponse?.html === "string" ? templateResponse.html : "";
+			if (!templateHtml) throw new Error("No se pudo cargar la plantilla del contrato.");
+
+			const finalHtml = fillContrato(templateHtml, prestamoParaFill, clienteCompleto, nombreProducto);
+			const filePrefix = docType === "con" ? "Contrato_ConDesplazamiento" : "Contrato_SinDesplazamiento";
+			abrirVistaImpresion(`${filePrefix}_${data.codigoPrestamo || "prestamo"}`, finalHtml);
+			return true;
+		} catch (error) {
+			const msg = error instanceof Error ? error.message : "No se pudo generar el documento desde plantilla.";
+			throw new Error(msg);
+		}
+	};
+
 	const handleGenerarPdfSinDesplazamiento = async () => {
 		if (!data || generating) return;
 		setGeneratingDoc("sin");
 		try {
+			if (await generarDesdePlantilla("sin")) {
+				return;
+			}
+
 			const { doc, addTitle, addCentered, addParagraph, addFirmasContrato, addFirmasPagare, newPage } = await createPdfContext();
 			const nombreCliente = data.cliente?.nombreCompleto || "________________";
 			const identidadCliente = data.cliente?.identidadCliente || "________________";
@@ -809,6 +1275,8 @@ const PrestamoDocumentosPage: React.FC = () => {
 			doc.save(`Contrato_SinDesplazamiento_${data.codigoPrestamo || "prestamo"}.pdf`);
 		} catch (err) {
 			console.error("Error generando PDF de contrato:", err);
+			const msg = err instanceof Error ? err.message : "No se pudo generar el contrato con plantilla.";
+			setContratosWebError(msg);
 		} finally {
 			setGeneratingDoc(null);
 		}
@@ -818,6 +1286,10 @@ const PrestamoDocumentosPage: React.FC = () => {
 		if (!data || generating) return;
 		setGeneratingDoc("con");
 		try {
+			if (await generarDesdePlantilla("con")) {
+				return;
+			}
+
 			const { doc, addTitle, addCentered, addParagraph, addFirmasContrato, addFirmasPagare, newPage } = await createPdfContext();
 			const nombreCliente = data.cliente?.nombreCompleto || "________________";
 			const identidadCliente = data.cliente?.identidadCliente || "________________";
@@ -875,6 +1347,8 @@ const PrestamoDocumentosPage: React.FC = () => {
 			doc.save(`Contrato_ConDesplazamiento_${data.codigoPrestamo || "prestamo"}.pdf`);
 		} catch (err) {
 			console.error("Error generando PDF de contrato:", err);
+			const msg = err instanceof Error ? err.message : "No se pudo generar el contrato con plantilla.";
+			setContratosWebError(msg);
 		} finally {
 			setGeneratingDoc(null);
 		}
@@ -1052,6 +1526,10 @@ const PrestamoDocumentosPage: React.FC = () => {
 		if (!data || generating) return;
 		setGeneratingDoc("pagare");
 		try {
+			if (await generarDesdePlantilla("pagare")) {
+				return;
+			}
+
 			const { doc, addTitle, addParagraph, addFirmasPagare } = await createPdfContext();
 			const nombreCliente = data.cliente?.nombreCompleto || "________________";
 			const identidadCliente = data.cliente?.identidadCliente || "________________";
@@ -1076,6 +1554,8 @@ const PrestamoDocumentosPage: React.FC = () => {
 			doc.save(`Pagare_${data.codigoPrestamo || "prestamo"}.pdf`);
 		} catch (err) {
 			console.error("Error generando PDF de pagaré:", err);
+			const msg = err instanceof Error ? err.message : "No se pudo generar el pagaré con plantilla.";
+			setContratosWebError(msg);
 		} finally {
 			setGeneratingDoc(null);
 		}
@@ -1133,6 +1613,10 @@ const PrestamoDocumentosPage: React.FC = () => {
 	}
 
 	const estado = (data.estadoPrestamo || "").toUpperCase();
+	const tipoContratoNormalizado = normalizeTipoContrato(tipoContratoManual || tipoContratoSolicitud);
+	const mostrarContratoSinDesplazamiento = tipoContratoNormalizado === "Contrato sin desplazamiento";
+	const mostrarContratoConDesplazamiento = tipoContratoNormalizado === "Contrato con desplazamiento";
+	const sinContratoSeleccionado = tipoContratoNormalizado === "No hay contrato";
 
 	return (
 		<Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -1187,13 +1671,46 @@ const PrestamoDocumentosPage: React.FC = () => {
 							{tasaInteresLabel}
 						</Typography>
 					</Grid>
+					<Grid size={{ xs: 12, sm: 6 }}>
+						<Typography variant="caption" color="text.secondary">
+							Tipo de contrato detectado
+						</Typography>
+						<Typography variant="body2">
+							{tipoContratoSolicitud || "No detectado"}
+						</Typography>
+					</Grid>
 				</Grid>
 
 				<Divider sx={{ my: 3 }} />
 
 				<Alert severity="info" sx={{ mb: 2 }}>
-					Selecciona el documento a generar. Los contratos incluyen pagaré.
+					Selecciona el documento a generar según el tipo de contrato configurado en la solicitud.
 				</Alert>
+
+				<FormControl size="small" sx={{ minWidth: 280, mb: 2 }}>
+					<InputLabel id="tipo-contrato-manual-label">Tipo de contrato (manual)</InputLabel>
+					<Select
+						labelId="tipo-contrato-manual-label"
+						label="Tipo de contrato (manual)"
+						value={tipoContratoManual}
+						onChange={(event) => setTipoContratoManual(String(event.target.value || ""))}
+					>
+						<MenuItem value="">
+							Usar detectado automaticamente
+						</MenuItem>
+						{TIPO_CONTRATO_OPTIONS.map((option) => (
+							<MenuItem key={option} value={option}>
+								{option}
+							</MenuItem>
+						))}
+					</Select>
+				</FormControl>
+
+				{sinContratoSeleccionado && (
+					<Alert severity="warning" sx={{ mb: 2 }}>
+						La solicitud está marcada como "No hay contrato". Solo se permite generar el pagaré.
+					</Alert>
+				)}
 
 				<Divider sx={{ my: 3 }} />
 
@@ -1251,22 +1768,26 @@ const PrestamoDocumentosPage: React.FC = () => {
 				)}
 
 				<Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
-					<Button
-						variant="contained"
-						color="primary"
-						onClick={handleGenerarPdfSinDesplazamiento}
-						disabled={generating}
-					>
-						{generatingDoc === "sin" ? "Generando..." : "Generar PDF (sin desplazamiento)"}
-					</Button>
-					<Button
-						variant="contained"
-						color="secondary"
-						onClick={handleGenerarPdfConDesplazamiento}
-						disabled={generating}
-					>
-						{generatingDoc === "con" ? "Generando..." : "Generar PDF (con desplazamiento)"}
-					</Button>
+					{mostrarContratoSinDesplazamiento && (
+						<Button
+							variant="contained"
+							color="primary"
+							onClick={handleGenerarPdfSinDesplazamiento}
+							disabled={generating}
+						>
+							{generatingDoc === "sin" ? "Generando..." : "Generar PDF (sin desplazamiento)"}
+						</Button>
+					)}
+					{mostrarContratoConDesplazamiento && (
+						<Button
+							variant="contained"
+							color="secondary"
+							onClick={handleGenerarPdfConDesplazamiento}
+							disabled={generating}
+						>
+							{generatingDoc === "con" ? "Generando..." : "Generar PDF (con desplazamiento)"}
+						</Button>
+					)}
 					<Button
 						variant="contained"
 						color="success"
@@ -1274,14 +1795,6 @@ const PrestamoDocumentosPage: React.FC = () => {
 						disabled={generating}
 					>
 						{generatingDoc === "pagare" ? "Generando..." : "Generar PDF (solo pagaré)"}
-					</Button>
-					<Button
-						variant="contained"
-						color="info"
-						onClick={handleGenerarPdfDacionBienesMuebles}
-						disabled={generating}
-					>
-						{generatingDoc === "dacion" ? "Generando..." : "Generar PDF (dación bienes muebles)"}
 					</Button>
 				</Box>
 			</Paper>

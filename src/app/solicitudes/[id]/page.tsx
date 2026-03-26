@@ -44,6 +44,77 @@ const asNumber = (v: unknown): number | undefined => {
   return undefined;
 };
 
+type TipoContrato = 'No hay contrato' | 'Contrato con desplazamiento' | 'Contrato sin desplazamiento';
+
+const TIPO_CONTRATO_OPTIONS: TipoContrato[] = [
+  'No hay contrato',
+  'Contrato con desplazamiento',
+  'Contrato sin desplazamiento',
+];
+
+const normalizeText = (value: string) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .trim();
+
+const normalizeTipoContrato = (raw: unknown): TipoContrato | '' => {
+  const normalized = normalizeText(String(raw ?? ''));
+  if (!normalized) return '';
+
+  if (
+    normalized === 'CONTRATO CON DESPLAZAMIENTO' ||
+    normalized === 'CONTRATO_CON_DESPLAZAMIENTO' ||
+    normalized === 'CON DESPLAZAMIENTO'
+  ) {
+    return 'Contrato con desplazamiento';
+  }
+
+  if (
+    normalized === 'CONTRATO SIN DESPLAZAMIENTO' ||
+    normalized === 'CONTRATO_SIN_DESPLAZAMIENTO' ||
+    normalized === 'SIN DESPLAZAMIENTO'
+  ) {
+    return 'Contrato sin desplazamiento';
+  }
+
+  if (normalized === 'NO HAY CONTRATO' || normalized === 'SIN CONTRATO' || normalized === 'NINGUNO') {
+    return 'No hay contrato';
+  }
+
+  return '';
+};
+
+const mapFrecuenciaApiToNombre = (raw: unknown): string => {
+  const normalized = normalizeText(String(raw ?? ''));
+  if (!normalized) return '';
+
+  if (normalized === 'DIARIO' || normalized === 'DIARIA' || normalized === 'DIA' || normalized === 'DIAS') {
+    return 'Días';
+  }
+  if (normalized === 'SEMANAL' || normalized === 'SEMANAS' || normalized === 'SEMANA') {
+    return 'Semanas';
+  }
+  if (normalized === 'QUINCENAL' || normalized === 'QUINCENA' || normalized === 'QUINCENAS') {
+    return 'Quincenas';
+  }
+  if (normalized === 'MENSUAL' || normalized === 'MES' || normalized === 'MESES') {
+    return 'Meses';
+  }
+
+  return String(raw ?? '');
+};
+
+const mapFrecuenciaNombreToEnum = (raw: string): 'DIARIO' | 'SEMANAL' | 'QUINCENAL' | 'MENSUAL' | null => {
+  const normalized = normalizeText(raw);
+  if (normalized === 'DIAS' || normalized === 'DIA') return 'DIARIO';
+  if (normalized === 'SEMANAS' || normalized === 'SEMANA') return 'SEMANAL';
+  if (normalized === 'QUINCENAS' || normalized === 'QUINCENA') return 'QUINCENAL';
+  if (normalized === 'MESES' || normalized === 'MES') return 'MENSUAL';
+  return null;
+};
+
 interface SolicitudHistorialItem {
   id: string;
   fecha?: string;
@@ -64,6 +135,7 @@ interface SolicitudDetalle {
   historial?: SolicitudHistorialItem[];
   vendedorId?: string | null;
   frecuenciaPago?: string | null;
+  tipoContrato?: TipoContrato | null;
   tasaInteresId?: string | null;
   tasaInteresNombre?: string | null;
   tasaInteresPorcentaje?: number | null;
@@ -99,6 +171,7 @@ const SolicitudDetallePage: React.FC = () => {
     finalidadCredito: '',
     observaciones: '',
     fechaSolicitud: '',
+    tipoContrato: '' as TipoContrato | '',
   });
 
   const { data: tasas } = useTasasInteres();
@@ -149,6 +222,12 @@ const SolicitudDetallePage: React.FC = () => {
     return '—';
   }, [selectedTasa, data]);
 
+  const frecuenciaPagoLabel = useMemo(() => {
+    if (selectedFrecuencia?.nombre) return selectedFrecuencia.nombre;
+    if (!data?.frecuenciaPago) return '—';
+    return mapFrecuenciaApiToNombre(data.frecuenciaPago) || '—';
+  }, [selectedFrecuencia, data?.frecuenciaPago]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -190,6 +269,13 @@ const SolicitudDetallePage: React.FC = () => {
           historial,
           vendedorId: String(res['vendedorId'] ?? res['cobradorId'] ?? '') || null,
           frecuenciaPago: asString(res['frecuenciaPago']) ?? null,
+          tipoContrato: normalizeTipoContrato(
+            res['tipoContrato'] ??
+              res['contratoTipo'] ??
+              (isRecord(res['contrato']) ? (res['contrato']['tipoContrato'] ?? res['contrato']['contratoTipo']) : undefined) ??
+              (isRecord(res['solicitud']) ? (res['solicitud']['tipoContrato'] ?? res['solicitud']['contratoTipo']) : undefined) ??
+              (isRecord(res['data']) ? (res['data']['tipoContrato'] ?? res['data']['contratoTipo']) : undefined)
+          ) || null,
           tasaInteresId: (() => {
             const raw = res['tasaInteresId'] ?? res['tasInteresId'];
             if (isRecord(raw)) return asString(raw['_id'] ?? raw['id'] ?? raw['codigoTasa']) ?? null;
@@ -263,6 +349,7 @@ const SolicitudDetallePage: React.FC = () => {
       finalidadCredito: data.finalidadCredito ? String(data.finalidadCredito) : '',
       observaciones: data.observaciones ? String(data.observaciones) : '',
       fechaSolicitud: dateValue,
+      tipoContrato: data.tipoContrato ?? '',
     });
 
     setExistingFotosNegocio(Array.isArray(data.fotosNegocio) ? data.fotosNegocio : []);
@@ -286,17 +373,13 @@ const SolicitudDetallePage: React.FC = () => {
       });
     }
     if (data.frecuenciaPago) {
-      const fromEnum = (() => {
-        const v = String(data.frecuenciaPago).toUpperCase();
-        if (v === 'DIARIO') return 'Días';
-        if (v === 'SEMANAL') return 'Semanas';
-        if (v === 'QUINCENAL') return 'Quincenas';
-        if (v === 'MENSUAL') return 'Meses';
-        return data.frecuenciaPago;
-      })();
-
-      const match = frecuencias.find((f) => String(f.nombre) === String(fromEnum));
+      const fromEnum = mapFrecuenciaApiToNombre(data.frecuenciaPago);
+      const match = frecuencias.find(
+        (f) => normalizeText(String(f.nombre)) === normalizeText(fromEnum)
+      );
       setSelectedFrecuencia(match ?? null);
+    } else {
+      setSelectedFrecuencia(null);
     }
   }, [data, tasas, frecuencias]);
 
@@ -318,6 +401,7 @@ const SolicitudDetallePage: React.FC = () => {
         finalidadCredito: data.finalidadCredito ? String(data.finalidadCredito) : '',
         observaciones: data.observaciones ? String(data.observaciones) : '',
         fechaSolicitud: dateValue,
+        tipoContrato: data.tipoContrato ?? '',
       });
 
       setExistingFotosNegocio(Array.isArray(data.fotosNegocio) ? data.fotosNegocio : []);
@@ -428,20 +512,7 @@ const SolicitudDetallePage: React.FC = () => {
       return;
     }
     const nombre = selectedFrecuencia.nombre;
-    const frecuenciaEnum = (() => {
-      switch (nombre) {
-        case 'Días':
-          return 'DIARIO';
-        case 'Semanas':
-          return 'SEMANAL';
-        case 'Quincenas':
-          return 'QUINCENAL';
-        case 'Meses':
-          return 'MENSUAL';
-        default:
-          return null;
-      }
-    })();
+    const frecuenciaEnum = mapFrecuenciaNombreToEnum(nombre);
     if (!frecuenciaEnum) {
       setToastSeverity('error');
       setToastMessage('Frecuencia de pago inválida.');
@@ -449,6 +520,11 @@ const SolicitudDetallePage: React.FC = () => {
       return;
     }
     payload.frecuenciaPago = frecuenciaEnum;
+
+    if (form.tipoContrato) {
+      payload.tipoContrato = form.tipoContrato;
+      payload.contratoTipo = form.tipoContrato;
+    }
 
     // Fotos del negocio (preservar existentes + subir nuevas)
     try {
@@ -635,23 +711,59 @@ const SolicitudDetallePage: React.FC = () => {
                   </>
                 )}
               </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                {!editMode ? (
+                  <>
+                    <Typography variant="caption" color="text.secondary">
+                      Tasa de interés
+                    </Typography>
+                    <Typography>{tasaInteresLabel}</Typography>
+                  </>
+                ) : (
+                  <TextField
+                    fullWidth
+                    size="small"
+                    select
+                    label="Tipo de contrato"
+                    value={form.tipoContrato}
+                    onChange={(e) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        tipoContrato: normalizeTipoContrato(e.target.value),
+                      }))
+                    }
+                  >
+                    <MenuItem value="">
+                      <em>Selecciona un tipo</em>
+                    </MenuItem>
+                    {TIPO_CONTRATO_OPTIONS.map((tipo) => (
+                      <MenuItem key={tipo} value={tipo}>
+                        {tipo}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                )}
+              </Grid>
+
+              {!editMode && (
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    Frecuencia de pago
+                  </Typography>
+                  <Typography>{frecuenciaPagoLabel}</Typography>
+                </Grid>
+              )}
+
+              {!editMode && (
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    Tipo de contrato
+                  </Typography>
+                  <Typography>{data.tipoContrato || '—'}</Typography>
+                </Grid>
+              )}
+
               <Grid size={{ xs: 12 }}>
-                              {!editMode && (
-                                <Grid size={{ xs: 12, sm: 6 }}>
-                                  <Typography variant="caption" color="text.secondary">
-                                    Tasa de interés
-                                  </Typography>
-                                  <Typography>{tasaInteresLabel}</Typography>
-                                </Grid>
-                              )}
-                              {!editMode && (
-                                <Grid size={{ xs: 12, sm: 6 }}>
-                                  <Typography variant="caption" color="text.secondary">
-                                    Frecuencia de pago
-                                  </Typography>
-                                  <Typography>{data.frecuenciaPago || '—'}</Typography>
-                                </Grid>
-                              )}
                 <Typography variant="caption" color="text.secondary">
                   Observaciones
                 </Typography>
@@ -710,7 +822,9 @@ const SolicitudDetallePage: React.FC = () => {
                       value={selectedFrecuencia?.nombre ?? ''}
                       onChange={(e) => {
                         const nombre = e.target.value;
-                        const match = frecuencias.find((f) => String(f.nombre) === String(nombre));
+                        const match = frecuencias.find(
+                          (f) => normalizeText(String(f.nombre)) === normalizeText(String(nombre))
+                        );
                         setSelectedFrecuencia(match ?? null);
                       }}
                     >

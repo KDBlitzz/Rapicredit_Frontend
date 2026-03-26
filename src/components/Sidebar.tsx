@@ -29,6 +29,7 @@ type NavSubItem = {
   href?: string;
   action?: "logout";
   requiredPermisos?: string[];
+  hiddenInFrontend?: boolean;
   hiddenForRoles?: string[]; // roles (en minúsculas) para los que este item no debe mostrarse
 };
 type NavItem = NavSubItem & { submenu?: NavSubItem[] };
@@ -123,9 +124,9 @@ const navItems: NavSection[] = [
     items: [
       { label: "Impresión de Carteras", href: "/reportes/impresion-carteras", requiredPermisos: ["F001"], hiddenForRoles: ["caja"] },
       { label: "Estado de Cuenta", href: "/reportes/estado-cuenta", hiddenForRoles: ["caja"] },
-      { label: "Central de Riesgos", href: "/reportes/central-riesgos", hiddenForRoles: ["caja"] },
-      { label: "Seguro de Vida", href: "/reportes/seguro-vida", hiddenForRoles: ["caja"] },
-      { label: "Pago al SAR", href: "/reportes/pago-sar", hiddenForRoles: ["caja"] },
+      { label: "Central de Riesgos", href: "/reportes/central-riesgos", hiddenForRoles: ["caja"], hiddenInFrontend: true },
+      { label: "Seguro de Vida", href: "/reportes/seguro-vida", hiddenForRoles: ["caja"], hiddenInFrontend: true },
+      { label: "Pago al SAR", href: "/reportes/pago-sar", hiddenForRoles: ["caja"], hiddenInFrontend: true },
     ],
   },
   {
@@ -256,6 +257,7 @@ export default function Sidebar() {
       <Box sx={{ flex: 1, overflow: "auto" }}>
         {sectionsToRender.map((section) => {
           const visibleItems = section.items.filter((item) => {
+            if (item.hiddenInFrontend) return false;
             if (item.hiddenForRoles && item.hiddenForRoles.includes(rolActual)) return false;
             if (!isCaja && !hasPermisos(item.requiredPermisos)) return false;
             return true;
@@ -289,6 +291,7 @@ export default function Sidebar() {
               }
             >
               {section.items.map((item) => {
+                if (item.hiddenInFrontend) return null;
                 if (item.hiddenForRoles && item.hiddenForRoles.includes(rolActual)) {
                   return null;
                 }

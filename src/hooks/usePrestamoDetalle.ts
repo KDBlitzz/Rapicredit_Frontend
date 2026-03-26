@@ -8,6 +8,7 @@ export interface PrestamoDetalle {
   codigoPrestamo: string;
   solicitudId?: string;
   solicitudCodigo?: string;
+  tipoContratoSolicitud?: string;
   clienteId?: string;
   tasaInteresId?: string;
   tasaInteresNombre?: string;
@@ -148,6 +149,14 @@ export function usePrestamoDetalle(id: string, reloadKey: number = 0) {
             getNested(res, ["solicitudId", "codigoSolicitud"]) ??
             getNested(res, ["solicitud", "codigoSolicitud"]) ??
             getNested(res, ["codigoSolicitud"])
+          ) ?? undefined,
+          tipoContratoSolicitud: asString(
+            getNested(res, ["tipoContrato"]) ??
+            getNested(res, ["contratoTipo"]) ??
+            getNested(res, ["solicitudId", "tipoContrato"]) ??
+            getNested(res, ["solicitudId", "contratoTipo"]) ??
+            getNested(res, ["solicitud", "tipoContrato"]) ??
+            getNested(res, ["solicitud", "contratoTipo"])
           ) ?? undefined,
           clienteId,
           tasaInteresId: (() => {

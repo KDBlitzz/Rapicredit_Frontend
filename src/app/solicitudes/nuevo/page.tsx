@@ -27,6 +27,15 @@ import { useClienteDetalle } from '../../../hooks/useClienteDetalle';
 import { useEmpleadoActual } from '../../../hooks/useEmpleadoActual';
 
 type EstadoInicial = 'REGISTRADA';
+type TipoContrato = 'No hay contrato' | 'Contrato con desplazamiento' | 'Contrato sin desplazamiento';
+
+const TIPO_CONTRATO_OPTIONS: TipoContrato[] = [
+  'No hay contrato',
+  'Contrato con desplazamiento',
+  'Contrato sin desplazamiento',
+];
+
+const VIN_REGEX = /^[A-HJ-NPR-Z0-9]{17}$/;
 
 /**
  * Calcula el siguiente código SOL-### usando GET ALL (sin endpoint extra).
@@ -46,8 +55,23 @@ const NuevoSolicitudPage: React.FC = () => {
     finalidadCredito: '',
     fechaSolicitud: hoy,
     observaciones: '',
+    tipoContrato: '' as TipoContrato | '',
+    nombreProducto: '',
+    vehiculoMarca: '',
+    vehiculoModelo: '',
+    vehiculoTipo: '',
+    vehiculoAnio: '',
+    vehiculoMotor: '',
+    vehiculoChasis: '',
+    vehiculoColor: '',
+    vehiculoPlaca: '',
+    vehiculoVin: '',
     fotosNegocio: [] as File[],
   });
+
+  const contratoRequiereDetalle =
+    form.tipoContrato === 'Contrato con desplazamiento' ||
+    form.tipoContrato === 'Contrato sin desplazamiento';
 
   // Cargar opciones de clientes y cobradores
   const { data: clientes, loading: loadingClientes } = useClientes({
@@ -185,7 +209,28 @@ const NuevoSolicitudPage: React.FC = () => {
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error'>('success');
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
+    const { name } = e.target;
+    let { value } = e.target;
+
+    const upperFields = new Set([
+      'vehiculoMarca',
+      'vehiculoModelo',
+      'vehiculoTipo',
+      'vehiculoMotor',
+      'vehiculoChasis',
+      'vehiculoColor',
+      'vehiculoPlaca',
+      'vehiculoVin',
+    ]);
+
+    if (upperFields.has(name)) {
+      value = value.toUpperCase();
+    }
+
+    if (name === 'vehiculoVin') {
+      value = value.replace(/[^A-Z0-9]/g, '').replace(/[IOQ]/g, '').slice(0, 17);
+    }
+
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
@@ -253,6 +298,27 @@ const NuevoSolicitudPage: React.FC = () => {
     if (!(selectedFrecuencia as any)?._id) {
       setSnackbarSeverity('error');
       setSnackbarMsg('Debes seleccionar una frecuencia de pago.');
+      setSnackbarOpen(true);
+      return false;
+    }
+
+    if (!form.tipoContrato) {
+      setSnackbarSeverity('error');
+      setSnackbarMsg('Debes seleccionar el tipo de contrato.');
+      setSnackbarOpen(true);
+      return false;
+    }
+
+    if (contratoRequiereDetalle && !form.nombreProducto.trim()) {
+      setSnackbarSeverity('error');
+      setSnackbarMsg('Debes indicar el nombre del producto para el contrato.');
+      setSnackbarOpen(true);
+      return false;
+    }
+
+    if (contratoRequiereDetalle && form.vehiculoVin.trim() && !VIN_REGEX.test(form.vehiculoVin.trim())) {
+      setSnackbarSeverity('error');
+      setSnackbarMsg('El VIN debe tener 17 caracteres alfanuméricos en mayúscula (sin I, O ni Q).');
       setSnackbarOpen(true);
       return false;
     }
@@ -333,6 +399,39 @@ const NuevoSolicitudPage: React.FC = () => {
 
         fechaSolicitud: form.fechaSolicitud,
         finalidadCredito: form.finalidadCredito || 'Sin especificar',
+
+        tipoContrato: form.tipoContrato,
+        nombreProducto: contratoRequiereDetalle ? form.nombreProducto.trim() : '',
+        datosVehiculo: contratoRequiereDetalle
+          ? {
+              marca: form.vehiculoMarca.trim(),
+              modelo: form.vehiculoModelo.trim(),
+              tipo: form.vehiculoTipo.trim(),
+              anio: form.vehiculoAnio.trim(),
+              motor: form.vehiculoMotor.trim(),
+              chasis: form.vehiculoChasis.trim(),
+              color: form.vehiculoColor.trim(),
+              placa: form.vehiculoPlaca.trim(),
+              vin: form.vehiculoVin.trim(),
+            }
+          : {},
+        contrato: {
+          tipoContrato: form.tipoContrato,
+          nombreProducto: contratoRequiereDetalle ? form.nombreProducto.trim() : '',
+          vehiculo: contratoRequiereDetalle
+            ? {
+                marca: form.vehiculoMarca.trim(),
+                modelo: form.vehiculoModelo.trim(),
+                tipo: form.vehiculoTipo.trim(),
+                anio: form.vehiculoAnio.trim(),
+                motor: form.vehiculoMotor.trim(),
+                chasis: form.vehiculoChasis.trim(),
+                color: form.vehiculoColor.trim(),
+                placa: form.vehiculoPlaca.trim(),
+                vin: form.vehiculoVin.trim(),
+              }
+            : {},
+        },
 
         datosNegocio,
         datosConyuge,
@@ -471,6 +570,192 @@ const NuevoSolicitudPage: React.FC = () => {
                   required
                 />
               </Grid>
+
+              <Grid size={{ xs: 12 }}>
+                <Typography
+                  variant="overline"
+                  sx={{ color: 'primary.main', letterSpacing: '.12em', fontWeight: 700 }}
+                >
+                  Tipo de contrato
+                </Typography>
+              </Grid>
+
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Autocomplete
+                  size="small"
+                  options={TIPO_CONTRATO_OPTIONS}
+                  value={form.tipoContrato || null}
+                  onChange={(_, val) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      tipoContrato: (val ?? '') as TipoContrato | '',
+                      ...(val === 'No hay contrato'
+                        ? {
+                            nombreProducto: '',
+                            vehiculoMarca: '',
+                            vehiculoModelo: '',
+                            vehiculoTipo: '',
+                            vehiculoAnio: '',
+                            vehiculoMotor: '',
+                            vehiculoChasis: '',
+                            vehiculoColor: '',
+                            vehiculoPlaca: '',
+                            vehiculoVin: '',
+                          }
+                        : {}),
+                    }))
+                  }
+                  renderInput={(params) => (
+                    <TextField {...params} label="Tipo de contrato" placeholder="Selecciona tipo" required />
+                  )}
+                />
+              </Grid>
+
+              {contratoRequiereDetalle && (
+                <>
+                  <Grid size={{ xs: 12 }}>
+                    <Typography
+                      variant="overline"
+                      sx={{ color: 'primary.main', letterSpacing: '.12em', fontWeight: 700 }}
+                    >
+                      Producto
+                    </Typography>
+                  </Grid>
+
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      label="Nombre del producto"
+                      name="nombreProducto"
+                      value={form.nombreProducto}
+                      onChange={handleChange}
+                      fullWidth
+                      size="small"
+                      placeholder="Ej: Crédito Personal"
+                      required
+                    />
+                  </Grid>
+
+                  <Grid size={{ xs: 12 }}>
+                    <Typography
+                      variant="overline"
+                      sx={{ color: 'primary.main', letterSpacing: '.12em', fontWeight: 700 }}
+                    >
+                      Vehículo (opcional)
+                    </Typography>
+                  </Grid>
+
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      label="Marca"
+                      name="vehiculoMarca"
+                      value={form.vehiculoMarca}
+                      onChange={handleChange}
+                      fullWidth
+                      size="small"
+                      placeholder="Ej: TOYOTA"
+                    />
+                  </Grid>
+
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      label="Modelo"
+                      name="vehiculoModelo"
+                      value={form.vehiculoModelo}
+                      onChange={handleChange}
+                      fullWidth
+                      size="small"
+                      placeholder="Ej: TUNDRA"
+                    />
+                  </Grid>
+
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      label="Tipo"
+                      name="vehiculoTipo"
+                      value={form.vehiculoTipo}
+                      onChange={handleChange}
+                      fullWidth
+                      size="small"
+                      placeholder="Ej: PICK UP"
+                    />
+                  </Grid>
+
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      label="Año"
+                      name="vehiculoAnio"
+                      value={form.vehiculoAnio}
+                      onChange={handleChange}
+                      fullWidth
+                      size="small"
+                      placeholder="Ej: 2006"
+                      inputProps={{ maxLength: 4 }}
+                    />
+                  </Grid>
+
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      label="Motor"
+                      name="vehiculoMotor"
+                      value={form.vehiculoMotor}
+                      onChange={handleChange}
+                      fullWidth
+                      size="small"
+                      placeholder="Ej: 2UZ-5425227"
+                    />
+                  </Grid>
+
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      label="Chasis"
+                      name="vehiculoChasis"
+                      value={form.vehiculoChasis}
+                      onChange={handleChange}
+                      fullWidth
+                      size="small"
+                      placeholder="Ej: 6091145743"
+                    />
+                  </Grid>
+
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      label="Color"
+                      name="vehiculoColor"
+                      value={form.vehiculoColor}
+                      onChange={handleChange}
+                      fullWidth
+                      size="small"
+                      placeholder="Ej: AZUL"
+                    />
+                  </Grid>
+
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      label="Placa"
+                      name="vehiculoPlaca"
+                      value={form.vehiculoPlaca}
+                      onChange={handleChange}
+                      fullWidth
+                      size="small"
+                      placeholder="Ej: HCX6618"
+                    />
+                  </Grid>
+
+                  <Grid size={{ xs: 12 }}>
+                    <TextField
+                      label="VIN"
+                      name="vehiculoVin"
+                      value={form.vehiculoVin}
+                      onChange={handleChange}
+                      fullWidth
+                      size="small"
+                      placeholder="Ej: 5TBET34156S536488"
+                      helperText={`17 caracteres alfanuméricos en mayúsculas (sin I, O ni Q). ${form.vehiculoVin.length}/17`}
+                      error={Boolean(form.vehiculoVin) && !VIN_REGEX.test(form.vehiculoVin)}
+                    />
+                  </Grid>
+                </>
+              )}
 
               {/* Fecha y comentario */}
               <Grid size={{ xs: 12, sm: 4 }}>
