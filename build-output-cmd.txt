@@ -1,0 +1,78 @@
+
+> rapicredit-portal@0.1.0 build
+> next build
+
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+   ▲ Next.js 16.0.7 (Turbopack)
+   - Environments: .env
+
+   Creating an optimized production build ...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ✓ Compiled successfully in 23.3s
+   Running TypeScript ...
+   Collecting page data using 7 workers ...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+   Generating static pages using 7 workers (0/37) ...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+   Generating static pages using 7 workers (9/37) 
+   Generating static pages using 7 workers (18/37) 
+   Generating static pages using 7 workers (27/37) 
+ ✓ Generating static pages using 7 workers (37/37) in 2.6s
+   Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ○ /carteras
+├ ○ /clientes
+├ ƒ /clientes/[id]
+├ ○ /clientes/nuevo
+├ ○ /cobradores
+├ ƒ /cobradores/[id]
+├ ○ /cobradores/nuevo
+├ ○ /configuracion
+├ ○ /contabilidad
+├ ○ /contabilidad/cierre-mensual
+├ ○ /contabilidad/indicadores-financieros
+├ ○ /cuadres
+├ ○ /cuentas-por-cobrar
+├ ○ /dashboard
+├ ○ /empleados
+├ ƒ /empleados/[id]
+├ ○ /empleados/estadisticas
+├ ○ /empleados/nuevo
+├ ○ /login
+├ ○ /pagos
+├ ƒ /pagos/[ref]/comprobante
+├ ○ /pagos/comprobante
+├ ○ /pagos/nuevo
+├ ○ /prestamos
+├ ƒ /prestamos/[id]
+├ ƒ /prestamos/[id]/documentos
+├ ○ /prestamos/nuevo
+├ ○ /reportes
+├ ○ /reportes/central-riesgos
+├ ○ /reportes/estado-cuenta
+├ ○ /reportes/impresion-carteras
+├ ○ /reportes/pago-sar
+├ ○ /reportes/seguro-vida
+├ ○ /reportes/trazabilidad-decisiones
+├ ○ /solicitudes
+├ ƒ /solicitudes/[id]
+├ ○ /solicitudes/aprobacion
+├ ○ /solicitudes/nuevo
+├ ○ /solicitudes/rechazadas
+└ ○ /tasas
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
