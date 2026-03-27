@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   Box,
   Grid,
@@ -38,8 +38,61 @@ const asNumber = (v: unknown): number | undefined => {
   }
   return undefined;
 };
+const asString = (v: unknown): string | undefined => {
+  if (typeof v === "string") return v;
+  if (v == null) return undefined;
+  return String(v);
+};
+
+type FrecuenciaEnum = "DIARIA" | "SEMANAL" | "QUINCENAL" | "MENSUAL";
+
+const mapFrecuenciaApiToEnum = (raw?: string | null): FrecuenciaEnum | "" => {
+  const normalized = String(raw || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .trim();
+
+  if (normalized === "DIARIO" || normalized === "DIARIA" || normalized === "DIAS") return "DIARIA";
+  if (normalized === "SEMANAL" || normalized === "SEMANAS") return "SEMANAL";
+  if (normalized === "QUINCENAL" || normalized === "QUINCENA" || normalized === "QUINCENAS") return "QUINCENAL";
+  if (normalized === "MENSUAL" || normalized === "MES" || normalized === "MESES") return "MENSUAL";
+  return "";
+};
+
+const mapFrecuenciaNombreToEnum = (nombre?: string | null): FrecuenciaEnum | "" => {
+  const normalized = String(nombre || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .trim();
+
+  if (normalized === "DIAS" || normalized === "DIA" || normalized === "DIARIA") return "DIARIA";
+  if (normalized === "SEMANAS" || normalized === "SEMANAL") return "SEMANAL";
+  if (normalized === "QUINCENAS" || normalized === "QUINCENA" || normalized === "QUINCENAL") return "QUINCENAL";
+  if (normalized === "MESES" || normalized === "MES" || normalized === "MENSUAL") return "MENSUAL";
+  return "";
+};
+
+const FRECUENCIA_OPTIONS: Array<{ value: FrecuenciaEnum; label: string }> = [
+  { value: "DIARIA", label: "Días" },
+  { value: "SEMANAL", label: "Semanas" },
+  { value: "QUINCENAL", label: "Quincenas" },
+  { value: "MENSUAL", label: "Meses" },
+];
+
+type RehacerPrestamoForm = {
+  tasaInteresId: string;
+  frecuenciaPago: FrecuenciaEnum | "";
+  capitalSolicitado: string;
+  plazoCuotas: string;
+  fechaDesembolso: string;
+  observaciones: string;
+  motivo: string;
+};
 
 const PrestamoDetallePage: React.FC = () => {
+  const router = useRouter();
   const params = useParams();
   // En esta ruta el "id" realmente es el código del préstamo (ej: P-2026-001)
   const codigoPrestamo = params?.id as string;
@@ -60,6 +113,19 @@ const PrestamoDetallePage: React.FC = () => {
 
   const [editMode, setEditMode] = useState<boolean>(initialEditMode);
   const [saving, setSaving] = useState(false);
+  const [rehacerMode, setRehacerMode] = useState(false);
+  const [rehaciendo, setRehaciendo] = useState(false);
+  const [validandoPagos, setValidandoPagos] = useState(false);
+  const [tienePagosAplicados, setTienePagosAplicados] = useState(false);
+  const [rehacerForm, setRehacerForm] = useState<RehacerPrestamoForm>({
+    tasaInteresId: "",
+    frecuenciaPago: "",
+    capitalSolicitado: "",
+    plazoCuotas: "",
+    fechaDesembolso: "",
+    observaciones: "",
+    motivo: "",
+  });
 
   const { data: tasas } = useTasasInteres();
   const { data: frecuencias } = useFrecuenciasPago();
@@ -70,6 +136,24 @@ const PrestamoDetallePage: React.FC = () => {
   const [toastOpen, setToastOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [toastSeverity, setToastSeverity] = useState<"success" | "error" | "info" | "warning">("success");
+
+  const frecuenciaOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const mapped = frecuencias
+      .map((f) => {
+        const value = mapFrecuenciaNombreToEnum(String(f.nombre));
+        if (!value) return null;
+        return { value, label: String(f.nombre) };
+      })
+      .filter((x): x is { value: FrecuenciaEnum; label: string } => Boolean(x))
+      .filter((item) => {
+        if (seen.has(item.value)) return false;
+        seen.add(item.value);
+        return true;
+      });
+
+    return mapped.length > 0 ? mapped : FRECUENCIA_OPTIONS;
+  }, [frecuencias]);
 
   const amortizacionRows = useMemo(() => {
     const raw = Array.isArray(data?.amortizacionPreview) ? data.amortizacionPreview : [];
@@ -182,10 +266,245 @@ const PrestamoDetallePage: React.FC = () => {
     }
   }, [data, tasas, frecuencias]);
 
+  useEffect(() => {
+    if (!data) return;
+    setRehacerForm({
+      tasaInteresId: data.tasaInteresId || "",
+      frecuenciaPago: mapFrecuenciaApiToEnum(data.frecuenciaPago),
+      capitalSolicitado: data.capitalSolicitado != null ? String(data.capitalSolicitado) : "",
+      plazoCuotas: data.plazoCuotas != null ? String(data.plazoCuotas) : "",
+      fechaDesembolso: data.fechaDesembolso ? String(data.fechaDesembolso).slice(0, 10) : "",
+      observaciones: data.observaciones || "",
+      motivo: "",
+    });
+  }, [data]);
+
+  useEffect(() => {
+    if (!data?.codigoPrestamo) {
+      setValidandoPagos(false);
+      setTienePagosAplicados(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const getIdFromUnknown = (value: unknown): string => {
+      if (typeof value === "string") return value;
+      if (!isRecord(value)) return "";
+      return asString(value._id ?? value.id) ?? "";
+    };
+
+    const getPagoPrestamoId = (raw: UnknownRecord): string => {
+      return (
+        getIdFromUnknown(raw.prestamoId) ||
+        getIdFromUnknown(raw.financiamientoId) ||
+        getIdFromUnknown(raw.financiamiento)
+      );
+    };
+
+    const getPagoCodigoPrestamo = (raw: UnknownRecord): string => {
+      const candidato =
+        raw.codigoPrestamo ??
+        raw.codigoFinanciamiento ??
+        (isRecord(raw.prestamoId) ? raw.prestamoId.codigoPrestamo : undefined) ??
+        (isRecord(raw.financiamientoId) ? raw.financiamientoId.codigoPrestamo : undefined) ??
+        (isRecord(raw.financiamiento) ? raw.financiamiento.codigoPrestamo : undefined);
+      return asString(candidato) ?? "";
+    };
+
+    const normalize = (value: string) => value.trim().toLowerCase();
+
+    const validarPagosAplicados = async () => {
+      setValidandoPagos(true);
+
+      try {
+        const response = await apiFetch<unknown>("/pagos", { silent: true });
+
+        const root = isRecord(response) ? response : null;
+        const pagosRaw = Array.isArray(response)
+          ? response
+          : Array.isArray(root?.pagos)
+            ? (root?.pagos as unknown[])
+            : Array.isArray(root?.data)
+              ? (root?.data as unknown[])
+              : [];
+
+        const idObjetivo = normalize(String(data.id || ""));
+        const codigoObjetivo = normalize(String(data.codigoPrestamo || ""));
+
+        const found = pagosRaw.some((pago) => {
+          if (!isRecord(pago)) return false;
+
+          const idPago = normalize(getPagoPrestamoId(pago));
+          const codigoPago = normalize(getPagoCodigoPrestamo(pago));
+          const pertenece = (idObjetivo && idPago === idObjetivo) || (codigoObjetivo && codigoPago === codigoObjetivo);
+          if (!pertenece) return false;
+
+          const estado = String(pago.estado ?? pago.estadoPago ?? "").toUpperCase();
+          const monto = asNumber(pago.montoPago ?? pago.monto ?? pago.montoAbono) ?? 0;
+          const totalAplicado =
+            (asNumber(pago.aplicadoACapital) ?? 0) +
+            (asNumber(pago.aplicadoAInteres) ?? 0) +
+            (asNumber(pago.aplicadoAMora) ?? 0);
+
+          return estado === "APLICADO" && (monto > 0 || totalAplicado > 0);
+        });
+
+        if (!cancelled) {
+          setTienePagosAplicados(found);
+          if (found) setRehacerMode(false);
+        }
+      } catch {
+        // Fallback: si no se puede listar pagos, usamos totalPagado para no romper la vista.
+        const fallback = Number(data.totalPagado ?? 0) > 0;
+        if (!cancelled) {
+          setTienePagosAplicados(fallback);
+          if (fallback) setRehacerMode(false);
+        }
+      } finally {
+        if (!cancelled) {
+          setValidandoPagos(false);
+        }
+      }
+    };
+
+    validarPagosAplicados();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [data?.id, data?.codigoPrestamo, data?.totalPagado]);
+
   const onCancelEdit = () => {
     if (saving) return;
     setEditMode(false);
     setReloadKey((k) => k + 1);
+  };
+
+  const onCancelRehacer = () => {
+    if (rehaciendo) return;
+    setRehacerMode(false);
+    if (!data) return;
+    setRehacerForm({
+      tasaInteresId: data.tasaInteresId || "",
+      frecuenciaPago: mapFrecuenciaApiToEnum(data.frecuenciaPago),
+      capitalSolicitado: data.capitalSolicitado != null ? String(data.capitalSolicitado) : "",
+      plazoCuotas: data.plazoCuotas != null ? String(data.plazoCuotas) : "",
+      fechaDesembolso: data.fechaDesembolso ? String(data.fechaDesembolso).slice(0, 10) : "",
+      observaciones: data.observaciones || "",
+      motivo: "",
+    });
+  };
+
+  const onRehacerPrestamo = async () => {
+    if (!data?.codigoPrestamo) return;
+
+    if (!canEditarPrestamo) {
+      setToastSeverity("error");
+      setToastMessage("No tienes permisos para rehacer préstamos.");
+      setToastOpen(true);
+      return;
+    }
+
+    if (validandoPagos) {
+      setToastSeverity("warning");
+      setToastMessage("Aún se está validando si el préstamo tiene pagos aplicados.");
+      setToastOpen(true);
+      return;
+    }
+
+    if (tienePagosAplicados) {
+      setToastSeverity("error");
+      setToastMessage("No se puede rehacer un préstamo que ya tiene pagos aplicados.");
+      setToastOpen(true);
+      return;
+    }
+
+    const capital = Number(rehacerForm.capitalSolicitado);
+    const plazo = Number(rehacerForm.plazoCuotas);
+
+    if (!Number.isFinite(capital) || capital <= 0) {
+      setToastSeverity("error");
+      setToastMessage("El capital solicitado debe ser mayor que 0.");
+      setToastOpen(true);
+      return;
+    }
+
+    if (!Number.isFinite(plazo) || plazo <= 0) {
+      setToastSeverity("error");
+      setToastMessage("El plazo en cuotas debe ser mayor que 0.");
+      setToastOpen(true);
+      return;
+    }
+
+    if (!rehacerForm.tasaInteresId) {
+      setToastSeverity("error");
+      setToastMessage("Debes seleccionar una tasa de interés.");
+      setToastOpen(true);
+      return;
+    }
+
+    if (!rehacerForm.frecuenciaPago) {
+      setToastSeverity("error");
+      setToastMessage("Debes seleccionar una frecuencia de pago.");
+      setToastOpen(true);
+      return;
+    }
+
+    if (!rehacerForm.fechaDesembolso) {
+      setToastSeverity("error");
+      setToastMessage("Debes seleccionar la fecha de desembolso.");
+      setToastOpen(true);
+      return;
+    }
+
+    setRehaciendo(true);
+    try {
+      const payload = {
+        prestamo: {
+          tasaInteresId: rehacerForm.tasaInteresId,
+          capitalSolicitado: capital,
+          plazoCuotas: plazo,
+          fechaDesembolso: rehacerForm.fechaDesembolso,
+          frecuenciaPago: rehacerForm.frecuenciaPago,
+          observaciones: rehacerForm.observaciones.trim(),
+        },
+        motivo: rehacerForm.motivo.trim(),
+      };
+
+      const response = await apiFetch<unknown>(
+        `/prestamos/${encodeURIComponent(data.codigoPrestamo)}/rehacer`,
+        {
+          method: "POST",
+          body: JSON.stringify(payload),
+        }
+      );
+
+      const root = isRecord(response) ? response : null;
+      const nuevo = isRecord(root?.prestamoNuevo) ? root?.prestamoNuevo : null;
+      const nuevoCodigo = asString(nuevo?.codigoPrestamo);
+      const msg = asString(root?.message) || "Préstamo rehecho correctamente.";
+
+      setToastSeverity("success");
+      setToastMessage(msg + (nuevoCodigo ? ` Nuevo código: ${nuevoCodigo}.` : ""));
+      setToastOpen(true);
+      setRehacerMode(false);
+
+      if (nuevoCodigo) {
+        setTimeout(() => {
+          router.push(`/prestamos/${encodeURIComponent(nuevoCodigo)}`);
+        }, 450);
+      } else {
+        setReloadKey((k) => k + 1);
+      }
+    } catch (e: unknown) {
+      setToastSeverity("error");
+      const msg = e instanceof Error ? e.message : "No se pudo rehacer el préstamo.";
+      setToastMessage(msg);
+      setToastOpen(true);
+    } finally {
+      setRehaciendo(false);
+    }
   };
 
   const onSave = async () => {
@@ -301,7 +620,7 @@ const PrestamoDetallePage: React.FC = () => {
         </Box>
 
         <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
-          {isGerente && (data.estadoPrestamo || "").toUpperCase() === "VIGENTE" && (
+          {isGerente && (
             <Button
               size="small"
               variant="outlined"
@@ -311,6 +630,15 @@ const PrestamoDetallePage: React.FC = () => {
               Contrato y pagaré
             </Button>
           )}
+          {!editMode && canEditarPrestamo && (validandoPagos ? (
+            <Button size="small" variant="outlined" disabled>
+              Validando pagos...
+            </Button>
+          ) : (!tienePagosAplicados && !rehacerMode ? (
+            <Button size="small" variant="contained" color="warning" onClick={() => setRehacerMode(true)}>
+              Rehacer Préstamo
+            </Button>
+          ) : null))}
           {editMode && canEditarPrestamo ? (
             <>
               <Button size="small" variant="contained" onClick={onSave} disabled={saving}>
@@ -328,11 +656,6 @@ const PrestamoDetallePage: React.FC = () => {
             ) : null
           )}
 
-          {data.cliente && (
-            <Button size="small" variant="outlined" component={Link} href={`/clientes/${data.cliente.id}`}>
-              Ver cliente
-            </Button>
-          )}
           <Button size="small" variant="outlined" component={Link} href="/prestamos">
             Volver a lista
           </Button>
@@ -469,6 +792,136 @@ const PrestamoDetallePage: React.FC = () => {
         </Grid>
       </Grid>
 
+      {canEditarPrestamo && rehacerMode && !tienePagosAplicados && (
+        <Paper sx={{ p: 2 }}>
+          <Typography variant="subtitle1" sx={{ mb: 2 }}>
+            Rehacer Préstamo
+          </Typography>
+
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Este proceso crea un nuevo préstamo con los datos actualizados y archiva el préstamo actual.
+          </Alert>
+
+          <Grid container spacing={2}>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <TextField
+                fullWidth
+                size="small"
+                select
+                label="Tasa de interés"
+                value={rehacerForm.tasaInteresId}
+                onChange={(e) => setRehacerForm((prev) => ({ ...prev, tasaInteresId: String(e.target.value || "") }))}
+              >
+                <MenuItem value="" disabled>
+                  <em>Selecciona una tasa</em>
+                </MenuItem>
+                {tasas.map((t) => (
+                  <MenuItem key={String(t._id)} value={String(t._id)}>
+                    {t.nombre || "Tasa"}
+                    {t.porcentajeInteres != null ? ` (${t.porcentajeInteres}%)` : ""}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+
+            <Grid size={{ xs: 12, md: 6 }}>
+              <TextField
+                fullWidth
+                size="small"
+                select
+                label="Frecuencia de pago"
+                value={rehacerForm.frecuenciaPago}
+                onChange={(e) => setRehacerForm((prev) => ({ ...prev, frecuenciaPago: e.target.value as FrecuenciaEnum | "" }))}
+              >
+                <MenuItem value="" disabled>
+                  <em>Selecciona una frecuencia</em>
+                </MenuItem>
+                {frecuenciaOptions.map((f) => (
+                  <MenuItem key={f.value} value={f.value}>
+                    {f.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+
+            <Grid size={{ xs: 12, md: 4 }}>
+              <TextField
+                fullWidth
+                size="small"
+                type="number"
+                label="Capital solicitado"
+                value={rehacerForm.capitalSolicitado}
+                onChange={(e) => setRehacerForm((prev) => ({ ...prev, capitalSolicitado: e.target.value }))}
+                inputProps={{ min: 0, step: "0.01" }}
+              />
+            </Grid>
+
+            <Grid size={{ xs: 12, md: 4 }}>
+              <TextField
+                fullWidth
+                size="small"
+                type="number"
+                label="Plazo (cuotas)"
+                value={rehacerForm.plazoCuotas}
+                onChange={(e) => setRehacerForm((prev) => ({ ...prev, plazoCuotas: e.target.value }))}
+                inputProps={{ min: 1, step: "1" }}
+              />
+            </Grid>
+
+            <Grid size={{ xs: 12, md: 4 }}>
+              <TextField
+                fullWidth
+                size="small"
+                type="date"
+                label="Fecha de desembolso"
+                value={rehacerForm.fechaDesembolso}
+                onChange={(e) => setRehacerForm((prev) => ({ ...prev, fechaDesembolso: e.target.value }))}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+
+            <Grid size={{ xs: 12 }}>
+              <TextField
+                fullWidth
+                size="small"
+                label="Observaciones"
+                value={rehacerForm.observaciones}
+                onChange={(e) => setRehacerForm((prev) => ({ ...prev, observaciones: e.target.value }))}
+                multiline
+                minRows={2}
+              />
+            </Grid>
+
+            <Grid size={{ xs: 12 }}>
+              <TextField
+                fullWidth
+                size="small"
+                label="Motivo de rehacer"
+                value={rehacerForm.motivo}
+                onChange={(e) => setRehacerForm((prev) => ({ ...prev, motivo: e.target.value }))}
+                multiline
+                minRows={2}
+              />
+            </Grid>
+          </Grid>
+
+          <Box sx={{ display: "flex", gap: 1, justifyContent: "flex-end", mt: 2, flexWrap: "wrap" }}>
+            <Button variant="outlined" onClick={onCancelRehacer} disabled={rehaciendo}>
+              Cancelar
+            </Button>
+            <Button variant="contained" color="warning" onClick={onRehacerPrestamo} disabled={rehaciendo || validandoPagos}>
+              {rehaciendo ? "Rehaciendo..." : "Confirmar Rehacer Préstamo"}
+            </Button>
+          </Box>
+        </Paper>
+      )}
+
+      {canEditarPrestamo && !validandoPagos && tienePagosAplicados && (
+        <Alert severity="info">
+          Este préstamo ya tiene pagos aplicados, por eso no se habilita la opción de Rehacer Préstamo.
+        </Alert>
+      )}
+
       <Paper sx={{ p: 2 }}>
         <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
           Tabla de amortización
@@ -489,7 +942,7 @@ const PrestamoDetallePage: React.FC = () => {
             </TableHead>
             <TableBody>
               {amortizacionRows.map((row) => {
-                const getEstadoColor = (estado: string) => {
+                const getEstadoColor = (estado: string): "default" | "success" | "warning" | "error" | "info" => {
                   switch (estado) {
                     case "PAGADA":
                       return "success";
@@ -514,7 +967,7 @@ const PrestamoDetallePage: React.FC = () => {
                       <Chip
                         size="small"
                         label={row.estadoCuota}
-                        color={getEstadoColor(row.estadoCuota) as any}
+                        color={getEstadoColor(row.estadoCuota)}
                         variant="outlined"
                       />
                     </TableCell>

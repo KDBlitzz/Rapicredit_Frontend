@@ -7,6 +7,8 @@ export interface PrestamoDetalle {
   id: string;
   codigoPrestamo: string;
   solicitudId?: string;
+  solicitudCodigo?: string;
+  tipoContratoSolicitud?: string;
   clienteId?: string;
   tasaInteresId?: string;
   tasaInteresNombre?: string;
@@ -93,7 +95,7 @@ export function usePrestamoDetalle(id: string, reloadKey: number = 0) {
         if (cancelled || !res) return;
 
         const clienteRaw = getNested(res, ["clienteId"]) ?? getNested(res, ["cliente"]) ?? null;
-        const cliente =
+        let cliente =
           clienteRaw && (getNested(clienteRaw, ["_id"]) || getNested(clienteRaw, ["id"]) || getNested(clienteRaw, ["codigoCliente"]))
             ? {
                 id: String(getNested(clienteRaw, ["_id"]) ?? getNested(clienteRaw, ["id"]) ?? ""),
@@ -113,10 +115,49 @@ export function usePrestamoDetalle(id: string, reloadKey: number = 0) {
           ? cliente.id
           : asString(getNested(res, ["clienteId", "_id"]) ?? getNested(res, ["clienteId"])) ?? undefined;
 
+        // Fallback: cuando el prestamo viene con clienteId string y sin objeto poblado,
+        // cargamos el cliente para evitar mostrar "—" en pantallas que dependen de nombre.
+        if (!cliente && clienteId) {
+          try {
+            const clienteRes = await apiFetch<unknown>(`/clientes/id/${encodeURIComponent(clienteId)}`, { silent: true });
+            const nombreCompleto =
+              asString(getNested(clienteRes, ["nombreCompleto"])) ||
+              [asString(getNested(clienteRes, ["nombre"])), asString(getNested(clienteRes, ["apellido"]))]
+                .filter(Boolean)
+                .join(" ") ||
+              "Cliente";
+
+            cliente = {
+              id: String(getNested(clienteRes, ["_id"]) ?? getNested(clienteRes, ["id"]) ?? clienteId),
+              nombreCompleto,
+              identidadCliente:
+                asString(getNested(clienteRes, ["identidadCliente"])) ||
+                asString(getNested(clienteRes, ["identidad"])) ||
+                undefined,
+              codigoCliente: asString(getNested(clienteRes, ["codigoCliente"])) ?? undefined,
+            };
+          } catch {
+            // Si falla el enrich, mantenemos el flujo con los datos base del prestamo.
+          }
+        }
+
         const detalle: PrestamoDetalle = {
           id: String(getNested(res, ["_id"]) ?? getNested(res, ["id"]) ?? safeId),
           codigoPrestamo: String(getNested(res, ["codigoPrestamo"]) ?? ""),
           solicitudId: asString(getNested(res, ["solicitudId", "_id"]) ?? getNested(res, ["solicitudId"])) ?? undefined,
+          solicitudCodigo: asString(
+            getNested(res, ["solicitudId", "codigoSolicitud"]) ??
+            getNested(res, ["solicitud", "codigoSolicitud"]) ??
+            getNested(res, ["codigoSolicitud"])
+          ) ?? undefined,
+          tipoContratoSolicitud: asString(
+            getNested(res, ["tipoContrato"]) ??
+            getNested(res, ["contratoTipo"]) ??
+            getNested(res, ["solicitudId", "tipoContrato"]) ??
+            getNested(res, ["solicitudId", "contratoTipo"]) ??
+            getNested(res, ["solicitud", "tipoContrato"]) ??
+            getNested(res, ["solicitud", "contratoTipo"])
+          ) ?? undefined,
           clienteId,
           tasaInteresId: (() => {
             const raw = getNested(res, ["tasaInteresId"]);
