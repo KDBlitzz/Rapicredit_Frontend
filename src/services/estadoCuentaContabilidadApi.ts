@@ -1,7 +1,6 @@
 'use client';
 
 import { ApiError, apiFetch } from '../lib/api';
-import { parseDateInput } from '../lib/dateRange';
 
 type UnknownRecord = Record<string, unknown>;
 const isRecord = (v: unknown): v is UnknownRecord => typeof v === 'object' && v !== null;
@@ -16,6 +15,36 @@ const asNumber = (v: unknown): number | null => {
 };
 
 const asNonEmptyString = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v : null);
+
+const MONTHS_ES = [
+  'ENE',
+  'FEB',
+  'MAR',
+  'ABR',
+  'MAY',
+  'JUN',
+  'JUL',
+  'AGO',
+  'SEP',
+  'OCT',
+  'NOV',
+  'DIC',
+];
+
+function mesLabelFromPeriodo(periodo: UnknownRecord): string | null {
+  const anio = asNumber(periodo['anio']);
+  const mes = asNumber(periodo['mes']);
+  const desde = asNonEmptyString(periodo['desde']);
+  const hasta = asNonEmptyString(periodo['hasta']);
+
+  if (anio != null && mes != null && mes >= 1 && mes <= 12) {
+    const mLabel = MONTHS_ES[mes - 1];
+    return `${mLabel} ${anio}`;
+  }
+
+  if (desde && hasta) return `${desde} a ${hasta}`;
+  return null;
+}
 
 export type EstadoCuentaContabilidadRow = {
   mes: string;
@@ -37,12 +66,11 @@ export type EstadoCuentaContabilidadData = {
   fechaInicio: string; // YYYY-MM-DD
   fechaFin: string; // YYYY-MM-DD
   rows: EstadoCuentaContabilidadRow[];
-  source?: 'api' | 'mock';
 };
 
 export type GetEstadoCuentaContabilidadParams = {
-  fechaInicio: string; // YYYY-MM-DD
-  fechaFin: string; // YYYY-MM-DD
+  anio: number;
+  mes: number; // 1-12
 };
 
 function normalizeRow(raw: unknown): EstadoCuentaContabilidadRow | null {
@@ -60,7 +88,13 @@ function normalizeRow(raw: unknown): EstadoCuentaContabilidadRow | null {
   const recuperacionTotal = asNumber(raw['recuperacionTotal'] ?? raw['RECUPERACION_TOTAL'] ?? raw['recuperacion_total']);
   const totalCartera = asNumber(raw['totalCartera'] ?? raw['TOTAL_CARTERA'] ?? raw['total_cartera']);
 
-  const cantidadPrestamos = asNumber(raw['cantidadPrestamos'] ?? raw['prestamos'] ?? raw['PRESTAMOS'] ?? raw['#PRESTAMOS']);
+  const cantidadPrestamos = asNumber(
+    raw['cantidadPrestamos'] ??
+      raw['numeroPrestamos'] ??
+      raw['prestamos'] ??
+      raw['PRESTAMOS'] ??
+      raw['#PRESTAMOS']
+  );
   const nuevos = asNumber(raw['nuevos'] ?? raw['NUEVOS']);
   const recurrentes = asNumber(raw['recurrentes'] ?? raw['RECURRENTES']);
 
@@ -100,16 +134,30 @@ function normalizeResponse(raw: unknown, params: GetEstadoCuentaContabilidadPara
   }
 
   if (isRecord(raw)) {
+    // Nuevo shape backend: { periodo: {...}, resumen: {...}, detalle: {...} }
+    const periodoRaw = isRecord(raw['periodo']) ? (raw['periodo'] as UnknownRecord) : null;
+    const resumenRaw = isRecord(raw['resumen']) ? (raw['resumen'] as UnknownRecord) : null;
+    if (periodoRaw && resumenRaw) {
+      const mesLabel = mesLabelFromPeriodo(periodoRaw) ?? '—';
+      const row = normalizeRow({ mes: mesLabel, ...resumenRaw });
+      if (row) {
+        return {
+          fechaInicio: asNonEmptyString(periodoRaw['desde']) ?? `${params.anio}-${String(params.mes).padStart(2, '0')}-01`,
+          fechaFin: asNonEmptyString(periodoRaw['hasta']) ?? `${params.anio}-${String(params.mes).padStart(2, '0')}-01`,
+          rows: [row],
+        };
+      }
+    }
+
     const rowsRaw = raw['rows'] ?? raw['detalle'] ?? raw['data'] ?? raw['resultados'];
     const rowsArr = Array.isArray(rowsRaw) ? rowsRaw : Array.isArray(raw['rows']) ? (raw['rows'] as unknown[]) : null;
 
     if (rowsArr) {
       const rows = rowsArr.map(normalizeRow).filter((x): x is EstadoCuentaContabilidadRow => x !== null);
       return {
-        fechaInicio: params.fechaInicio,
-        fechaFin: params.fechaFin,
+        fechaInicio: `${params.anio}-${String(params.mes).padStart(2, '0')}-01`,
+        fechaFin: `${params.anio}-${String(params.mes).padStart(2, '0')}-01`,
         rows,
-        source: 'api',
       };
     }
   }
@@ -117,90 +165,20 @@ function normalizeResponse(raw: unknown, params: GetEstadoCuentaContabilidadPara
   if (Array.isArray(raw)) {
     const rows = raw.map(normalizeRow).filter((x): x is EstadoCuentaContabilidadRow => x !== null);
     return {
-      fechaInicio: params.fechaInicio,
-      fechaFin: params.fechaFin,
+      fechaInicio: `${params.anio}-${String(params.mes).padStart(2, '0')}-01`,
+      fechaFin: `${params.anio}-${String(params.mes).padStart(2, '0')}-01`,
       rows,
-      source: 'api',
     };
   }
 
   return null;
 }
 
-function monthKey(d: Date) {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  return `${yyyy}-${mm}`;
-}
-
-function monthLabelEs(d: Date) {
-  // Ej: "mar 2026"
-  return d
-    .toLocaleDateString('es-HN', { year: 'numeric', month: 'short' })
-    .replace('.', '')
-    .toUpperCase();
-}
-
-function buildMock(params: GetEstadoCuentaContabilidadParams): EstadoCuentaContabilidadData {
-  const from = parseDateInput(params.fechaInicio);
-  const to = parseDateInput(params.fechaFin);
-
-  const fromMonth = new Date(from.getFullYear(), from.getMonth(), 1);
-  const toMonth = new Date(to.getFullYear(), to.getMonth(), 1);
-
-  const rows: EstadoCuentaContabilidadRow[] = [];
-  const cursor = new Date(fromMonth);
-
-  while (cursor.getTime() <= toMonth.getTime()) {
-    const k = cursor.getFullYear() * 100 + (cursor.getMonth() + 1);
-    const ingresos = 250_000 + (k % 7) * 18_500;
-    const gastos = 110_000 + (k % 5) * 9_200;
-    const utilidad = ingresos - gastos;
-
-    const prestamos = 120 + (k % 9) * 6;
-    const nuevos = 40 + (k % 4) * 3;
-    const recurrentes = prestamos - nuevos;
-
-    const recuperacion = ingresos;
-    const cartera = 3_800_000 + (k % 11) * 120_000;
-
-    const reservaMora = ingresos * 0.03;
-    const reservaLab = ingresos * 0.01;
-
-    const tasa = 8.5 + (k % 6) * 0.4; // porcentaje mensual (ejemplo)
-    const pctUtilidad = ingresos > 0 ? (utilidad / ingresos) * 100 : 0;
-
-    rows.push({
-      mes: `${monthLabelEs(cursor)} (${monthKey(cursor)})`,
-      ingresosTotales: ingresos,
-      gastosTotales: gastos,
-      utilidadNeta: utilidad,
-      recuperacionTotal: recuperacion,
-      totalCartera: cartera,
-      cantidadPrestamos: prestamos,
-      nuevos,
-      recurrentes,
-      reservaMora,
-      reservaLab,
-      tasaInteresPromedioMensual: tasa,
-      porcentajeUtilidad: pctUtilidad,
-    });
-
-    cursor.setMonth(cursor.getMonth() + 1);
-  }
-
-  return {
-    fechaInicio: params.fechaInicio,
-    fechaFin: params.fechaFin,
-    rows,
-    source: 'mock',
-  };
-}
 
 function buildQuery(params: GetEstadoCuentaContabilidadParams) {
   const qs = new URLSearchParams();
-  qs.set('fechaInicio', params.fechaInicio);
-  qs.set('fechaFin', params.fechaFin);
+  qs.set('anio', String(params.anio));
+  qs.set('mes', String(params.mes));
   return qs.toString();
 }
 
@@ -208,15 +186,13 @@ export const estadoCuentaContabilidadApi = {
   async get(params: GetEstadoCuentaContabilidadParams): Promise<EstadoCuentaContabilidadData> {
     const base = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || '';
     if (!base) {
-      return buildMock(params);
+      throw new Error('Falta configurar NEXT_PUBLIC_API_BASE_URL (o NEXT_PUBLIC_API_URL) para consultar el estado de cuenta.');
     }
 
     const query = buildQuery(params);
 
-    // Endpoint sugerido:
-    // GET {BASE}/api/contabilidad/estado-cuenta?fechaInicio=YYYY-MM-DD&fechaFin=YYYY-MM-DD
     let res: unknown;
-    const primaryPath = `/api/contabilidad/estado-cuenta?${query}`;
+    const primaryPath = `/estado-financiera?${query}`;
 
     try {
       res = await apiFetch<unknown>(primaryPath, { silent: true });
@@ -224,20 +200,8 @@ export const estadoCuentaContabilidadApi = {
       const is404 = err instanceof ApiError && err.status === 404;
       if (!is404) throw err;
 
-      // Fallback sin prefijo /api en base
-      const baseNoSlash = base.replace(/\/+$/, '');
-      const baseNoApiSuffix = baseNoSlash.replace(/\/api$/i, '');
-      const absolute = `${baseNoApiSuffix}/contabilidad/estado-cuenta?${query}`;
 
-      try {
-        res = await apiFetch<unknown>(absolute, { silent: true });
-      } catch (fallbackErr: unknown) {
-        const fallbackIs404 = fallbackErr instanceof ApiError && fallbackErr.status === 404;
-        if (!fallbackIs404) throw fallbackErr;
-
-        // Si backend aún no existe, devolvemos mock para que la pantalla no se caiga.
-        return buildMock(params);
-      }
+      throw new Error('Endpoint no encontrado (404): /estado-financiera. Verifica tu backend.');
     }
 
     const normalized = normalizeResponse(res, params);

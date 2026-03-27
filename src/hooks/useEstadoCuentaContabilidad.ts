@@ -12,8 +12,8 @@ export type UseEstadoCuentaContabilidadOptions = {
 };
 
 export function useEstadoCuentaContabilidad(
-  fechaInicio?: string | null,
-  fechaFin?: string | null,
+  anio?: number | null,
+  mes?: number | null,
   options: UseEstadoCuentaContabilidadOptions = {}
 ) {
   const enabled = options.enabled ?? true;
@@ -24,7 +24,7 @@ export function useEstadoCuentaContabilidad(
   const [generatedAt, setGeneratedAt] = useState<Date | null>(null);
 
   useEffect(() => {
-    if (!enabled || !fechaInicio || !fechaFin) {
+    if (!enabled || !anio || !mes) {
       setData(null);
       setLoading(false);
       setError(null);
@@ -39,7 +39,7 @@ export function useEstadoCuentaContabilidad(
       setError(null);
 
       try {
-        const res = await estadoCuentaContabilidadApi.get({ fechaInicio, fechaFin });
+        const res = await estadoCuentaContabilidadApi.get({ anio, mes });
         if (!cancelled) {
           setData(res);
           setGeneratedAt(new Date());
@@ -61,7 +61,7 @@ export function useEstadoCuentaContabilidad(
     return () => {
       cancelled = true;
     };
-  }, [enabled, fechaInicio, fechaFin, options.refreshKey]);
+  }, [enabled, anio, mes, options.refreshKey]);
 
   return { data, loading, error, generatedAt };
 }

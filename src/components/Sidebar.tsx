@@ -83,12 +83,6 @@ const navItems: NavSection[] = [
         hiddenForRoles: ["asesor", "caja"],
       },
       {
-        label: "Estado de cuenta",
-        href: "/contabilidad/estado-cuenta",
-        requiredPermisos: ["S001", "S002", "F009"],
-        hiddenForRoles: ["asesor", "caja"],
-      },
-      {
         label: "Gastos",
         href: "/contabilidad/gastos",
         requiredPermisos: ["S001", "S002", "F009"],
@@ -171,7 +165,7 @@ export default function Sidebar() {
           section: "Contabilidad",
           items: [
             { label: "Contabilidad", href: "/contabilidad" },
-            { label: "Estado de cuenta", href: "/contabilidad/estado-cuenta" },
+            { label: "Estado financiera", href: "/contabilidad/estado-financiera" },
             { label: "Gastos", href: "/contabilidad/gastos" },
             { label: "Utilidad neta", href: "/contabilidad/utilidad-neta" },
             { label: "Cierre mensual", href: "/contabilidad/cierre-mensual" },
