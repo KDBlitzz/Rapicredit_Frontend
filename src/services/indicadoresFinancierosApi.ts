@@ -99,35 +99,48 @@ function buildQuery(params: GetIndicadoresFinancierosParams) {
 export const indicadoresFinancierosApi = {
   async get(params: GetIndicadoresFinancierosParams): Promise<IndicadoresFinancierosData> {
     const query = buildQuery(params);
-    // Endpoint backend (según especificación): GET {BASE_URL}/api/resumen-financiero?fechaCorte=YYYY-MM-DD
-    // Nota: `apiFetch` agrega prefijo `/api` solo si NO lo incluyes; aquí lo incluimos explícitamente.
+    // Nota: en este backend los reportes cuelgan de `/api/reportes/*`.
+    // `apiFetch` agregará prefijo `/api` si hace falta.
+    const candidates: string[] = [
+      // Principal
+      `/api/reportes/indicadores-financieros?${query}`,
+      `/reportes/indicadores-financieros?${query}`,
+      // Variantes por naming (compat)
+      `/api/reportes/indicadoresFinancieros?${query}`,
+      `/reportes/indicadoresFinancieros?${query}`,
+      `/api/reportes/resumen-financiero?${query}`,
+      `/reportes/resumen-financiero?${query}`,
+      `/api/reportes/resumen_financiero?${query}`,
+      `/reportes/resumen_financiero?${query}`,
+      `/api/reportes/resumenFinanciero?${query}`,
+      `/reportes/resumenFinanciero?${query}`,
+    ].filter(Boolean);
+
     let res: unknown;
-    const primaryPath = `/api/resumen-financiero?${query}`;
-    try {
-      res = await apiFetch<unknown>(primaryPath, { silent: true });
-    } catch (err: unknown) {
-      // Fallback: algunos backends montan el recurso sin prefijo `/api`.
-      // Para evitar la normalización automática, usamos URL absoluta.
-      const is404 = err instanceof ApiError && err.status === 404;
-      if (!is404) throw err;
+    const attempted: string[] = [];
+    let lastErr: unknown;
 
-      const base = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || '';
-      if (!base) throw err;
-
-      const baseNoSlash = base.replace(/\/+$/, '');
-      const baseNoApiSuffix = baseNoSlash.replace(/\/api$/i, '');
-      const absolute = `${baseNoApiSuffix}/resumen-financiero?${query}`;
-
+    for (const path of candidates) {
+      attempted.push(path);
       try {
-        res = await apiFetch<unknown>(absolute, { silent: true });
-      } catch (fallbackErr: unknown) {
-        const fallbackIs404 = fallbackErr instanceof ApiError && fallbackErr.status === 404;
-        if (!fallbackIs404) throw fallbackErr;
-
-        throw new Error(
-          `Endpoint no encontrado (404). Verifica tu backend y/o base URL. Se intentó: ${primaryPath} y ${absolute}`
-        );
+        res = await apiFetch<unknown>(path, { silent: true });
+        lastErr = undefined;
+        break;
+      } catch (err: unknown) {
+        lastErr = err;
+        const is404 = err instanceof ApiError && err.status === 404;
+        if (!is404) throw err;
       }
+    }
+
+    if (res === undefined) {
+      const tried = attempted.join(' | ');
+      if (lastErr instanceof Error && lastErr.message.includes('API base URL not configured')) {
+        throw lastErr;
+      }
+      throw new Error(
+        `Endpoint no encontrado (404). Verifica la ruta del backend y/o la base URL. Se intentó: ${tried}`
+      );
     }
 
     const normalizedRaw = normalizeIndicadoresFinancierosResponse(res);
