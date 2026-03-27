@@ -198,8 +198,6 @@ export default function EstadoCuentaContabilidadPage() {
                     <TableCell align="right">#PRESTAMOS</TableCell>
                     <TableCell align="right">NUEVOS</TableCell>
                     <TableCell align="right">RECURRENTES</TableCell>
-                    <TableCell align="right">RESERVA MORA</TableCell>
-                    <TableCell align="right">RESERVA LAB</TableCell>
                     <TableCell align="right">TASA INTERES PROMEDIO MENSUAL</TableCell>
                     <TableCell align="right">% DE UTILIDAD</TableCell>
                   </TableRow>
@@ -217,8 +215,6 @@ export default function EstadoCuentaContabilidadPage() {
                       <TableCell align="right">{formatCount(r.cantidadPrestamos)}</TableCell>
                       <TableCell align="right">{formatCount(r.nuevos)}</TableCell>
                       <TableCell align="right">{formatCount(r.recurrentes)}</TableCell>
-                      <TableCell align="right">{formatMoney(r.reservaMora)}</TableCell>
-                      <TableCell align="right">{formatMoney(r.reservaLab)}</TableCell>
                       <TableCell align="right">{formatPct(r.tasaInteresPromedioMensual)}</TableCell>
                       <TableCell align="right">{formatPct(r.porcentajeUtilidad)}</TableCell>
                     </TableRow>
@@ -226,7 +222,7 @@ export default function EstadoCuentaContabilidadPage() {
 
                   {!loading && data.rows.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={13}>
+                      <TableCell colSpan={11}>
                         <Typography variant="caption" color="text.secondary">
                           No hay datos para el rango seleccionado.
                         </Typography>

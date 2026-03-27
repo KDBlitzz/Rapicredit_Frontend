@@ -275,6 +275,12 @@ export default function PagosPage() {
       handleCloseNuevo();
       setRefreshKey((k) => k + 1);
 
+      try {
+        window.dispatchEvent(new Event('rapicredit:refresh-caja'));
+      } catch {
+        // ignore
+      }
+
       {
         const resObj = applyRes && typeof applyRes === 'object' ? (applyRes as Record<string, unknown>) : null;
         const pagoObj =

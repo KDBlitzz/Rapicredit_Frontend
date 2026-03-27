@@ -28,6 +28,13 @@ export function usePagos(
   const [data, setData] = useState<CajaPagosResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [eventRefreshKey, setEventRefreshKey] = useState(0);
+
+  useEffect(() => {
+    const onRefresh = () => setEventRefreshKey((k) => k + 1);
+    window.addEventListener('rapicredit:refresh-caja', onRefresh);
+    return () => window.removeEventListener('rapicredit:refresh-caja', onRefresh);
+  }, []);
 
   useEffect(() => {
     const range = getRangeOrNull(fechaInicio, fechaFin);
@@ -59,7 +66,7 @@ export function usePagos(
     return () => {
       cancelled = true;
     };
-  }, [fechaInicio, fechaFin, refreshKey]);
+  }, [fechaInicio, fechaFin, refreshKey, eventRefreshKey]);
 
   return { data, loading, error };
 }
@@ -73,6 +80,13 @@ export function usePagosPorAsesor(
   const [data, setData] = useState<CajaPagosResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [eventRefreshKey, setEventRefreshKey] = useState(0);
+
+  useEffect(() => {
+    const onRefresh = () => setEventRefreshKey((k) => k + 1);
+    window.addEventListener('rapicredit:refresh-caja', onRefresh);
+    return () => window.removeEventListener('rapicredit:refresh-caja', onRefresh);
+  }, []);
 
   useEffect(() => {
     const range = getRangeOrNull(fechaInicio, fechaFin);
@@ -104,7 +118,7 @@ export function usePagosPorAsesor(
     return () => {
       cancelled = true;
     };
-  }, [cobradorId, fechaInicio, fechaFin, refreshKey]);
+  }, [cobradorId, fechaInicio, fechaFin, refreshKey, eventRefreshKey]);
 
   return { data, loading, error };
 }

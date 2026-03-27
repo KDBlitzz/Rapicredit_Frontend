@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -27,6 +27,7 @@ import { EstadoPrestamoFiltro, usePrestamos } from '../../hooks/usePrestamos';
 import type { Pago as CajaPago } from '../../services/cajaApi';
 import type { Gasto } from '../../services/gastosApi';
 import { parseDateInput } from '../../lib/dateRange';
+import { onPagoRegistrado } from '../../lib/events';
 
 type TabKey = 'INGRESOS' | 'EGRESOS' | 'PRESTAMOS' | 'INTERESES' | 'MORA' | 'ESTADO_CUENTA';
 
@@ -134,6 +135,13 @@ export default function ContabilidadPage() {
   const [fechaFin, setFechaFin] = useState(hoy);
 
   const [estadoCuentaRefreshKey, setEstadoCuentaRefreshKey] = useState<number>(0);
+
+  useEffect(() => {
+    return onPagoRegistrado(() => {
+      // Al registrar un pago, refrescar el resumen mensual.
+      setEstadoCuentaRefreshKey(Date.now());
+    });
+  }, []);
 
   const { data: pagosResp, loading: loadingPagos, error: errorPagos } = useCajaPagos(
     fechaInicio,
@@ -727,8 +735,6 @@ export default function ContabilidadPage() {
                   <TableCell align="right">#PRESTAMOS</TableCell>
                   <TableCell align="right">NUEVOS</TableCell>
                   <TableCell align="right">RECURRENTES</TableCell>
-                  <TableCell align="right">RESERVA MORA</TableCell>
-                  <TableCell align="right">RESERVA LAB</TableCell>
                   <TableCell align="right">TASA INTERES PROMEDIO MENSUAL</TableCell>
                   <TableCell align="right">% DE UTILIDAD</TableCell>
                 </TableRow>
@@ -745,8 +751,6 @@ export default function ContabilidadPage() {
                     <TableCell align="right">{formatCount(r.cantidadPrestamos)}</TableCell>
                     <TableCell align="right">{formatCount(r.nuevos)}</TableCell>
                     <TableCell align="right">{formatCount(r.recurrentes)}</TableCell>
-                    <TableCell align="right">{formatMoney(r.reservaMora)}</TableCell>
-                    <TableCell align="right">{formatMoney(r.reservaLab)}</TableCell>
                     <TableCell align="right">{formatPct(r.tasaInteresPromedioMensual)}</TableCell>
                     <TableCell align="right">{formatPct(r.porcentajeUtilidad)}</TableCell>
                   </TableRow>
@@ -754,7 +758,7 @@ export default function ContabilidadPage() {
 
                 {!loadingEstadoCuenta && (estadoCuentaData?.rows ?? []).length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={13}>
+                    <TableCell colSpan={11}>
                       <Typography variant="caption" color="text.secondary">
                         No hay datos para el rango seleccionado.
                       </Typography>
