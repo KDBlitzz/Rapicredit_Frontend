@@ -109,14 +109,16 @@ const ReportesPage: React.FC = () => {
       </Box>
 
       <Box sx={{ display: "flex", justifyContent: "center", gap: 1, flexWrap: "wrap" }}>
-        <Button
-          component={Link}
-          href="/reportes/impresion-carteras"
-          variant="contained"
-          size="small"
-        >
-          Impresión de carteras
-        </Button>
+        {!isAsesor && (
+          <Button
+            component={Link}
+            href="/reportes/impresion-carteras"
+            variant="contained"
+            size="small"
+          >
+            Impresión de carteras
+          </Button>
+        )}
 
         <Button
           component={Link}

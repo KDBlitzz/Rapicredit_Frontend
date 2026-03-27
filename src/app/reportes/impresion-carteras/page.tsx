@@ -29,6 +29,7 @@ import {
   type TipoCartera,
 } from "../../../services/impresionCarterasApi";
 import { useImpresionCarteras } from "../../../hooks/useImpresionCarteras";
+import { useEmpleadoActual } from "../../../hooks/useEmpleadoActual";
 
 const now = new Date();
 const first = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -72,8 +73,11 @@ const ImpresionCarterasPage: React.FC = () => {
   const [actionError, setActionError] = useState<string | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
+  const { empleado } = useEmpleadoActual();
 
   const { data, loading, error, reload } = useImpresionCarteras({ desde, hasta, q, asesorId, estado });
+  const rolActual = (empleado?.rol || "").toLowerCase();
+  const isAsesor = rolActual === "asesor";
 
   const asesores = useMemo(() => data?.asesores ?? [], [data]);
 
@@ -89,6 +93,16 @@ const ImpresionCarterasPage: React.FC = () => {
 
     return asesores;
   }, [asesores, tipo]);
+
+  if (isAsesor) {
+    return (
+      <Box sx={{ p: 2 }}>
+        <Alert severity="warning">
+          No tienes permisos para ver la impresión de carteras.
+        </Alert>
+      </Box>
+    );
+  }
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();

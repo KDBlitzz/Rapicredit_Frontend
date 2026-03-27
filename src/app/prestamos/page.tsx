@@ -51,7 +51,9 @@ const PrestamosPage: React.FC = () => {
     estado,
   }, { refreshKey });
 
-  const { hasPermiso, hasAnyPermiso, loading: loadingPermisos } = usePermisos();
+  const { empleado, hasPermiso, hasAnyPermiso, loading: loadingPermisos } = usePermisos();
+  const rolActual = (empleado?.rol || "").toLowerCase();
+  const isAsesor = rolActual === "asesor";
 
   const doDelete = async (codigoPrestamo: string) => {
     if (!codigoPrestamo) return;
@@ -107,7 +109,7 @@ const PrestamosPage: React.FC = () => {
   };
 
   const canVerModuloPrestamos = hasAnyPermiso(["f001", "F002"]);
-  const canGestionarPrestamos = hasPermiso("F002");
+  const canGestionarPrestamos = hasPermiso("F002") && !isAsesor;
   const canVerPerfilPrestamo = hasPermiso("F003");
 
   if (!loadingPermisos && !canVerModuloPrestamos) {

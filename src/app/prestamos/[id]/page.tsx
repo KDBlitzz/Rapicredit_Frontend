@@ -109,9 +109,10 @@ const PrestamoDetallePage: React.FC = () => {
   const { empleado, hasPermiso } = usePermisos();
   const rolActual = (empleado?.rol || "").toLowerCase();
   const isGerente = rolActual === "gerente";
-  const canEditarPrestamo = hasPermiso("F002");
+  const isAsesor = rolActual === "asesor";
+  const canEditarPrestamo = hasPermiso("F002") && !isAsesor;
 
-  const [editMode, setEditMode] = useState<boolean>(initialEditMode);
+  const [editMode, setEditMode] = useState<boolean>(initialEditMode && canEditarPrestamo);
   const [saving, setSaving] = useState(false);
   const [rehacerMode, setRehacerMode] = useState(false);
   const [rehaciendo, setRehaciendo] = useState(false);

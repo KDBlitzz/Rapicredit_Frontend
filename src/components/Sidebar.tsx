@@ -122,7 +122,7 @@ const navItems: NavSection[] = [
   {
     section: "Reportes",
     items: [
-      { label: "Impresión de Carteras", href: "/reportes/impresion-carteras", requiredPermisos: ["F001"], hiddenForRoles: ["caja"] },
+      { label: "Impresión de Carteras", href: "/reportes/impresion-carteras", requiredPermisos: ["F001"], hiddenForRoles: ["asesor", "caja"] },
       { label: "Estado de Cuenta", href: "/reportes/estado-cuenta", hiddenForRoles: ["caja"] },
       { label: "Central de Riesgos", href: "/reportes/central-riesgos", hiddenForRoles: ["caja"], hiddenInFrontend: true },
       { label: "Seguro de Vida", href: "/reportes/seguro-vida", hiddenForRoles: ["caja"], hiddenInFrontend: true },
