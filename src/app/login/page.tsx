@@ -3,7 +3,7 @@
 import { useState } from "react";
 import {
   Box, Card, CardContent, TextField, Typography,
-  Button, Stack, Alert, IconButton, InputAdornment, Link
+  Button, Stack, Alert, IconButton, InputAdornment
 } from "@mui/material";
 import { Visibility, VisibilityOff } from "@mui/icons-material";
 import { useRouter } from "next/navigation";
@@ -19,6 +19,9 @@ export default function LoginPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === "object" && value !== null;
 
   const showTemporaryMessage = (
     setter: React.Dispatch<React.SetStateAction<string>>,
@@ -38,8 +41,8 @@ export default function LoginPage() {
       const empleado = await login(user.trim(), pass);
 
       // Si el backend incluye estado y viene inactivo, bloqueamos.
-      if (Object.prototype.hasOwnProperty.call(empleado, "estado")) {
-        const estadoVal = (empleado as any).estado;
+      if (Object.prototype.hasOwnProperty.call(empleado, "estado") && isRecord(empleado)) {
+        const estadoVal = empleado.estado;
         if (estadoVal === false) {
           await logout();
           throw new Error("Empleado inactivo");
@@ -48,7 +51,9 @@ export default function LoginPage() {
 
       showTemporaryMessage(setSuccessMessage, "¡Ingreso exitoso!", 800);
 
-      const rolActual = String((empleado as any).rol || "").trim().toLowerCase();
+      const rolActual = isRecord(empleado)
+        ? String(empleado.rol || "").trim().toLowerCase()
+        : "";
       const isContadora = rolActual === "contadora" || rolActual === "contador" || rolActual === "contabilidad";
       const destinoInicio = rolActual === "caja" ? "/cuadres" : isContadora ? "/contabilidad" : "/dashboard";
 
@@ -171,10 +176,6 @@ export default function LoginPage() {
                 ),
               }}
             />
-
-            <Link underline="hover" sx={{ color: "#8fa6ff", textAlign: "right", fontSize: "0.9rem", cursor: "pointer" }}>
-              ¿Olvidaste tu contraseña?
-            </Link>
 
             <Button
               variant="contained"
