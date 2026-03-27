@@ -281,7 +281,7 @@ export default function ContabilidadPage() {
           <Tab value="PRESTAMOS" label="Préstamos" />
           <Tab value="INTERESES" label="Intereses" />
           <Tab value="MORA" label="Mora" />
-          <Tab value="ESTADO_CUENTA" label="Estado de cuenta" />
+          <Tab value="ESTADO_CUENTA" label="Estado financiera" />
         </Tabs>
       </Paper>
 
@@ -686,7 +686,7 @@ export default function ContabilidadPage() {
         <Paper sx={{ p: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap', mb: 1 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-              <Typography variant="subtitle2">Estado de cuenta (mensual)</Typography>
+              <Typography variant="subtitle2">Estado financiera (mensual)</Typography>
               <Chip size="small" label={`Meses: ${formatCount(estadoCuentaData?.rows.length ?? 0)}`} />
             </Box>
 
@@ -704,7 +704,7 @@ export default function ContabilidadPage() {
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
               <CircularProgress size={18} />
               <Typography variant="caption" color="text.secondary">
-                Cargando estado de cuenta…
+                Cargando estado financiera…
               </Typography>
             </Box>
           ) : null}
