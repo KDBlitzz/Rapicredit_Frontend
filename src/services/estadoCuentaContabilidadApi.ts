@@ -38,13 +38,11 @@ function mesLabelFromPeriodo(periodo: UnknownRecord): string | null {
   const hasta = asNonEmptyString(periodo['hasta']);
 
   if (anio != null && mes != null && mes >= 1 && mes <= 12) {
-    const mm = String(mes).padStart(2, '0');
     const mLabel = MONTHS_ES[mes - 1];
-    const range = desde && hasta ? ` ${desde}—${hasta}` : '';
-    return `${mLabel} ${anio} (${anio}-${mm})${range}`;
+    return `${mLabel} ${anio}`;
   }
 
-  if (desde && hasta) return `${desde}—${hasta}`;
+  if (desde && hasta) return `${desde} a ${hasta}`;
   return null;
 }
 

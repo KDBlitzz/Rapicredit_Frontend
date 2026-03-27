@@ -160,7 +160,7 @@ export default function EstadoCuentaContabilidadPage() {
                   Período
                 </Typography>
                 <Typography>
-                  {data.fechaInicio} — {data.fechaFin}
+                  {(submittedPeriodo?.mes ?? mesInput).toString().padStart(2, '0')}/{submittedPeriodo?.anio ?? anioInput}
                 </Typography>
               </Grid>
 
