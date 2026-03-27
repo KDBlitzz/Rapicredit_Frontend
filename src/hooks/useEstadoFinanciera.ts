@@ -16,6 +16,12 @@ export function useEstadoFinanciera(anio?: number | null, mes?: number | null): 
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  useEffect(() => {
+    const onRefresh = () => setRefreshKey(Date.now());
+    window.addEventListener('rapicredit:refresh-caja', onRefresh);
+    return () => window.removeEventListener('rapicredit:refresh-caja', onRefresh);
+  }, []);
+
   const canFetch = useMemo(() => {
     if (anio == null || mes == null) return false;
     if (!Number.isInteger(anio) || anio < 2000 || anio > 3000) return false;

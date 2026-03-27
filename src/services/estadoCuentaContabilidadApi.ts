@@ -56,11 +56,11 @@ export type EstadoCuentaContabilidadRow = {
   cantidadPrestamos: number | null;
   nuevos: number | null;
   recurrentes: number | null;
-  reservaMora: number | null;
-  reservaLab: number | null;
   tasaInteresPromedioMensual: number | null;
   porcentajeUtilidad: number | null;
 };
+
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 export type EstadoCuentaContabilidadData = {
   fechaInicio: string; // YYYY-MM-DD
@@ -98,9 +98,6 @@ function normalizeRow(raw: unknown): EstadoCuentaContabilidadRow | null {
   const nuevos = asNumber(raw['nuevos'] ?? raw['NUEVOS']);
   const recurrentes = asNumber(raw['recurrentes'] ?? raw['RECURRENTES']);
 
-  const reservaMora = asNumber(raw['reservaMora'] ?? raw['RESERVA_MORA'] ?? raw['reserva_mora']);
-  const reservaLab = asNumber(raw['reservaLab'] ?? raw['RESERVA_LAB'] ?? raw['reserva_lab']);
-
   const tasaInteresPromedioMensual = asNumber(
     raw['tasaInteresPromedioMensual'] ??
       raw['TASA_INTERES_PROMEDIO_MENSUAL'] ??
@@ -121,8 +118,6 @@ function normalizeRow(raw: unknown): EstadoCuentaContabilidadRow | null {
     cantidadPrestamos,
     nuevos,
     recurrentes,
-    reservaMora,
-    reservaLab,
     tasaInteresPromedioMensual,
     porcentajeUtilidad,
   };
@@ -137,14 +132,15 @@ function normalizeResponse(raw: unknown, params: GetEstadoCuentaContabilidadPara
     // Nuevo shape backend: { periodo: {...}, resumen: {...}, detalle: {...} }
     const periodoRaw = isRecord(raw['periodo']) ? (raw['periodo'] as UnknownRecord) : null;
     const resumenRaw = isRecord(raw['resumen']) ? (raw['resumen'] as UnknownRecord) : null;
+    const detalleRaw = isRecord(raw['detalle']) ? (raw['detalle'] as UnknownRecord) : null;
     if (periodoRaw && resumenRaw) {
       const mesLabel = mesLabelFromPeriodo(periodoRaw) ?? '—';
-      const row = normalizeRow({ mes: mesLabel, ...resumenRaw });
-      if (row) {
+      const baseRow = normalizeRow({ mes: mesLabel, ...resumenRaw });
+      if (baseRow) {
         return {
           fechaInicio: asNonEmptyString(periodoRaw['desde']) ?? `${params.anio}-${String(params.mes).padStart(2, '0')}-01`,
           fechaFin: asNonEmptyString(periodoRaw['hasta']) ?? `${params.anio}-${String(params.mes).padStart(2, '0')}-01`,
-          rows: [row],
+          rows: [baseRow],
         };
       }
     }

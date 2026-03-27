@@ -20,6 +20,7 @@ import { useRouter } from "next/navigation";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import Link from "next/link";
 import { apiFetch } from "../../../lib/api";
+import { emitPagoRegistrado } from "../../../lib/events";
 import { usePermisos } from "../../../hooks/usePermisos";
 import { usePrestamoDetalle } from "../../../hooks/usePrestamoDetalle";
 import { usePrestamosAsignados } from "../../../hooks/usePrestamosAsignados";
@@ -327,6 +328,7 @@ const NuevoPagoPage: React.FC = () => {
                                 ? resObj.pagoId.trim()
                                 : "";
 
+        emitPagoRegistrado({ fechaPago: String(form.fecha || "") });
         router.push(ref ? `/pagos/${encodeURIComponent(ref)}/comprobante` : "/pagos/comprobante");
       }
     } catch (e: unknown) {
