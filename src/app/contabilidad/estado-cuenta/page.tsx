@@ -8,6 +8,7 @@ import {
   CircularProgress,
   Grid,
   Paper,
+  MenuItem,
   Table,
   TableBody,
   TableCell,
@@ -19,16 +20,6 @@ import {
 } from '@mui/material';
 import { useEmpleadoActual } from '../../../hooks/useEmpleadoActual';
 import { useEstadoCuentaContabilidad } from '../../../hooks/useEstadoCuentaContabilidad';
-import { parseDateInput } from '../../../lib/dateRange';
-
-const pad2 = (n: number) => String(n).padStart(2, '0');
-
-const isoDate = (d: Date) => {
-  const yyyy = d.getFullYear();
-  const mm = pad2(d.getMonth() + 1);
-  const dd = pad2(d.getDate());
-  return `${yyyy}-${mm}-${dd}`;
-};
 
 const formatMoney = (v?: number | null) =>
   typeof v === 'number' && Number.isFinite(v)
@@ -43,14 +34,14 @@ const formatPct = (v?: number | null) =>
 
 export default function EstadoCuentaContabilidadPage() {
   const now = new Date();
-  const hoy = isoDate(now);
-  const inicioMes = isoDate(new Date(now.getFullYear(), now.getMonth(), 1));
+  const defaultAnio = now.getFullYear();
+  const defaultMes = now.getMonth() + 1;
 
   const { empleado } = useEmpleadoActual();
 
-  const [fechaInicioInput, setFechaInicioInput] = useState(inicioMes);
-  const [fechaFinInput, setFechaFinInput] = useState(hoy);
-  const [submittedRange, setSubmittedRange] = useState<{ desde: string; hasta: string } | null>(null);
+  const [anioInput, setAnioInput] = useState<number>(defaultAnio);
+  const [mesInput, setMesInput] = useState<number>(defaultMes);
+  const [submittedPeriodo, setSubmittedPeriodo] = useState<{ anio: number; mes: number } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [uiError, setUiError] = useState<string | null>(null);
 
@@ -58,33 +49,27 @@ export default function EstadoCuentaContabilidadPage() {
     return empleado?.nombreCompleto || empleado?.usuario || '—';
   }, [empleado?.nombreCompleto, empleado?.usuario]);
 
-  const isValidRange = useMemo(() => {
-    if (!fechaInicioInput || !fechaFinInput) return false;
-    const d1 = parseDateInput(fechaInicioInput);
-    const d2 = parseDateInput(fechaFinInput);
-    if (Number.isNaN(d1.getTime()) || Number.isNaN(d2.getTime())) return false;
-    return d1.getTime() <= d2.getTime();
-  }, [fechaInicioInput, fechaFinInput]);
+  const isValidPeriodo = useMemo(() => {
+    if (!Number.isInteger(anioInput) || anioInput < 2000 || anioInput > 3000) return false;
+    if (!Number.isInteger(mesInput) || mesInput < 1 || mesInput > 12) return false;
+    return true;
+  }, [anioInput, mesInput]);
 
-  const { data, loading, error, generatedAt } = useEstadoCuentaContabilidad(
-    submittedRange?.desde,
-    submittedRange?.hasta,
-    {
-      enabled: !!submittedRange,
-      refreshKey,
-    }
-  );
+  const { data, loading, error, generatedAt } = useEstadoCuentaContabilidad(submittedPeriodo?.anio, submittedPeriodo?.mes, {
+    enabled: !!submittedPeriodo,
+    refreshKey,
+  });
 
   const handleConsultar = (e: React.FormEvent) => {
     e.preventDefault();
     setUiError(null);
 
-    if (!isValidRange) {
-      setUiError('Rango de fechas inválido: verifica desde/hasta.');
+    if (!isValidPeriodo) {
+      setUiError('Período inválido: verifica año/mes.');
       return;
     }
 
-    setSubmittedRange({ desde: fechaInicioInput, hasta: fechaFinInput });
+    setSubmittedPeriodo({ anio: anioInput, mes: mesInput });
     setRefreshKey(Date.now());
   };
 
@@ -92,48 +77,56 @@ export default function EstadoCuentaContabilidadPage() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <Box
-        sx={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 1,
-          alignItems: 'flex-start',
-        }}
-      >
-        <Box>
-          <Typography variant="h6">Estado de cuenta</Typography>
-          <Typography variant="caption" color="text.secondary">
-            Estado de cuenta consolidado por mes (Contabilidad).
-          </Typography>
-        </Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 1 }}>
+        <Typography variant="h6">Estado de cuenta</Typography>
+        <Typography variant="caption" color="text.secondary">
+          Usuario: {usuarioLabel}
+        </Typography>
+      </Box>
 
+      <Paper sx={{ p: 2 }}>
         <Box
           component="form"
           onSubmit={handleConsultar}
           sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}
         >
           <TextField
-            type="date"
             size="small"
-            label="Desde"
-            InputLabelProps={{ shrink: true }}
-            value={fechaInicioInput}
-            onChange={(e) => setFechaInicioInput(e.target.value)}
+            label="Año"
+            type="number"
+            value={anioInput}
+            onChange={(e) => setAnioInput(Number(e.target.value))}
+            inputProps={{ min: 2000, max: 3000 }}
+            sx={{ width: 120 }}
           />
+
           <TextField
-            type="date"
             size="small"
-            label="Hasta"
-            InputLabelProps={{ shrink: true }}
-            value={fechaFinInput}
-            onChange={(e) => setFechaFinInput(e.target.value)}
-          />
-          <Button type="submit" variant="contained" size="small" disabled={loading || !isValidRange}>
+            select
+            label="Mes"
+            value={mesInput}
+            onChange={(e) => setMesInput(Number(e.target.value))}
+            sx={{ minWidth: 160 }}
+          >
+            <MenuItem value={1}>Enero</MenuItem>
+            <MenuItem value={2}>Febrero</MenuItem>
+            <MenuItem value={3}>Marzo</MenuItem>
+            <MenuItem value={4}>Abril</MenuItem>
+            <MenuItem value={5}>Mayo</MenuItem>
+            <MenuItem value={6}>Junio</MenuItem>
+            <MenuItem value={7}>Julio</MenuItem>
+            <MenuItem value={8}>Agosto</MenuItem>
+            <MenuItem value={9}>Septiembre</MenuItem>
+            <MenuItem value={10}>Octubre</MenuItem>
+            <MenuItem value={11}>Noviembre</MenuItem>
+            <MenuItem value={12}>Diciembre</MenuItem>
+          </TextField>
+
+          <Button type="submit" variant="contained" size="small" disabled={loading || !isValidPeriodo}>
             Consultar
           </Button>
         </Box>
-      </Box>
+      </Paper>
 
       {loading ? (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -146,16 +139,10 @@ export default function EstadoCuentaContabilidadPage() {
 
       {errorToShow ? <Alert severity="error">{errorToShow}</Alert> : null}
 
-      {data?.source === 'mock' ? (
-        <Alert severity="info">
-          Backend no disponible o sin endpoint: mostrando datos de ejemplo para poder hostear la pantalla.
-        </Alert>
-      ) : null}
-
-      {!submittedRange && !data ? (
+      {!submittedPeriodo && !data ? (
         <Paper sx={{ p: 2 }}>
           <Typography variant="body2" color="text.secondary">
-            Selecciona un rango y presiona “Consultar” para ver el resumen mensual.
+            Selecciona un año y un mes y presiona “Consultar” para ver el resumen mensual.
           </Typography>
         </Paper>
       ) : null}
@@ -170,7 +157,7 @@ export default function EstadoCuentaContabilidadPage() {
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                 <Typography variant="caption" color="text.secondary">
-                  Rango
+                  Período
                 </Typography>
                 <Typography>
                   {data.fechaInicio} — {data.fechaFin}

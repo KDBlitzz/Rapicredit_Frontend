@@ -26,6 +26,7 @@ import { useEstadoCuentaContabilidad } from '../../hooks/useEstadoCuentaContabil
 import { EstadoPrestamoFiltro, usePrestamos } from '../../hooks/usePrestamos';
 import type { Pago as CajaPago } from '../../services/cajaApi';
 import type { Gasto } from '../../services/gastosApi';
+import { parseDateInput } from '../../lib/dateRange';
 
 type TabKey = 'INGRESOS' | 'EGRESOS' | 'PRESTAMOS' | 'INTERESES' | 'MORA' | 'ESTADO_CUENTA';
 
@@ -227,10 +228,14 @@ export default function ContabilidadPage() {
     loading: loadingEstadoCuenta,
     error: errorEstadoCuenta,
     generatedAt: estadoCuentaGeneratedAt,
-  } = useEstadoCuentaContabilidad(fechaInicio, fechaFin, {
-    enabled: tab === 'ESTADO_CUENTA',
-    refreshKey: estadoCuentaRefreshKey,
-  });
+  } = useEstadoCuentaContabilidad(
+    parseDateInput(fechaInicio).getFullYear(),
+    parseDateInput(fechaInicio).getMonth() + 1,
+    {
+      enabled: tab === 'ESTADO_CUENTA',
+      refreshKey: estadoCuentaRefreshKey,
+    }
+  );
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -683,7 +688,6 @@ export default function ContabilidadPage() {
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
               <Typography variant="subtitle2">Estado de cuenta (mensual)</Typography>
               <Chip size="small" label={`Meses: ${formatCount(estadoCuentaData?.rows.length ?? 0)}`} />
-              {estadoCuentaData?.source ? <Chip size="small" variant="outlined" label={`Fuente: ${estadoCuentaData.source}`} /> : null}
             </Box>
 
             <Button
@@ -705,11 +709,6 @@ export default function ContabilidadPage() {
             </Box>
           ) : null}
           {errorEstadoCuenta ? <Alert severity="error">{errorEstadoCuenta}</Alert> : null}
-          {estadoCuentaData?.source === 'mock' ? (
-            <Alert severity="info" sx={{ mb: 1 }}>
-              Backend no disponible o sin endpoint: mostrando datos de ejemplo.
-            </Alert>
-          ) : null}
 
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
             Generado: {estadoCuentaGeneratedAt ? estadoCuentaGeneratedAt.toLocaleString('es-HN') : '—'}
